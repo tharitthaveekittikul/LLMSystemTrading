@@ -12,11 +12,15 @@ import {
 } from "@/components/ui/select";
 
 export function AccountSelector() {
-  const { accounts, activeAccountId, setAccounts, setActiveAccount } = useTradingStore();
+  const { accounts, activeAccountId, setAccounts, setActiveAccount } =
+    useTradingStore();
 
   useEffect(() => {
     if (accounts.length === 0) {
-      accountsApi.list().then(setAccounts).catch(() => {});
+      accountsApi
+        .list()
+        .then(setAccounts)
+        .catch(() => {});
     }
   }, [accounts.length, setAccounts]);
 
@@ -29,7 +33,7 @@ export function AccountSelector() {
       value={activeAccountId?.toString() ?? ""}
       onValueChange={(v) => setActiveAccount(Number(v))}
     >
-      <SelectTrigger className="h-8 w-48 text-xs">
+      <SelectTrigger className="h-8 w-64 text-xs">
         <SelectValue placeholder="Select account…" />
       </SelectTrigger>
       <SelectContent>

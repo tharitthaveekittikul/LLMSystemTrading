@@ -15,8 +15,8 @@ export default function DashboardPage() {
 
       <AppHeader title="Dashboard">
         <div className="flex items-center gap-3">
-          <AccountSelector />
           <ConnectionStatus />
+          <AccountSelector />
         </div>
       </AppHeader>
 

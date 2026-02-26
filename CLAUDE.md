@@ -119,3 +119,26 @@ Copy `backend/.env.example` → `backend/.env`. Required vars:
 
 See `ARCHITECTURE.md` for module boundaries, data flow diagram, and design rules.
 See `plantuml/overview.puml` for the full system component diagram.
+
+## Reference Documents
+
+Cached third-party docs live in `documents/` — fetch from source only when updating.
+
+```
+documents/
+└── mt5-python/
+    ├── README.md            # Index + critical constraints + all function list
+    ├── connection.md        # initialize(), login(), shutdown()
+    ├── account-terminal.md  # terminal_info(), account_info() + all fields
+    ├── positions.md         # positions_get() + field reference + normalization
+    ├── market-data.md       # symbol_select(), symbol_info_tick(), copy_rates_from_pos()
+    ├── orders.md            # order_send() + all constants + fill/time types
+    └── error-codes.md       # last_error() codes + trade retcodes
+```
+
+**MT5 critical constraints (from docs):**
+- `initialize()` binds to calling OS thread via COM — use `ThreadPoolExecutor(max_workers=1)`
+- All MT5 calls must run on the **same single thread** for the entire process lifetime
+- Persistent connection: connect once → poll N times → `shutdown()` in `finally`
+- `terminal_info().connected` — lightweight broker heartbeat (check before each fetch)
+- Call `symbol_select(symbol, True)` before `symbol_info_tick()` for new symbols
