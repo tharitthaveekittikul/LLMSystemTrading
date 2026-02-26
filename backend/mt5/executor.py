@@ -3,7 +3,10 @@
 Kill switch is checked here as the final gate before every order.
 Never import MetaTrader5 directly in this file — use bridge.py.
 """
+import logging
 from dataclasses import dataclass
+
+from pydantic import BaseModel, Field, field_validator
 
 from mt5.bridge import MT5Bridge
 from services.kill_switch import is_active as kill_switch_active
@@ -19,17 +22,27 @@ except ImportError:
     _ORDER_TYPE_SELL = 1
     _ORDER_FILLING_IOC = 1
 
+logger = logging.getLogger(__name__)
 
-@dataclass
-class OrderRequest:
-    symbol: str
-    direction: str   # BUY | SELL
-    volume: float
-    entry_price: float
-    stop_loss: float
-    take_profit: float
-    comment: str = "AI-Trade"
-    deviation: int = 20  # max price deviation in points
+
+class OrderRequest(BaseModel):
+    """Validated order request.  Raises ValidationError on bad input."""
+
+    symbol: str = Field(..., min_length=1, max_length=20)
+    direction: str = Field(..., description="BUY or SELL")
+    volume: float = Field(..., gt=0.0, description="Lot size, must be positive")
+    entry_price: float = Field(..., gt=0.0)
+    stop_loss: float = Field(..., gt=0.0)
+    take_profit: float = Field(..., gt=0.0)
+    comment: str = Field(default="AI-Trade", max_length=64)
+    deviation: int = Field(default=20, ge=0, description="Max price deviation in points")
+
+    @field_validator("direction")
+    @classmethod
+    def validate_direction(cls, v: str) -> str:
+        if v.upper() not in {"BUY", "SELL"}:
+            raise ValueError("direction must be 'BUY' or 'SELL'")
+        return v.upper()
 
 
 @dataclass
@@ -47,7 +60,17 @@ class MT5Executor:
     async def place_order(self, request: OrderRequest) -> OrderResult:
         # ── Kill switch gate (mandatory check) ───────────────────────────────
         if kill_switch_active():
+            logger.warning(
+                "Order rejected — kill switch active | symbol=%s direction=%s volume=%s",
+                request.symbol, request.direction, request.volume,
+            )
             return OrderResult(success=False, error="Kill switch is active — order rejected")
+
+        logger.info(
+            "Placing order | symbol=%s direction=%s volume=%s entry=%s sl=%s tp=%s",
+            request.symbol, request.direction, request.volume,
+            request.entry_price, request.stop_loss, request.take_profit,
+        )
 
         order_type = _ORDER_TYPE_BUY if request.direction == "BUY" else _ORDER_TYPE_SELL
 
@@ -69,30 +92,42 @@ class MT5Executor:
         result = await self._bridge.send_order(mt5_request)
         if not result:
             code, msg = await self._bridge.get_last_error()
+            logger.error("Order send failed | symbol=%s | code=%s msg=%s", request.symbol, code, msg)
             return OrderResult(success=False, error=msg, retcode=code)
 
         retcode = result.get("retcode", -1)
         if retcode == 10009:  # TRADE_RETCODE_DONE
-            return OrderResult(success=True, ticket=result.get("order"), retcode=retcode)
+            ticket = result.get("order")
+            logger.info(
+                "Order placed | symbol=%s direction=%s volume=%s ticket=%s",
+                request.symbol, request.direction, request.volume, ticket,
+            )
+            return OrderResult(success=True, ticket=ticket, retcode=retcode)
 
-        return OrderResult(
-            success=False,
-            error=result.get("comment", "Unknown error"),
-            retcode=retcode,
+        error_msg = result.get("comment", "Unknown error")
+        logger.error(
+            "Order rejected by broker | symbol=%s retcode=%s error=%s",
+            request.symbol, retcode, error_msg,
         )
+        return OrderResult(success=False, error=error_msg, retcode=retcode)
 
     async def close_position(self, ticket: int, symbol: str, volume: float) -> OrderResult:
         if kill_switch_active():
+            logger.warning("Close rejected — kill switch active | ticket=%s symbol=%s", ticket, symbol)
             return OrderResult(success=False, error="Kill switch is active")
+
+        logger.info("Closing position | ticket=%s symbol=%s volume=%s", ticket, symbol, volume)
 
         # Fetch current position to determine close direction
         positions = await self._bridge.get_positions(symbol=symbol)
         pos = next((p for p in positions if p["ticket"] == ticket), None)
         if not pos:
+            logger.error("Position not found | ticket=%s symbol=%s", ticket, symbol)
             return OrderResult(success=False, error=f"Position {ticket} not found")
 
         tick = await self._bridge.get_tick(symbol)
         if not tick:
+            logger.error("Failed to get tick for close | symbol=%s", symbol)
             return OrderResult(success=False, error="Failed to get current price")
 
         close_type = _ORDER_TYPE_SELL if pos["type"] == 0 else _ORDER_TYPE_BUY
@@ -115,12 +150,21 @@ class MT5Executor:
         result = await self._bridge.send_order(mt5_request)
         if not result:
             code, msg = await self._bridge.get_last_error()
+            logger.error("Close send failed | ticket=%s | code=%s msg=%s", ticket, code, msg)
             return OrderResult(success=False, error=msg, retcode=code)
 
         retcode = result.get("retcode", -1)
+        success = retcode == 10009
+        if success:
+            logger.info("Position closed | ticket=%s symbol=%s", ticket, symbol)
+        else:
+            logger.error(
+                "Close rejected by broker | ticket=%s retcode=%s error=%s",
+                ticket, retcode, result.get("comment"),
+            )
         return OrderResult(
-            success=(retcode == 10009),
+            success=success,
             ticket=result.get("order"),
             retcode=retcode,
-            error=result.get("comment") if retcode != 10009 else None,
+            error=result.get("comment") if not success else None,
         )

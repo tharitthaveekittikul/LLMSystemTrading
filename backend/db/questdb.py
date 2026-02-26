@@ -4,11 +4,26 @@ Used for time-series data: OHLCV candles, ticks, and equity snapshots.
 QuestDB is append-only — never UPDATE or DELETE rows.
 """
 import asyncio
-from datetime import datetime
+import logging
+import re
+from datetime import UTC, datetime
 
 import asyncpg
 
 from core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Only allow lowercase alphanumerics and underscores in table-name components.
+# This prevents SQL injection via symbol / timeframe inputs.
+_SAFE_IDENT_RE = re.compile(r"[^a-z0-9_]")
+
+
+def _safe_table_name(symbol: str, timeframe: str) -> str:
+    """Return a sanitized QuestDB table name for OHLCV data."""
+    sym = _SAFE_IDENT_RE.sub("_", symbol.lower())
+    tf = _SAFE_IDENT_RE.sub("_", timeframe.lower())
+    return f"ohlcv_{sym}_{tf}"
 
 
 async def _get_conn() -> asyncpg.Connection:
@@ -32,7 +47,7 @@ async def insert_equity_snapshot(
             INSERT INTO equity_snapshots (ts, account_id, equity, balance, margin)
             VALUES ($1, $2, $3, $4, $5)
             """,
-            datetime.utcnow(),
+            datetime.now(UTC),
             account_id,
             equity,
             balance,
@@ -52,14 +67,12 @@ async def insert_ohlcv(
     close: float,
     volume: int,
 ) -> None:
+    table = _safe_table_name(symbol, timeframe)
     conn = await _get_conn()
     try:
-        table = f"ohlcv_{symbol.lower()}_{timeframe.lower()}"
         await conn.execute(
-            f"""
-            INSERT INTO {table} (ts, open, high, low, close, volume)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
+            f"INSERT INTO {table} (ts, open, high, low, close, volume) "
+            f"VALUES ($1, $2, $3, $4, $5, $6)",
             ts, open_, high, low, close, volume,
         )
     finally:
@@ -71,15 +84,18 @@ async def get_ohlcv(
     timeframe: str,
     limit: int = 200,
 ) -> list[dict]:
+    table = _safe_table_name(symbol, timeframe)
     conn = await _get_conn()
     try:
-        table = f"ohlcv_{symbol.lower()}_{timeframe.lower()}"
         rows = await conn.fetch(
             f"SELECT ts, open, high, low, close, volume FROM {table} "
             f"ORDER BY ts DESC LIMIT $1",
             limit,
         )
         return [dict(r) for r in reversed(rows)]
+    except Exception as exc:
+        logger.error("get_ohlcv failed for table=%s: %s", table, exc)
+        return []
     finally:
         await conn.close()
 

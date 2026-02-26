@@ -4,6 +4,7 @@ Never call OpenAI / Gemini / Anthropic APIs directly from routes or services.
 The signal pipeline: market data → prompt → LLM → TradingSignal (validated).
 """
 import json
+import logging
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -12,6 +13,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, field_validator
 
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 # ── Signal schema ─────────────────────────────────────────────────────────────
@@ -111,6 +114,11 @@ async def analyze_market(
 
     If confidence is below the configured threshold the action is forced to HOLD.
     """
+    logger.info(
+        "Analyzing market | provider=%s symbol=%s timeframe=%s price=%s",
+        settings.llm_provider, symbol, timeframe, current_price,
+    )
+
     llm = _build_llm()
     chain = _PROMPT | llm | JsonOutputParser()
 
@@ -133,6 +141,14 @@ async def analyze_market(
 
     # Confidence gate — downgrade low-confidence signals to HOLD
     if signal.confidence < settings.llm_confidence_threshold:
+        logger.info(
+            "Signal downgraded to HOLD — confidence %.2f below threshold %.2f | symbol=%s",
+            signal.confidence, settings.llm_confidence_threshold, symbol,
+        )
         signal.action = "HOLD"
 
+    logger.info(
+        "Signal result | symbol=%s action=%s confidence=%.2f timeframe=%s",
+        symbol, signal.action, signal.confidence, signal.timeframe,
+    )
     return signal

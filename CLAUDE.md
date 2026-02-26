@@ -99,6 +99,22 @@ Copy `backend/.env.example` → `backend/.env`. Required vars:
 - No hardcoded credentials or connection strings anywhere in source code
 - Target timeframes: M15–Daily (not HFT); latency from LLM is acceptable
 
+**Logging:**
+- Central setup: `core/logging.py` — call `setup_logging()` once from `main.py` at module level
+- All modules: `logger = logging.getLogger(__name__)` — never use `print()` for application events
+- Format: `%(asctime)s %(levelname)-8s %(name)s: %(message)s` (ISO timestamp)
+- Levels: `DEBUG` dev detail, `INFO` normal ops, `WARNING` kill-switch/degraded, `ERROR` failures
+- Log key lifecycle events: MT5 connect/disconnect, orders placed/rejected, LLM signal outcomes, WebSocket connect/disconnect
+- Third-party loggers (`sqlalchemy.engine`, `uvicorn.access`, `httpx`) suppressed to WARNING in non-debug mode
+
+**Validation:**
+- Input validation at the boundary (Pydantic models on all API schemas and `OrderRequest`)
+- `core/config.py` validates every setting at startup — bad config raises `ValueError` immediately
+- In production (`debug=False`): app refuses to start if `ENCRYPTION_KEY` or `JWT_SECRET` are dev defaults
+- LLM provider API key is validated at startup regardless of debug mode
+- QuestDB table names are sanitized via regex before use (`_safe_table_name()` in `db/questdb.py`)
+- All datetimes are timezone-aware (`datetime.now(UTC)`) — never use deprecated `datetime.utcnow()`
+
 ## Architecture
 
 See `ARCHITECTURE.md` for module boundaries, data flow diagram, and design rules.

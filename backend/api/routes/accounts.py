@@ -1,26 +1,30 @@
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.security import decrypt, encrypt
+from core.security import encrypt
 from db.models import Account
 from db.postgres import get_db
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ── Request / Response schemas ────────────────────────────────────────────────
 
 class AccountCreate(BaseModel):
-    name: str
-    broker: str
-    login: int
-    password: str
-    server: str
+    name: str = Field(..., min_length=1, max_length=100)
+    broker: str = Field(..., min_length=1, max_length=100)
+    login: int = Field(..., gt=0, description="MT5 account login number")
+    password: str = Field(..., min_length=1)
+    server: str = Field(..., min_length=1, max_length=200)
     is_live: bool = False
     allowed_symbols: list[str] = []
-    max_lot_size: float = 0.1
+    max_lot_size: float = Field(default=0.1, gt=0.0, le=100.0)
 
 
 class AccountResponse(BaseModel):
@@ -57,8 +61,7 @@ async def list_accounts(db: AsyncSession = Depends(get_db)):
 
 @router.post("/", response_model=AccountResponse, status_code=201)
 async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_db)):
-    import json
-
+    logger.info("Creating account | broker=%s login=%s is_live=%s", payload.broker, payload.login, payload.is_live)
     account = Account(
         name=payload.name,
         broker=payload.broker,
@@ -72,6 +75,7 @@ async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_
     db.add(account)
     await db.commit()
     await db.refresh(account)
+    logger.info("Account created | id=%s broker=%s login=%s", account.id, account.broker, account.login)
 
     return AccountResponse(
         id=account.id,
@@ -92,13 +96,12 @@ async def deactivate_account(account_id: int, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=404, detail="Account not found")
     account.is_active = False
     await db.commit()
+    logger.info("Account deactivated | id=%s", account_id)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _parse_symbols(raw: str) -> list[str]:
-    import json
-
     try:
         return json.loads(raw) if raw else []
     except (ValueError, TypeError):

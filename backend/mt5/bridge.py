@@ -4,6 +4,7 @@ All broker interactions go through this class. MT5's Python library is
 synchronous, so every call uses run_in_executor to avoid blocking FastAPI.
 """
 import asyncio
+import logging
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -15,6 +16,8 @@ try:
 except ImportError:
     mt5 = None  # type: ignore[assignment]
     MT5_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -61,17 +64,25 @@ class MT5Bridge:
 
     async def connect(self) -> bool:
         self._require_mt5()
-        return await self._run(
+        logger.info("Connecting to MT5 | login=%s server=%s", self._creds.login, self._creds.server)
+        ok = await self._run(
             mt5.initialize,
             path=self._creds.path or None,
             login=self._creds.login,
             password=self._creds.password,
             server=self._creds.server,
         )
+        if ok:
+            logger.info("MT5 connected | login=%s", self._creds.login)
+        else:
+            err = await self.get_last_error()
+            logger.error("MT5 connect failed | login=%s | error=%s", self._creds.login, err)
+        return ok
 
     async def disconnect(self) -> None:
         if MT5_AVAILABLE:
             await self._run(mt5.shutdown)
+            logger.info("MT5 disconnected | login=%s", self._creds.login)
 
     # ── Account ───────────────────────────────────────────────────────────────
 

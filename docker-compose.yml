@@ -25,19 +25,12 @@ services:
     restart: unless-stopped
     environment:
       QDB_CAIRO_MAX_UNCOMMITTED_ROWS: "1000"
-      QDB_LINE_TCP_AUTH_DB_PATH: ""
     volumes:
       - questdb_data:/var/lib/questdb
     ports:
       - "9000:9000"   # HTTP REST + Web UI  → http://localhost:9000
-      - "9009:9009"   # InfluxDB line protocol (bulk insert)
+      - "19009:9009"  # InfluxDB line protocol (bulk insert) — host 19009 avoids Windows WSL2 reservation
       - "8812:8812"   # PostgreSQL wire protocol (asyncpg queries)
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # ── Application ───────────────────────────────────────────────────────────
   backend:
     build:
@@ -49,7 +42,7 @@ services:
       postgres:
         condition: service_healthy
       questdb:
-        condition: service_healthy
+        condition: service_started
     # .env values can be overridden by the explicit environment block below
     env_file:
       - path: ./backend/.env

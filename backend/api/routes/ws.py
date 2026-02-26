@@ -6,11 +6,13 @@ The backend pushes events by calling broadcast() or broadcast_all().
 Event format: { "event": "<event_name>", "data": { ... } }
 """
 import asyncio
+import logging
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # { account_id: [WebSocket, ...] }
 _connections: dict[int, list[WebSocket]] = {}
@@ -24,6 +26,9 @@ async def dashboard_ws(websocket: WebSocket, account_id: int):
     async with _lock:
         _connections.setdefault(account_id, []).append(websocket)
 
+    client = websocket.client
+    logger.info("WebSocket connected | account_id=%s client=%s", account_id, client)
+
     try:
         while True:
             # Keep connection alive; client can send "ping" to check liveness
@@ -35,6 +40,7 @@ async def dashboard_ws(websocket: WebSocket, account_id: int):
             conns = _connections.get(account_id, [])
             if websocket in conns:
                 conns.remove(websocket)
+        logger.info("WebSocket disconnected | account_id=%s client=%s", account_id, client)
 
 
 async def broadcast(account_id: int, event: str, data: dict[str, Any]) -> None:
