@@ -1,0 +1,89 @@
+"""QuestDB client via PostgreSQL wire protocol (port 8812).
+
+Used for time-series data: OHLCV candles, ticks, and equity snapshots.
+QuestDB is append-only — never UPDATE or DELETE rows.
+"""
+import asyncio
+from datetime import datetime
+
+import asyncpg
+
+from core.config import settings
+
+
+async def _get_conn() -> asyncpg.Connection:
+    return await asyncpg.connect(
+        host=settings.questdb_host,
+        port=settings.questdb_pg_port,
+        database="qdb",
+        user="admin",
+        password="quest",
+    )
+
+
+async def insert_equity_snapshot(
+    account_id: int, equity: float, balance: float, margin: float
+) -> None:
+    """Append an equity snapshot row. Fire-and-forget safe."""
+    conn = await _get_conn()
+    try:
+        await conn.execute(
+            """
+            INSERT INTO equity_snapshots (ts, account_id, equity, balance, margin)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            datetime.utcnow(),
+            account_id,
+            equity,
+            balance,
+            margin,
+        )
+    finally:
+        await conn.close()
+
+
+async def insert_ohlcv(
+    symbol: str,
+    timeframe: str,
+    ts: datetime,
+    open_: float,
+    high: float,
+    low: float,
+    close: float,
+    volume: int,
+) -> None:
+    conn = await _get_conn()
+    try:
+        table = f"ohlcv_{symbol.lower()}_{timeframe.lower()}"
+        await conn.execute(
+            f"""
+            INSERT INTO {table} (ts, open, high, low, close, volume)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            ts, open_, high, low, close, volume,
+        )
+    finally:
+        await conn.close()
+
+
+async def get_ohlcv(
+    symbol: str,
+    timeframe: str,
+    limit: int = 200,
+) -> list[dict]:
+    conn = await _get_conn()
+    try:
+        table = f"ohlcv_{symbol.lower()}_{timeframe.lower()}"
+        rows = await conn.fetch(
+            f"SELECT ts, open, high, low, close, volume FROM {table} "
+            f"ORDER BY ts DESC LIMIT $1",
+            limit,
+        )
+        return [dict(r) for r in reversed(rows)]
+    finally:
+        await conn.close()
+
+
+def fire_and_forget(coro) -> None:
+    """Schedule a coroutine as a background task (for non-blocking DB writes)."""
+    asyncio.create_task(coro)

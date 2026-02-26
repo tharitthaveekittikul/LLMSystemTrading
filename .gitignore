@@ -1,0 +1,49 @@
+# Environment — never commit real secrets
+.env                  # root: Docker Compose secrets
+backend/.env          # backend: FastAPI app secrets
+frontend/.env.local   # frontend: Next.js client secrets
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.uv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code local settings
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (local bind mounts if used)
+docker/volumes/
+
+# MT5 screenshots (generated at runtime)
+backend/screenshots/
+
+# Alembic — keep versions/ in source control
+backend/alembic/versions/*.py
+!backend/alembic/versions/.gitkeep
