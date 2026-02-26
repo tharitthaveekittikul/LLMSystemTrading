@@ -1,7 +1,10 @@
 # Environment — never commit real secrets
-.env                  # root: Docker Compose secrets
-backend/.env          # backend: FastAPI app secrets
-frontend/.env.local   # frontend: Next.js client secrets
+# root: Docker Compose secrets
+.env
+# backend: FastAPI app secrets
+backend/.env
+# frontend: Next.js client secrets
+frontend/.env.local
 .env.local
 .env.*.local
 

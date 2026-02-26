@@ -1,0 +1,13 @@
+@startuml WebSocket Events — State & Sequence
+' TODO: implement when WebSocket event system is fully defined
+' Scope: all event types, their triggers, and frontend handling
+'
+' Events to cover:
+'   equity_update       → triggered by polling loop (every N seconds)
+'   trade_opened        → triggered after MT5 confirms order
+'   trade_closed        → triggered after MT5 confirms close
+'   ai_signal           → triggered when orchestrator produces signal (including HOLD)
+'   kill_switch_triggered → triggered by activate() in kill_switch.py
+'   kill_switch_cleared → triggered by deactivate()
+'   error               → triggered on MT5 connection failure or LLM error
+@enduml

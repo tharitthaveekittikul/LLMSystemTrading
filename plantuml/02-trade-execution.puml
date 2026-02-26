@@ -1,0 +1,14 @@
+@startuml Trade Execution — Sequence Flow
+' TODO: implement when trade execution API is fully built
+' Scope: detailed sequence diagram for POST /api/trades/execute
+'
+' Should cover:
+'   1. Receive signal from AI orchestrator
+'   2. Kill switch check
+'   3. Risk validation (lot size, margin, max positions)
+'   4. MT5 order placement with retries
+'   5. Trade persistence to PostgreSQL
+'   6. AI journal write
+'   7. WebSocket broadcast (trade_opened event)
+'   8. Equity snapshot to QuestDB
+@enduml

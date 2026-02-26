@@ -1,0 +1,149 @@
+@startuml System Overview — LLM Trading System
+
+!theme plain
+skinparam linetype ortho
+skinparam componentStyle rectangle
+skinparam defaultFontName Consolas
+skinparam ArrowFontSize 10
+skinparam PackageFontStyle bold
+
+title LLM System Trading — Full Architecture & Data Flow
+
+' ═══════════════════════════════════════════════════════════════════
+' EXTERNAL ACTORS
+' ═══════════════════════════════════════════════════════════════════
+
+actor       "Trader" as Trader
+node        "MT5 Terminal\n(Windows · Broker)" as MT5Terminal #LightBlue
+cloud       "LLM Providers\n──────────────\nOpenAI GPT-4o\nGemini 1.5 Pro\nClaude Sonnet" as LLMCloud #LightYellow
+
+' ═══════════════════════════════════════════════════════════════════
+' BACKEND — FastAPI / Python 3.12
+' ═══════════════════════════════════════════════════════════════════
+
+package "Backend  (FastAPI · Python 3.12 · uv)" #F0F8FF {
+
+  package "mt5/  — Broker Bridge" #E8F4FD {
+    [bridge.py\n//sole MetaTrader5 importer//\nconnect · disconnect\nget_tick · get_rates] as Bridge
+    [data_feed.py\n//price collection loop//\nOHLCV · ticks] as DataFeed
+    [executor.py\n//order placement & close//\nchecks kill switch first] as Executor
+  }
+
+  package "ai/  — Intelligence Layer" #FFF8E8 {
+    [orchestrator.py\n//LangChain pipeline//\nstructured data → LLM → TradingSignal\nconfidence gate (default ≥ 0.70)] as Orchestrator
+    [vision.py\n//chart screenshot → LLM Vision//\npattern · S/R · trend] as Vision
+  }
+
+  package "services/" #FFF0F0 {
+    [kill_switch.py\n//hard gate — checked before every order//\nactivate · deactivate · is_active()\nautdit log + WS broadcast] as KillSwitch #LightCoral
+  }
+
+  package "api/" #F0FFF0 {
+    [routes/accounts.py\n//CRUD broker accounts//\nGET · POST · DELETE] as RouteAccounts
+    [routes/trades.py\n//query trade history//\nGET  ?account_id &open_only] as RouteTrades
+    [routes/analytics.py\n//performance metrics//\nwin_rate · profit_factor\nmax_drawdown · avg_win/loss] as RouteAnalytics
+    [routes/ws.py\n//WebSocket hub//\n/ws/dashboard/{account_id}\nbroadcast() · broadcast_all()] as RouteWS
+  }
+
+  package "core/" #F5F5F5 {
+    [config.py\n//pydantic-settings//\nenv-driven configuration] as Config
+    [security.py\n//Fernet encrypt/decrypt//\nbroker password at rest] as Security
+  }
+
+}
+
+' ═══════════════════════════════════════════════════════════════════
+' DATA STORES
+' ═══════════════════════════════════════════════════════════════════
+
+database "PostgreSQL\n(port 5432)" as Postgres #FAEBD7 {
+  storage "accounts\n(login + encrypted pwd)" as TBL_Accounts
+  storage "trades\n(ticket · symbol · P/L)" as TBL_Trades
+  storage "ai_journal\n(signal · confidence · rationale)" as TBL_Journal
+  storage "kill_switch_log\n(audit trail)" as TBL_KSLog
+}
+
+database "QuestDB\n(port 8812 / 9000)" as QuestDB #E8FFE8 {
+  storage "ohlcv_{symbol}_{tf}\n(candlestick data)" as QDB_OHLCV
+  storage "ticks_{symbol}\n(bid/ask stream)" as QDB_Ticks
+  storage "equity_snapshots\n(balance · equity · margin)" as QDB_Equity
+}
+
+' ═══════════════════════════════════════════════════════════════════
+' FRONTEND — Next.js 16
+' ═══════════════════════════════════════════════════════════════════
+
+package "Frontend  (Next.js 16 · TypeScript · Tailwind)" #FFF0FF {
+  [Dashboard\n//real-time monitoring//\nEquity · Balance · Floating P/L\nTrades · Equity Curve] as Dashboard
+  [Analytics Tab\n//performance metrics//\nWin Rate · Profit Factor\nMax Drawdown · Avg Win/Loss] as AnalyticsTab
+  [Manual Trading Tab\n//direct execution//\nopen · close · modify orders] as ManualTab
+}
+
+' ═══════════════════════════════════════════════════════════════════
+' DATA FLOWS
+' ═══════════════════════════════════════════════════════════════════
+
+' ── 1. Price Feed ───────────────────────────────────────────────────
+MT5Terminal -right-> Bridge    : tick / OHLCV feed
+Bridge      -right-> DataFeed  : raw prices
+DataFeed    -down->  QDB_OHLCV : append candles
+DataFeed    -down->  QDB_Ticks : append ticks
+
+' ── 2. AI Analysis Pipeline ─────────────────────────────────────────
+QDB_OHLCV   -right-> Orchestrator : last N candles\n+ indicators (RSI·EMA·ATR)
+Vision      -up->    Orchestrator : chart pattern text
+Orchestrator -right-> LLMCloud    : analysis prompt\n(structured + optional vision)
+LLMCloud    -left->  Orchestrator : TradingSignal JSON\n(action·entry·sl/tp·confidence·rationale)
+
+' ── 3. Trade Execution Pipeline ─────────────────────────────────────
+Orchestrator -down-> KillSwitch  : check is_active()
+KillSwitch   -down-> Executor    : pass-through if inactive\nREJECT if active
+Executor     -left-> Bridge      : order_send request
+Bridge       -left-> MT5Terminal : execute order (MT5 protocol)
+
+' ── 4. Data Persistence ─────────────────────────────────────────────
+Executor    -down-> TBL_Trades   : INSERT trade row
+Orchestrator -down-> TBL_Journal : INSERT ai_journal row
+KillSwitch  -down-> TBL_KSLog   : INSERT audit log
+Bridge      -down-> QDB_Equity  : INSERT equity snapshot\n(fire-and-forget)
+
+' ── 5. API Query Layer ───────────────────────────────────────────────
+RouteAccounts --> TBL_Accounts : SELECT / INSERT / soft DELETE
+RouteTrades   --> TBL_Trades   : SELECT with filters
+RouteAnalytics --> TBL_Trades  : aggregate metrics
+RouteAnalytics --> QDB_Equity  : equity curve data
+
+' ── 6. Real-time Push ───────────────────────────────────────────────
+RouteWS     -right-> Dashboard       : equity_update\ntrade_opened / trade_closed
+RouteWS     -right-> Dashboard       : ai_signal\nkill_switch_triggered
+
+' ── 7. Frontend Interactions ────────────────────────────────────────
+Trader      -right-> Dashboard       : monitor
+Trader      -right-> ManualTab       : place order manually
+ManualTab   -down->  RouteAccounts   : GET /api/accounts
+ManualTab   -down->  RouteTrades     : POST /api/trades/manual
+RouteTrades -down->  Executor        : execute manual order
+
+' ── 8. Dashboard → Analytics ────────────────────────────────────────
+Dashboard   -right-> AnalyticsTab    : navigate
+AnalyticsTab -down-> RouteAnalytics  : GET /api/analytics/summary
+
+' ── 9. Config wiring (dotted) ───────────────────────────────────────
+Config      ..>      Orchestrator : LLM_PROVIDER\nconfidence_threshold
+Config      ..>      Bridge       : MT5_PATH
+Security    ..>      TBL_Accounts : encrypt/decrypt\nbroker password
+
+' ═══════════════════════════════════════════════════════════════════
+' LEGEND
+' ═══════════════════════════════════════════════════════════════════
+
+legend bottom right
+  | Color | Meaning |
+  | <#LightCoral> | Kill Switch (hard gate — always checked) |
+  | <#LightBlue> | External system (MT5 Terminal) |
+  | <#LightYellow> | External AI (LLM Cloud) |
+  | Solid arrow | Primary data flow |
+  | Dotted arrow | Configuration dependency |
+endlegend
+
+@enduml

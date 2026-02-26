@@ -1,0 +1,13 @@
+@startuml Manual Trading — Sequence Flow
+' TODO: implement when manual trading tab is built
+' Scope: sequence from UI action to MT5 execution for manual orders
+'
+' Should cover:
+'   1. Trader selects account + symbol in UI
+'   2. Frontend fetches live price via REST (GET /api/mt5/tick/{symbol})
+'   3. Trader inputs volume, SL, TP
+'   4. Frontend calls POST /api/trades/manual
+'   5. Backend: kill switch check → executor → MT5 order
+'   6. Success/failure response back to UI
+'   7. WebSocket trade_opened event pushes to all dashboard clients
+@enduml

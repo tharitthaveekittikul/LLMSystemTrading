@@ -1,4 +1,5 @@
 services:
+  # ── Databases ─────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: trading_postgres
@@ -37,10 +38,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Optional: run backend + frontend via Docker ──────────────────────────
-  # Use profile "full" to include these services:
-  #   docker compose --profile full up --build
-
+  # ── Application ───────────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
@@ -52,18 +50,23 @@ services:
         condition: service_healthy
       questdb:
         condition: service_healthy
+    # .env values can be overridden by the explicit environment block below
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false   # won't fail if .env doesn't exist yet
     environment:
+      # Override DB connection to use Docker service names instead of localhost
       DATABASE_URL: postgresql+asyncpg://trading:${POSTGRES_PASSWORD:-trading_dev}@postgres:5432/trading
       QUESTDB_HOST: questdb
       QUESTDB_PG_PORT: "8812"
     volumes:
-      - ./backend:/app       # hot-reload in development
+      # Hot-reload: mount source so uvicorn --reload picks up changes
+      - ./backend:/app
+      # Preserve the .venv installed during image build (don't let host override it)
+      - backend_venv:/app/.venv
+    command: uv run uvicorn main:app --reload --reload-delay 0.25 --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
-    profiles:
-      - full
 
   frontend:
     build:
@@ -76,11 +79,21 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_WS_URL: ws://localhost:8000
+      # Required on Windows + Docker Desktop: uses polling instead of inotify
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      # Hot-reload: mount source so Next.js dev server picks up changes
+      - ./frontend:/app
+      # Preserve node_modules installed during image build
+      - /app/node_modules
+      # Preserve Next.js build cache between restarts
+      - /app/.next
     ports:
       - "3000:3000"
-    profiles:
-      - full
 
 volumes:
   postgres_data:
   questdb_data:
+  backend_venv:    # named: persists Python packages across backend container rebuilds

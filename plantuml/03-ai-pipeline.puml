@@ -1,0 +1,14 @@
+@startuml AI Analysis Pipeline — Sequence Flow
+' TODO: implement when AI orchestrator endpoints are built
+' Scope: detailed sequence from "trigger analysis" to "signal ready"
+'
+' Should cover:
+'   1. Fetch last N candles from QuestDB
+'   2. Compute indicators (RSI, EMA-20/50/200, ATR)
+'   3. Optionally capture MT5 chart screenshot
+'   4. Call ai/vision.py → LLM Vision (chart pattern text)
+'   5. Build LangChain prompt (structured data + vision)
+'   6. LLM response → JsonOutputParser → TradingSignal
+'   7. Confidence gate check
+'   8. Return signal or HOLD
+@enduml

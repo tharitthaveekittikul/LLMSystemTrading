@@ -18,24 +18,29 @@ AI-driven multi-account trading system. Python orchestrator bridges MetaTrader 5
 
 ```
 LLMSystemTrading/
+├── README.md
 ├── CLAUDE.md
 ├── ARCHITECTURE.md
-├── docker-compose.yml
-├── .gitignore
-├── docker/
-│   └── postgres/init.sql
+├── docker-compose.yml          # All 4 services with hot-reload
+├── plantuml/                   # System data flow diagrams
+│   ├── overview.puml           # Full architecture overview
+│   ├── 02-trade-execution.puml
+│   ├── 03-ai-pipeline.puml
+│   ├── 04-websocket-events.puml
+│   └── 05-manual-trading.puml
+├── docker/postgres/init.sql
 ├── backend/                    # FastAPI + Python orchestrator
 │   ├── main.py                 # FastAPI app entry point
 │   ├── core/                   # Config, security, encryption
-│   ├── api/                    # HTTP routes + WebSocket
-│   │   └── routes/
+│   ├── api/routes/             # HTTP routes + WebSocket
 │   ├── mt5/                    # MT5 bridge & order executor
 │   ├── ai/                     # LangChain orchestrator, vision
 │   ├── db/                     # SQLAlchemy models, QuestDB client
-│   ├── services/               # Kill switch, analytics, account manager
+│   ├── services/               # Kill switch, analytics
 │   ├── tests/
 │   └── pyproject.toml
 └── frontend/                   # Next.js 16 dashboard
+    ├── Dockerfile
     └── app/
 ```
 
@@ -59,8 +64,8 @@ uv run alembic upgrade head
 # Frontend — run from /frontend
 npm run dev                                      # port 3000
 
-# Full stack via Docker
-docker compose --profile full up --build
+# Full stack via Docker (all 4 services with hot-reload)
+docker compose up --build
 docker compose logs -f backend
 ```
 
@@ -97,3 +102,4 @@ Copy `backend/.env.example` → `backend/.env`. Required vars:
 ## Architecture
 
 See `ARCHITECTURE.md` for module boundaries, data flow diagram, and design rules.
+See `plantuml/overview.puml` for the full system component diagram.
