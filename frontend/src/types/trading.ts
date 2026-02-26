@@ -123,6 +123,7 @@ export interface KillSwitchStatus {
 
 export type WSEventType =
   | "equity_update"
+  | "positions_update"
   | "trade_opened"
   | "trade_closed"
   | "ai_signal"
@@ -136,8 +137,16 @@ export interface WSEvent<T = unknown> {
 
 export interface EquityUpdateData {
   account_id: number;
-  equity: number;
   balance: number;
+  equity: number;
   margin: number;
   free_margin: number;
+  margin_level: number | null;
+  currency: string;
+  timestamp: string;
+}
+
+export interface PositionsUpdateData {
+  account_id: number;
+  positions: Position[];
 }

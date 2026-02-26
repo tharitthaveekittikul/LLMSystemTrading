@@ -35,6 +35,6 @@ export async function apiRequest<T>(
   return response.json();
 }
 
-export function createWebSocket(accountId: string): WebSocket {
+export function createWebSocket(accountId: number): WebSocket {
   return new WebSocket(`${WS_BASE_URL}/ws/dashboard/${accountId}`);
 }

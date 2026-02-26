@@ -1,7 +1,8 @@
 """WebSocket routes for real-time dashboard updates.
 
-Clients connect to /ws/dashboard/{account_id} and receive JSON events.
-The backend pushes events by calling broadcast() or broadcast_all().
+Clients connect to /ws/dashboard/{account_id}.
+The MT5 poller starts when the first client connects to an account
+and stops when the last client disconnects.
 
 Event format: { "event": "<event_name>", "data": { ... } }
 """
@@ -10,6 +11,8 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from services import mt5_poller
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,13 +28,15 @@ async def dashboard_ws(websocket: WebSocket, account_id: int):
 
     async with _lock:
         _connections.setdefault(account_id, []).append(websocket)
+        is_first = len(_connections[account_id]) == 1
 
-    client = websocket.client
-    logger.info("WebSocket connected | account_id=%s client=%s", account_id, client)
+    logger.info("WebSocket connected | account_id=%s client=%s", account_id, websocket.client)
+
+    if is_first:
+        await mt5_poller.start_account(account_id)
 
     try:
         while True:
-            # Keep connection alive; client can send "ping" to check liveness
             msg = await websocket.receive_text()
             if msg == "ping":
                 await websocket.send_text("pong")
@@ -40,7 +45,12 @@ async def dashboard_ws(websocket: WebSocket, account_id: int):
             conns = _connections.get(account_id, [])
             if websocket in conns:
                 conns.remove(websocket)
-        logger.info("WebSocket disconnected | account_id=%s client=%s", account_id, client)
+            is_last = len(conns) == 0
+
+        logger.info("WebSocket disconnected | account_id=%s client=%s", account_id, websocket.client)
+
+        if is_last:
+            await mt5_poller.stop_account(account_id)
 
 
 async def broadcast(account_id: int, event: str, data: dict[str, Any]) -> None:

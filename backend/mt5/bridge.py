@@ -2,12 +2,23 @@
 
 All broker interactions go through this class. MT5's Python library is
 synchronous, so every call uses run_in_executor to avoid blocking FastAPI.
+
+Thread-safety note (from MT5 docs):
+  mt5.initialize() binds to the calling OS thread via COM. Every subsequent
+  mt5.* call MUST run on that SAME thread. The default asyncio thread pool
+  can dispatch to any worker — so we use a dedicated single-thread executor
+  (_MT5_EXECUTOR) to guarantee all MT5 calls stay on one thread.
 """
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
+
+# Single-thread executor: MT5 initialize() binds to calling thread via COM.
+# All MT5 calls must go through this same thread for the lifetime of the process.
+_MT5_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mt5")
 
 try:
     import MetaTrader5 as mt5
@@ -53,9 +64,9 @@ class MT5Bridge:
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     async def _run(self, func, *args, **kwargs) -> Any:
-        """Execute a synchronous MT5 call in a thread pool."""
+        """Execute a synchronous MT5 call on the dedicated single MT5 thread."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, partial(func, *args, **kwargs))
+        return await loop.run_in_executor(_MT5_EXECUTOR, partial(func, *args, **kwargs))
 
     def _require_mt5(self) -> None:
         if not MT5_AVAILABLE:
@@ -136,3 +147,13 @@ class MT5Bridge:
     async def get_last_error(self) -> tuple[int, str]:
         self._require_mt5()
         return await self._run(mt5.last_error)
+
+    async def is_broker_connected(self) -> bool:
+        """Check terminal→broker connection (mt5.terminal_info().connected).
+
+        Use this as a lightweight heartbeat during polling to detect a dropped
+        broker connection without waiting for a data-fetch failure.
+        """
+        self._require_mt5()
+        info = await self._run(mt5.terminal_info)
+        return bool(info and info.connected)

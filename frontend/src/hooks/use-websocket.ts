@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createWebSocket } from "@/lib/api";
-import type { WSEvent, WSEventType } from "@/types/trading";
+import type { WSEventType } from "@/types/trading";
 
 type EventHandler<T = unknown> = (data: T) => void;
 
@@ -14,7 +14,7 @@ interface UseWebSocketOptions {
 }
 
 export function useWebSocket(
-  accountId: string | null,
+  accountId: number | null,
   handlers: Partial<Record<WSEventType, EventHandler>>,
   options: UseWebSocketOptions = {},
 ) {
@@ -22,21 +22,16 @@ export function useWebSocket(
   const [isConnected, setIsConnected] = useState(false);
   const { reconnectDelay = 3000 } = options;
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cleanedUpRef = useRef(false);
 
-  // Keep handlers in a ref so reconnect closures always see the latest version
   const handlersRef = useRef(handlers);
-  useEffect(() => {
-    handlersRef.current = handlers;
-  }, [handlers]);
+  useEffect(() => { handlersRef.current = handlers; }, [handlers]);
 
   const optionsRef = useRef(options);
-  useEffect(() => {
-    optionsRef.current = options;
-  }, [options]);
+  useEffect(() => { optionsRef.current = options; }, [options]);
 
   const connect = useCallback(() => {
     if (!accountId) return;
-
     const ws = createWebSocket(accountId);
     wsRef.current = ws;
 
@@ -47,8 +42,8 @@ export function useWebSocket(
 
     ws.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data as string) as WSEvent;
-        const handler = handlersRef.current[message.event];
+        const message = JSON.parse(event.data as string);
+        const handler = handlersRef.current[message.event as WSEventType];
         if (handler) handler(message.data);
       } catch {
         // ignore malformed frames
@@ -58,7 +53,14 @@ export function useWebSocket(
     ws.onclose = () => {
       setIsConnected(false);
       optionsRef.current.onClose?.();
-      reconnectTimerRef.current = setTimeout(connect, reconnectDelay);
+      // Use connectRef so the reconnect always targets the CURRENT accountId,
+      // not the stale one captured at ws creation time.
+      if (!cleanedUpRef.current) {
+        reconnectTimerRef.current = setTimeout(
+          () => connectRef.current(),
+          reconnectDelay,
+        );
+      }
     };
 
     ws.onerror = (error) => {
@@ -67,10 +69,16 @@ export function useWebSocket(
     };
   }, [accountId, reconnectDelay]);
 
+  // Always keep a ref to the latest connect so onclose never uses a stale closure
+  const connectRef = useRef(connect);
+  useEffect(() => { connectRef.current = connect; }, [connect]);
+
   useEffect(() => {
+    cleanedUpRef.current = false;
     connect();
     return () => {
-      reconnectTimerRef.current && clearTimeout(reconnectTimerRef.current);
+      cleanedUpRef.current = true;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       wsRef.current?.close();
     };
   }, [connect]);
@@ -82,7 +90,8 @@ export function useWebSocket(
   }, []);
 
   const disconnect = useCallback(() => {
-    reconnectTimerRef.current && clearTimeout(reconnectTimerRef.current);
+    cleanedUpRef.current = true;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     wsRef.current?.close();
   }, []);
 
