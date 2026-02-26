@@ -28,7 +28,7 @@ class TradeResponse(BaseModel):
     source: str
 
 
-@router.get("/", response_model=list[TradeResponse])
+@router.get("", response_model=list[TradeResponse])
 async def list_trades(
     account_id: int | None = Query(None),
     open_only: bool = Query(False),

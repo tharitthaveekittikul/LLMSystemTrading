@@ -40,7 +40,11 @@ class MT5Bridge:
         self._creds = credentials
 
     async def __aenter__(self) -> "MT5Bridge":
-        await self.connect()
+        ok = await self.connect()
+        if not ok:
+            code, message = await self.get_last_error()
+            await self.disconnect()
+            raise ConnectionError(f"MT5 init failed (code {code}): {message}")
         return self
 
     async def __aexit__(self, *_: Any) -> None:

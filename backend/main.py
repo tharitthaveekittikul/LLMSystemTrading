@@ -32,6 +32,7 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs" if settings.debug else None,
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 app.add_middleware(
@@ -42,9 +43,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
-app.include_router(trades.router, prefix="/api/trades", tags=["trades"])
-app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["accounts"])
+app.include_router(trades.router, prefix="/api/v1/trades", tags=["trades"])
+app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
 app.include_router(ws.router, prefix="/ws", tags=["websocket"])
 
 

@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Brain, LayoutDashboard, Settings, Shield, TrendingUp, Users } from "lucide-react";
+import {
+  BarChart3,
+  Brain,
+  LayoutDashboard,
+  Settings,
+  Shield,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +22,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 
 const navItems = [
@@ -33,11 +42,14 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <Sidebar>
-      <SidebarHeader className="border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-primary" />
-          <span className="text-sm font-semibold">LLM Trading</span>
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="border-b">
+        <div className="flex h-12 items-center justify-between px-2">
+          <div className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden">
+            <TrendingUp className="h-5 w-5 shrink-0 text-primary" />
+            <span className="text-sm font-semibold">LLM Trading</span>
+          </div>
+          <SidebarTrigger />
         </div>
       </SidebarHeader>
 
@@ -48,7 +60,11 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === item.url}
+                    tooltip={item.title}
+                  >
                     <Link href={item.url}>
                       <item.icon />
                       <span>{item.title}</span>
@@ -66,7 +82,11 @@ export function AppSidebar() {
             <SidebarMenu>
               {systemItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === item.url}
+                    tooltip={item.title}
+                  >
                     <Link href={item.url}>
                       <item.icon />
                       <span>{item.title}</span>
@@ -80,7 +100,9 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t px-4 py-3">
-        <p className="text-xs text-muted-foreground">AI-driven trading system</p>
+        <p className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+          AI-driven trading system
+        </p>
       </SidebarFooter>
     </Sidebar>
   );

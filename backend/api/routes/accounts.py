@@ -1,14 +1,17 @@
 import json
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.security import encrypt
+from core.config import settings
+from core.security import decrypt, encrypt
 from db.models import Account
 from db.postgres import get_db
+from mt5.bridge import AccountCredentials, MT5Bridge
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -27,6 +30,15 @@ class AccountCreate(BaseModel):
     max_lot_size: float = Field(default=0.1, gt=0.0, le=100.0)
 
 
+class AccountUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    broker: str | None = Field(None, min_length=1, max_length=100)
+    server: str | None = Field(None, min_length=1, max_length=200)
+    is_live: bool | None = None
+    max_lot_size: float | None = Field(None, gt=0.0, le=100.0)
+    password: str | None = Field(None, min_length=1, description="Leave empty to keep existing password")
+
+
 class AccountResponse(BaseModel):
     id: int
     name: str
@@ -36,30 +48,20 @@ class AccountResponse(BaseModel):
     is_live: bool
     is_active: bool
     allowed_symbols: list[str]
+    max_lot_size: float
+    created_at: datetime
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.get("/", response_model=list[AccountResponse])
+@router.get("", response_model=list[AccountResponse])
 async def list_accounts(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Account).where(Account.is_active == True))
     accounts = result.scalars().all()
-    return [
-        AccountResponse(
-            id=a.id,
-            name=a.name,
-            broker=a.broker,
-            login=a.login,
-            server=a.server,
-            is_live=a.is_live,
-            is_active=a.is_active,
-            allowed_symbols=_parse_symbols(a.allowed_symbols),
-        )
-        for a in accounts
-    ]
+    return [_to_response(a) for a in accounts]
 
 
-@router.post("/", response_model=AccountResponse, status_code=201)
+@router.post("", response_model=AccountResponse, status_code=201)
 async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_db)):
     logger.info("Creating account | broker=%s login=%s is_live=%s", payload.broker, payload.login, payload.is_live)
     account = Account(
@@ -76,17 +78,87 @@ async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_
     await db.commit()
     await db.refresh(account)
     logger.info("Account created | id=%s broker=%s login=%s", account.id, account.broker, account.login)
+    return _to_response(account)
 
-    return AccountResponse(
-        id=account.id,
-        name=account.name,
-        broker=account.broker,
+
+@router.get("/{account_id}", response_model=AccountResponse)
+async def get_account(account_id: int, db: AsyncSession = Depends(get_db)):
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return _to_response(account)
+
+
+@router.patch("/{account_id}", response_model=AccountResponse)
+async def update_account(account_id: int, payload: AccountUpdate, db: AsyncSession = Depends(get_db)):
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    if payload.name is not None:
+        account.name = payload.name
+    if payload.broker is not None:
+        account.broker = payload.broker
+    if payload.server is not None:
+        account.server = payload.server
+    if payload.is_live is not None:
+        account.is_live = payload.is_live
+    if payload.max_lot_size is not None:
+        account.max_lot_size = payload.max_lot_size
+    if payload.password is not None:
+        account.password_encrypted = encrypt(payload.password)
+
+    await db.commit()
+    await db.refresh(account)
+    logger.info("Account updated | id=%s", account_id)
+    return _to_response(account)
+
+
+@router.get("/{account_id}/info")
+async def get_mt5_account_info(account_id: int, db: AsyncSession = Depends(get_db)):
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    password = decrypt(account.password_encrypted)
+    creds = AccountCredentials(
         login=account.login,
+        password=password,
         server=account.server,
-        is_live=account.is_live,
-        is_active=account.is_active,
-        allowed_symbols=payload.allowed_symbols,
+        path=settings.mt5_path,
     )
+
+    logger.info("Fetching MT5 info | account_id=%s login=%s", account_id, account.login)
+    try:
+        async with MT5Bridge(creds) as bridge:
+            info = await bridge.get_account_info()
+    except RuntimeError as exc:
+        logger.error("MT5 unavailable | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ConnectionError as exc:
+        logger.error("MT5 connection error | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if info is None:
+        logger.error("MT5 returned no account info | account_id=%s login=%s", account_id, account.login)
+        raise HTTPException(status_code=502, detail="MT5 connected but returned no account info")
+
+    logger.info("MT5 info retrieved | account_id=%s balance=%.2f equity=%.2f", account_id, info.get("balance", 0), info.get("equity", 0))
+    return {
+        "login": info.get("login"),
+        "name": info.get("name"),
+        "server": info.get("server"),
+        "company": info.get("company"),
+        "currency": info.get("currency"),
+        "leverage": info.get("leverage"),
+        "balance": info.get("balance"),
+        "equity": info.get("equity"),
+        "margin": info.get("margin"),
+        "margin_free": info.get("margin_free"),
+        "margin_level": info.get("margin_level"),
+        "profit": info.get("profit"),
+        "trade_mode": info.get("trade_mode"),
+    }
 
 
 @router.delete("/{account_id}", status_code=204)
@@ -106,3 +178,18 @@ def _parse_symbols(raw: str) -> list[str]:
         return json.loads(raw) if raw else []
     except (ValueError, TypeError):
         return []
+
+
+def _to_response(a: Account) -> AccountResponse:
+    return AccountResponse(
+        id=a.id,
+        name=a.name,
+        broker=a.broker,
+        login=a.login,
+        server=a.server,
+        is_live=a.is_live,
+        is_active=a.is_active,
+        allowed_symbols=_parse_symbols(a.allowed_symbols),
+        max_lot_size=a.max_lot_size,
+        created_at=a.created_at,
+    )

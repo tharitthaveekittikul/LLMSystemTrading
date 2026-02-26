@@ -17,7 +17,7 @@ class Account(Base):
     server: Mapped[str] = mapped_column(String(200))
     is_live: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     # Trading config per account
     allowed_symbols: Mapped[str] = mapped_column(Text, default="")  # JSON list
@@ -40,8 +40,8 @@ class Trade(Base):
     take_profit: Mapped[float] = mapped_column(Float)
     close_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     profit: Mapped[float | None] = mapped_column(Float, nullable=True)
-    opened_at: Mapped[datetime] = mapped_column(DateTime, index=True)
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | manual
 
     account: Mapped["Account"] = relationship("Account", back_populates="trades")
@@ -61,7 +61,7 @@ class AIJournal(Base):
     indicators_snapshot: Mapped[str] = mapped_column(Text)  # JSON string
     llm_provider: Mapped[str] = mapped_column(String(50))
     model_name: Mapped[str] = mapped_column(String(100), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     trade: Mapped["Trade"] = relationship("Trade", back_populates="journal")
 
@@ -73,4 +73,4 @@ class KillSwitchLog(Base):
     action: Mapped[str] = mapped_column(String(20))        # activated | deactivated
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     triggered_by: Mapped[str] = mapped_column(String(20))  # system | user
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

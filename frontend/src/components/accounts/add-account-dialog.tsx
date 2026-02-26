@@ -1,0 +1,213 @@
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { accountsApi } from "@/lib/api/accounts";
+import type { Account } from "@/types/trading";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface AddAccountDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (account: Account) => void;
+}
+
+const defaultForm = {
+  name: "",
+  broker: "",
+  login: "",
+  password: "",
+  server: "",
+  is_live: "false",
+  mt5_terminal_path: "",
+  max_lot_size: "0.1",
+};
+
+export function AddAccountDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: AddAccountDialogProps) {
+  const [form, setForm] = useState(defaultForm);
+  const [loading, setLoading] = useState(false);
+
+  function field(key: keyof typeof defaultForm) {
+    return (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm((prev) => ({ ...prev, [key]: e.target.value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const account = await accountsApi.create({
+        name: form.name,
+        broker: form.broker,
+        login: parseInt(form.login, 10),
+        password: form.password,
+        server: form.server,
+        is_live: form.is_live === "true",
+        mt5_terminal_path: form.mt5_terminal_path,
+        allowed_symbols: [],
+        max_lot_size: parseFloat(form.max_lot_size),
+      });
+      toast.success(`Account "${account.name}" created`);
+      onCreated(account);
+      setForm(defaultForm);
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create account");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add MT5 Account</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="name">Account Name</Label>
+              <Input
+                id="name"
+                placeholder="My ICMarkets"
+                value={form.name}
+                onChange={field("name")}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="broker">Broker</Label>
+              <Input
+                id="broker"
+                placeholder="ICMarkets"
+                value={form.broker}
+                onChange={field("broker")}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="login">MT5 Login</Label>
+              <Input
+                id="login"
+                type="number"
+                placeholder="12345678"
+                value={form.login}
+                onChange={field("login")}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={form.password}
+                onChange={field("password")}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="server">Server</Label>
+            <Input
+              id="server"
+              placeholder="ICMarketsSC-Demo"
+              value={form.server}
+              onChange={field("server")}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Account Type</Label>
+              <Select
+                value={form.is_live}
+                onValueChange={(v) => setForm((prev) => ({ ...prev, is_live: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="false">Demo</SelectItem>
+                  <SelectItem value="true">Live</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="max_lot_size">Max Lot Size</Label>
+              <Input
+                id="max_lot_size"
+                type="number"
+                step="0.01"
+                min="0.01"
+                max="100"
+                value={form.max_lot_size}
+                onChange={field("max_lot_size")}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="mt5_terminal_path">
+              MT5 Terminal Path{" "}
+              <span className="text-xs text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id="mt5_terminal_path"
+              placeholder="C:\Program Files\MetaTrader 5 Demo\terminal64.exe"
+              value={form.mt5_terminal_path}
+              onChange={field("mt5_terminal_path")}
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave empty to use the global MT5_PATH from server config. Set this
+              when demo and live use separate terminal installations.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Adding…" : "Add Account"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -1,17 +1,56 @@
 // ── Account ──────────────────────────────────────────────────────────────────
 
 export interface Account {
-  id: string;
+  id: number;
   name: string;
   broker: string;
-  login: string;
+  login: number;
   server: string;
+  is_live: boolean;
   is_active: boolean;
+  allowed_symbols: string[];
+  max_lot_size: number;
   created_at: string;
 }
 
+export interface AccountCreatePayload {
+  name: string;
+  broker: string;
+  login: number;
+  password: string;
+  server: string;
+  is_live: boolean;
+  allowed_symbols: string[];
+  max_lot_size: number;
+}
+
+export interface AccountUpdatePayload {
+  name?: string;
+  broker?: string;
+  server?: string;
+  is_live?: boolean;
+  max_lot_size?: number;
+  password?: string;
+}
+
+export interface MT5AccountInfo {
+  login: number;
+  name: string;
+  server: string;
+  company: string;
+  currency: string;
+  leverage: number;
+  balance: number;
+  equity: number;
+  margin: number;
+  margin_free: number;
+  margin_level: number;
+  profit: number;
+  trade_mode: number; // 0=demo, 1=contest, 2=real
+}
+
 export interface AccountBalance {
-  account_id: string;
+  account_id: number;
   balance: number;
   equity: number;
   margin: number;
@@ -38,8 +77,8 @@ export interface Position {
 }
 
 export interface Trade {
-  id: string;
-  account_id: string;
+  id: number;
+  account_id: number;
   ticket: number;
   symbol: string;
   type: "buy" | "sell";
@@ -60,7 +99,7 @@ export interface Trade {
 
 export interface AISignal {
   id: string;
-  account_id: string;
+  account_id: number;
   symbol: string;
   action: "buy" | "sell" | "hold" | "close";
   confidence: number;
@@ -96,7 +135,7 @@ export interface WSEvent<T = unknown> {
 }
 
 export interface EquityUpdateData {
-  account_id: string;
+  account_id: number;
   equity: number;
   balance: number;
   margin: number;

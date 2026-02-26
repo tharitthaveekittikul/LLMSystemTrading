@@ -10,7 +10,7 @@ import type {
 interface TradingState {
   // Data
   accounts: Account[];
-  activeAccountId: string | null;
+  activeAccountId: number | null;
   balance: AccountBalance | null;
   openPositions: Position[];
   recentSignals: AISignal[];
@@ -18,7 +18,9 @@ interface TradingState {
 
   // Actions
   setAccounts: (accounts: Account[]) => void;
-  setActiveAccount: (accountId: string) => void;
+  setActiveAccount: (accountId: number) => void;
+  updateAccount: (id: number, updates: Partial<Account>) => void;
+  removeAccount: (id: number) => void;
   setBalance: (balance: AccountBalance) => void;
   setOpenPositions: (positions: Position[]) => void;
   addSignal: (signal: AISignal) => void;
@@ -35,6 +37,15 @@ export const useTradingStore = create<TradingState>((set) => ({
 
   setAccounts: (accounts) => set({ accounts }),
   setActiveAccount: (accountId) => set({ activeAccountId: accountId }),
+  updateAccount: (id, updates) =>
+    set((state) => ({
+      accounts: state.accounts.map((a) => (a.id === id ? { ...a, ...updates } : a)),
+    })),
+  removeAccount: (id) =>
+    set((state) => ({
+      accounts: state.accounts.filter((a) => a.id !== id),
+      activeAccountId: state.activeAccountId === id ? null : state.activeAccountId,
+    })),
   setBalance: (balance) => set({ balance }),
   setOpenPositions: (positions) => set({ openPositions: positions }),
   addSignal: (signal) =>
