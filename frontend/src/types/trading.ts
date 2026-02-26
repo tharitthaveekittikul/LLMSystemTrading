@@ -150,3 +150,22 @@ export interface PositionsUpdateData {
   account_id: number;
   positions: Position[];
 }
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+export interface DailyEntry {
+  date: string; // "YYYY-MM-DD"
+  net_pnl: number;
+  trade_count: number;
+}
+
+export interface DailyPnLResponse {
+  year: number;
+  month: number;
+  account_id: number | null;
+  days: DailyEntry[];
+  monthly_total: number;
+  monthly_trade_count: number;
+  winning_days: number;
+  losing_days: number;
+}

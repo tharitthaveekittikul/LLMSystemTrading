@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { accountsApi } from "@/lib/api/accounts";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import {
@@ -15,12 +15,20 @@ export function AccountSelector() {
   const { accounts, activeAccountId, setAccounts, setActiveAccount } =
     useTradingStore();
 
+  const isFetchingRef = useRef(false);
+
   useEffect(() => {
-    if (accounts.length === 0) {
+    if (accounts.length === 0 && !isFetchingRef.current) {
+      isFetchingRef.current = true;
       accountsApi
         .list()
         .then(setAccounts)
-        .catch(() => {});
+        .catch((err) => {
+          console.error("[AccountSelector] Failed to load accounts:", err);
+        })
+        .finally(() => {
+          isFetchingRef.current = false;
+        });
     }
   }, [accounts.length, setAccounts]);
 
