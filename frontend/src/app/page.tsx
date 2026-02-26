@@ -4,6 +4,7 @@ import { AccountOverview } from "@/components/dashboard/account-overview";
 import { LivePositions } from "@/components/dashboard/live-positions";
 import { AISignalsFeed } from "@/components/dashboard/ai-signals-feed";
 import { KillSwitchBanner } from "@/components/dashboard/kill-switch-banner";
+import { ConnectionStatus } from "@/components/dashboard/connection-status";
 
 export default function DashboardPage() {
   return (
@@ -12,6 +13,9 @@ export default function DashboardPage() {
         <SidebarTrigger className="-ml-1" />
         <Separator orientation="vertical" className="mr-2 h-4" />
         <h1 className="font-semibold">Dashboard</h1>
+        <div className="ml-auto">
+          <ConnectionStatus />
+        </div>
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4">

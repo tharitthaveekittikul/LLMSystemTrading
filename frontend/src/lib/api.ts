@@ -1,5 +1,9 @@
-const API_BASE_URL =
+/** Root host — used for health ping and WebSocket */
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/** Versioned REST prefix for all API calls */
+const API_V1 = `${API_BASE_URL}/api/v1`;
 
 const WS_BASE_URL =
   process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
@@ -8,7 +12,7 @@ export async function apiRequest<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${API_V1}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
