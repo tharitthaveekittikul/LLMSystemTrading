@@ -119,16 +119,23 @@ export function PnlCalendar({ selectedDate, onDaySelect, onDataChange }: PnlCale
       )}
 
       {!loading && !error && (
-        <CalendarGrid
-          year={year}
-          month={month}
-          days={data?.days ?? []}
-          selectedDate={selectedDate}
-          onDaySelect={(date) => {
-            const entry = data?.days.find((d) => d.date === date);
-            if (entry) onDaySelect(date, entry);
-          }}
-        />
+        <>
+          {data !== null && data.days.length === 0 && (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              No closed trades in {MONTH_NAMES[month - 1]} {year}.
+            </p>
+          )}
+          <CalendarGrid
+            year={year}
+            month={month}
+            days={data?.days ?? []}
+            selectedDate={selectedDate}
+            onDaySelect={(date) => {
+              const entry = data?.days.find((d) => d.date === date);
+              if (entry) onDaySelect(date, entry);
+            }}
+          />
+        </>
       )}
     </div>
   );
