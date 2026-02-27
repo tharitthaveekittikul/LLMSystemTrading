@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from mt5.bridge import MT5Bridge
 from services.kill_switch import is_active as kill_switch_active
+from core.config import settings
+from services.risk_manager import exceeds_position_limit
 
 try:
     import MetaTrader5 as mt5  # only for ORDER_TYPE_* constants
@@ -65,6 +67,21 @@ class MT5Executor:
                 request.symbol, request.direction, request.volume,
             )
             return OrderResult(success=False, error="Kill switch is active — order rejected")
+
+        # ── Position count gate ───────────────────────────────────────────────
+        try:
+            open_positions = await self._bridge.get_positions()
+        except Exception as exc:
+            logger.warning("Could not fetch positions for limit check: %s", exc)
+            open_positions = []
+
+        exceeded, reason = exceeds_position_limit(open_positions, settings.max_open_positions)
+        if exceeded:
+            logger.warning(
+                "Order rejected — %s | symbol=%s direction=%s",
+                reason, request.symbol, request.direction,
+            )
+            return OrderResult(success=False, error=reason)
 
         logger.info(
             "Placing order | symbol=%s direction=%s volume=%s entry=%s sl=%s tp=%s",

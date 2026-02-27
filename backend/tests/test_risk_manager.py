@@ -1,3 +1,7 @@
+import pytest
+from unittest.mock import AsyncMock, patch
+
+from mt5.executor import MT5Executor, OrderRequest
 from services.risk_manager import exceeds_position_limit, exceeds_drawdown_limit
 
 
@@ -43,3 +47,33 @@ def test_drawdown_zero_balance_safe():
     # Guard against division by zero
     exceeded, _ = exceeds_drawdown_limit(equity=0.0, balance=0.0, max_drawdown_pct=10.0)
     assert exceeded is False
+
+
+def _make_order() -> OrderRequest:
+    return OrderRequest(
+        symbol="EURUSD",
+        direction="BUY",
+        volume=0.1,
+        entry_price=1.0850,
+        stop_loss=1.0800,
+        take_profit=1.0950,
+    )
+
+
+@pytest.mark.asyncio
+async def test_executor_rejects_when_position_limit_hit():
+    """place_order must return failure when max open positions is reached."""
+    mock_bridge = AsyncMock()
+    # Simulate 5 open positions (at the limit)
+    mock_bridge.get_positions.return_value = [{"ticket": i} for i in range(5)]
+
+    executor = MT5Executor(bridge=mock_bridge)
+
+    with patch("mt5.executor.kill_switch_active", return_value=False):
+        with patch("mt5.executor.settings") as mock_settings:
+            mock_settings.max_open_positions = 5
+            result = await executor.place_order(_make_order())
+
+    assert result.success is False
+    assert "Position limit" in result.error
+    mock_bridge.send_order.assert_not_called()
