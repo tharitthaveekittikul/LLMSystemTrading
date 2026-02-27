@@ -268,7 +268,9 @@ class AITradingService:
         try:
             async with MT5Bridge(creds) as bridge:
                 executor = MT5Executor(bridge)
-                order_result = await executor.place_order(order_req)
+                order_result = await executor.place_order(
+                    order_req, dry_run=account.paper_trade_enabled
+                )
         except (RuntimeError, ConnectionError) as exc:
             logger.error("MT5 error during order execution | account_id=%s | %s", account_id, exc)
             return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
@@ -292,6 +294,7 @@ class AITradingService:
             take_profit=signal.take_profit,
             opened_at=datetime.now(UTC),
             source="ai",
+            is_paper_trade=account.paper_trade_enabled,
         )
         db.add(trade)
         await db.flush()
