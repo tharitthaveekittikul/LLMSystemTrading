@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from core.config import settings
 from core.security import decrypt
 from mt5.bridge import AccountCredentials, MT5Bridge
+from services.risk_manager import exceeds_drawdown_limit
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,14 @@ async def _poll_account(account, insert_fn, broadcast_fn) -> None:
         free_margin = float(info.get("margin_free", 0))
         margin_level = float(info.get("margin_level", 0))
         currency = info.get("currency", "USD")
+
+        # ── Drawdown monitor ─────────────────────────────────────────────────
+        from services.kill_switch import is_active, activate  # local import avoids circular
+
+        if not is_active():
+            exceeded, reason = exceeds_drawdown_limit(equity, balance, settings.max_drawdown_percent)
+            if exceeded:
+                await activate(reason, triggered_by="equity_poller")
 
         await insert_fn(
             account_id=account["id"],

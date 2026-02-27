@@ -67,3 +67,51 @@ async def test_poll_account_swallows_mt5_error():
 
     insert_mock.assert_not_called()
     broadcast_mock.assert_not_called()
+
+
+async def _noop(*args, **kwargs):
+    pass
+
+
+@pytest.mark.asyncio
+async def test_poll_account_activates_kill_switch_on_drawdown(monkeypatch):
+    """Drawdown >= max_drawdown_percent must activate the kill switch."""
+    import services.kill_switch as ks
+
+    # Reset kill switch state and patch DB + WS side effects
+    monkeypatch.setattr(ks, "_active", False)
+    monkeypatch.setattr(ks, "_persist", lambda *a, **k: _noop())
+    monkeypatch.setattr(ks, "_broadcast_kill_switch", lambda *a, **k: _noop())
+
+    mock_info = {
+        "equity": 8000.0, "balance": 10000.0,
+        "margin": 0.0, "margin_free": 8000.0,
+        "margin_level": 0.0, "currency": "USD",
+    }
+
+    from unittest.mock import AsyncMock, patch
+
+    inserted = []
+    broadcasts = []
+
+    from services.equity_poller import _poll_account
+    with patch("services.equity_poller.settings") as mock_cfg:
+        mock_cfg.mt5_path = ""
+        mock_cfg.max_drawdown_percent = 10.0
+
+        with patch("services.equity_poller.MT5Bridge") as mock_bridge_cls:
+            mock_bridge = AsyncMock()
+            mock_bridge.get_account_info.return_value = mock_info
+            mock_bridge_cls.return_value.__aenter__.return_value = mock_bridge
+
+            account = {"id": 99, "login": 1, "password_encrypted": "x", "server": "srv"}
+            with patch("services.equity_poller.decrypt", return_value="pass"):
+                await _poll_account(
+                    account,
+                    lambda **k: inserted.append(k),
+                    lambda *a, **k: broadcasts.append(k)
+                )
+
+    assert ks.is_active() is True
+    # Clean up kill switch state
+    await ks.deactivate()
