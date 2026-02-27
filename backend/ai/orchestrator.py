@@ -73,6 +73,9 @@ Rules:
 - Signal HOLD when uncertain or when risk/reward is unfavorable.
 - Stop loss and take profit must be logical relative to current price and ATR.
 - Confidence reflects your conviction based on indicator confluence (0.0 = none, 1.0 = certain).
+- CRITICAL: Check your currently open positions before signaling. Avoid doubling into the same
+  direction unless confluence is extremely strong (confidence > 0.90). Never open opposing
+  positions simultaneously.
 
 Return strictly valid JSON matching this schema:
 {{
@@ -94,7 +97,10 @@ Indicators:
 
 Last 20 OHLCV candles (oldest → newest):
 {ohlcv}
+{positions_section}
+{signals_section}
 {chart_section}
+{news_section}
 Provide the trading signal JSON."""
 
 _PROMPT = ChatPromptTemplate.from_messages([("system", _SYSTEM), ("human", _HUMAN)])
@@ -109,8 +115,16 @@ async def analyze_market(
     indicators: dict[str, Any],
     ohlcv: list[dict[str, Any]],
     chart_analysis: str | None = None,
+    open_positions: list[dict[str, Any]] | None = None,
+    recent_signals: list[dict[str, Any]] | None = None,
+    news_context: str | None = None,
 ) -> TradingSignal:
     """Run the full LLM analysis pipeline and return a validated TradingSignal.
+
+    Optional context parameters for LLM memory and awareness:
+    - open_positions: current MT5 positions so the LLM knows what trades are open
+    - recent_signals: last N AIJournal entries so the LLM remembers recent decisions
+    - news_context: formatted upcoming economic events string
 
     If confidence is below the configured threshold the action is forced to HOLD.
     """
@@ -126,6 +140,28 @@ async def analyze_market(
         f"\nChart Pattern Analysis:\n{chart_analysis}" if chart_analysis else ""
     )
 
+    if open_positions:
+        pos_lines = [
+            f"  - {p.get('symbol', symbol)} {p.get('direction', '?')} "
+            f"vol={p.get('volume', '?')} profit={p.get('profit', '?')}"
+            for p in open_positions
+        ]
+        positions_section = "\nCurrently Open Positions:\n" + "\n".join(pos_lines)
+    else:
+        positions_section = "\nCurrently Open Positions: None"
+
+    if recent_signals:
+        sig_lines = [
+            f"  - {s.get('symbol', symbol)} {s.get('signal', '?')} "
+            f"conf={s.get('confidence', '?')} | {s.get('rationale', '')[:80]}"
+            for s in recent_signals
+        ]
+        signals_section = "\nRecent Signal History (newest first):\n" + "\n".join(sig_lines)
+    else:
+        signals_section = ""
+
+    news_section = f"\n{news_context}" if news_context else ""
+
     raw: dict = await chain.ainvoke(
         {
             "symbol": symbol,
@@ -134,6 +170,9 @@ async def analyze_market(
             "indicators": json.dumps(indicators, indent=2),
             "ohlcv": json.dumps(ohlcv[-20:], indent=2, default=str),
             "chart_section": chart_section,
+            "positions_section": positions_section,
+            "signals_section": signals_section,
+            "news_section": news_section,
         }
     )
 
