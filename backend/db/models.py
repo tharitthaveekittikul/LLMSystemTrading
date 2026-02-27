@@ -23,6 +23,7 @@ class Account(Base):
     allowed_symbols: Mapped[str] = mapped_column(Text, default="")  # JSON list
     max_lot_size: Mapped[float] = mapped_column(Float, default=0.1)
     auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    paper_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     trades: Mapped[list["Trade"]] = relationship("Trade", back_populates="account")
     journal_entries: Mapped[list["AIJournal"]] = relationship("AIJournal", back_populates="account")
@@ -45,6 +46,7 @@ class Trade(Base):
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | manual
+    is_paper_trade: Mapped[bool] = mapped_column(Boolean, default=False)
 
     account: Mapped["Account"] = relationship("Account", back_populates="trades")
     journal: Mapped["AIJournal | None"] = relationship(
