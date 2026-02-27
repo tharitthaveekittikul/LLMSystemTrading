@@ -13,11 +13,12 @@ Currently, the project uses a solid stack with PostgreSQL for relational data an
 
 ## Technical Roadmap
 
-### Phase 1: Infrastructure & Core Setup
+### Phase 1: Infrastructure & Core Setup ✅
 
-- [ ] **Docker Compose**: Add the `redis:7-alpine` service to `docker-compose.yml`.
-- [ ] **Configuration**: Add `REDIS_URL` to `.env` and `core/config.py` using `pydantic-settings`.
-- [ ] **Redis Client**: Create `db/redis.py` to initialize an async connection pool using `redis.asyncio` (from the `redis` python package).
+- [x] **Dependency**: `redis[asyncio]>=5.0.0` added to `backend/pyproject.toml` (run `uv sync` to install).
+- [x] **Docker Compose**: `redis:7-alpine` service added to `docker-compose.yml` with `redis-cli ping` healthcheck and named volume `redis_data`.
+- [x] **Configuration**: `REDIS_URL=redis://localhost:6379/0` added to `backend/.env`, `backend/.env.example`, and `core/config.py` (`redis_url` field).
+- [x] **Redis Client**: `db/redis.py` created — eager module-level `ConnectionPool`, `get_redis()` factory, `close_redis()` wired into `main.py` lifespan shutdown.
 
 ### Phase 2: Distributed Locking & Safety
 

@@ -23,6 +23,9 @@ dependencies = [
     # Database — QuestDB (uses PostgreSQL wire protocol)
     "psycopg2-binary>=2.9.0",
 
+    # Cache / Pub-Sub — Redis
+    "redis[asyncio]>=5.0.0",
+
     # AI / LangChain
     "langchain>=0.3.0",
     "langchain-core>=0.3.0",

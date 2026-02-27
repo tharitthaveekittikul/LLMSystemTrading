@@ -9,6 +9,7 @@ from api.routes import status
 from core.config import settings
 from core.logging import setup_logging
 from db.postgres import init_db
+from db.redis import close_redis
 
 setup_logging()  # configure logging before anything else
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database tables ready")
     yield
+    await close_redis()
     logger.info("Shutting down LLM Trading System")
 
 
