@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     llm_confidence_threshold: float = 0.70
     openai_api_key: str = ""
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"  # override with GEMINI_MODEL in .env
     anthropic_api_key: str = ""
 
     # ── MetaTrader 5 ──────────────────────────────────────────────────────────

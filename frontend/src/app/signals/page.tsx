@@ -21,9 +21,7 @@ import type { Account, AISignal, AnalyzeResult } from "@/types/trading";
 
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 
-function actionVariant(
-  a: string,
-): "default" | "destructive" | "secondary" {
+function actionVariant(a: string): "default" | "destructive" | "secondary" {
   if (a === "BUY") return "default";
   if (a === "SELL") return "destructive";
   return "secondary";
@@ -32,11 +30,7 @@ function actionVariant(
 function ConfidenceBar({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   const color =
-    pct >= 80
-      ? "bg-green-500"
-      : pct >= 60
-        ? "bg-yellow-500"
-        : "bg-red-500";
+    pct >= 80 ? "bg-green-500" : pct >= 60 ? "bg-yellow-500" : "bg-red-500";
   return (
     <div className="flex items-center gap-2">
       <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
@@ -80,7 +74,10 @@ export default function SignalsPage() {
 
   useEffect(() => {
     loadSignals();
-    accountsApi.list().then(setAccounts).catch(() => {});
+    accountsApi
+      .list()
+      .then(setAccounts)
+      .catch(() => {});
   }, [loadSignals]);
 
   async function handleAnalyze() {
@@ -135,7 +132,7 @@ export default function SignalsPage() {
                 <Label className="text-xs">Symbol</Label>
                 <Input
                   value={symbol}
-                  onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                  onChange={(e) => setSymbol(e.target.value)}
                   className="w-28 text-sm"
                   placeholder="EURUSD"
                 />
@@ -178,7 +175,9 @@ export default function SignalsPage() {
                     </Badge>
                   )}
                 </div>
-                <p className="text-muted-foreground">{analyzeResult.rationale}</p>
+                <p className="text-muted-foreground">
+                  {analyzeResult.rationale}
+                </p>
               </div>
             )}
           </CardContent>
@@ -204,7 +203,10 @@ export default function SignalsPage() {
                       {s.timeframe}
                     </Badge>
                     {s.trade_id && (
-                      <Badge variant="outline" className="text-xs text-green-600">
+                      <Badge
+                        variant="outline"
+                        className="text-xs text-green-600"
+                      >
                         Executed
                       </Badge>
                     )}

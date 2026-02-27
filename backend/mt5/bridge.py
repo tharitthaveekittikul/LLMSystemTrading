@@ -116,12 +116,34 @@ class MT5Bridge:
             raw = await self._run(mt5.positions_get)
         return [p._asdict() for p in raw] if raw else []
 
+    # ── Symbols ───────────────────────────────────────────────────────────────
+
+    async def get_symbols(self, market_watch_only: bool = True) -> list[str]:
+        """Return available symbol names.
+
+        Args:
+            market_watch_only: If True (default), return only symbols currently
+                visible in Market Watch. If False, return all broker symbols.
+        """
+        self._require_mt5()
+        raw = await self._run(mt5.symbols_get)
+        if not raw:
+            return []
+        if market_watch_only:
+            return [s.name for s in raw if s.visible]
+        return [s.name for s in raw]
+
     # ── OHLCV ─────────────────────────────────────────────────────────────────
 
     async def get_rates(self, symbol: str, timeframe: int, count: int) -> list[dict]:
         """Fetch OHLCV candles. timeframe uses MT5 TIMEFRAME_* constants."""
         self._require_mt5()
+        selected = await self._run(mt5.symbol_select, symbol, True)  # ensure symbol is in Market Watch
+        if not selected:
+            err = await self.get_last_error()
+            logger.warning("symbol_select(%s) failed | error=%s", symbol, err)
         rates = await self._run(mt5.copy_rates_from_pos, symbol, timeframe, 0, count)
+        logger.debug("copy_rates_from_pos(%s, tf=%s, count=%s) -> %s rows", symbol, timeframe, count, len(rates) if rates is not None else "None")
         if rates is None:
             return []
         import pandas as pd  # lazy import — only needed here
@@ -134,6 +156,7 @@ class MT5Bridge:
 
     async def get_tick(self, symbol: str) -> dict | None:
         self._require_mt5()
+        await self._run(mt5.symbol_select, symbol, True)  # ensure symbol is in Market Watch
         tick = await self._run(mt5.symbol_info_tick, symbol)
         return tick._asdict() if tick else None
 

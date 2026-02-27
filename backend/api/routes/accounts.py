@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -169,6 +169,39 @@ async def deactivate_account(account_id: int, db: AsyncSession = Depends(get_db)
     account.is_active = False
     await db.commit()
     logger.info("Account deactivated | id=%s", account_id)
+
+
+@router.get("/{account_id}/symbols", response_model=list[str])
+async def list_symbols(
+    account_id: int,
+    all_symbols: bool = Query(False, description="Return all broker symbols, not just Market Watch"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return symbol names available for this account's MT5 connection.
+
+    By default returns only symbols currently visible in Market Watch.
+    Pass ?all_symbols=true to see every symbol the broker offers.
+    """
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    password = decrypt(account.password_encrypted)
+    creds = AccountCredentials(
+        login=account.login,
+        password=password,
+        server=account.server,
+        path=settings.mt5_path,
+    )
+    try:
+        async with MT5Bridge(creds) as bridge:
+            symbols = await bridge.get_symbols(market_watch_only=not all_symbols)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ConnectionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return sorted(symbols)
 
 
 class AnalyzeRequest(BaseModel):

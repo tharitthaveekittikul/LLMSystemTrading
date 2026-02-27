@@ -47,7 +47,7 @@ def _build_llm() -> BaseChatModel:
     if provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",
+            model=settings.gemini_model,
             google_api_key=settings.gemini_api_key,
             temperature=0,
         )
