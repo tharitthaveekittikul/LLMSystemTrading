@@ -1,24 +1,91 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
-import { AccountOverview } from "@/components/dashboard/account-overview";
-import { LivePositions } from "@/components/dashboard/live-positions";
-import { AISignalsFeed } from "@/components/dashboard/ai-signals-feed";
 import { KillSwitchBanner } from "@/components/dashboard/kill-switch-banner";
+import { KpiBar } from "@/components/dashboard/kpi-bar";
+import { EquityChart } from "@/components/dashboard/equity-chart";
+import { LivePositions } from "@/components/dashboard/live-positions";
+import { RecentTrades } from "@/components/dashboard/recent-trades";
 import { DashboardProvider } from "@/components/dashboard/dashboard-provider";
+import { useTradingStore } from "@/hooks/use-trading-store";
+import { accountsApi } from "@/lib/api/accounts";
+import type { AccountStats, EquityPoint } from "@/types/trading";
 
 export default function DashboardPage() {
+  const activeAccountId = useTradingStore((s) => s.activeAccountId);
+
+  const [stats, setStats] = useState<AccountStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [equityData, setEquityData] = useState<EquityPoint[]>([]);
+  const [equityLoading, setEquityLoading] = useState(false);
+  const [autoTradeEnabled, setAutoTradeEnabled] = useState(true);
+
+  useEffect(() => {
+    if (!activeAccountId) {
+      setStats(null);
+      setEquityData([]);
+      return;
+    }
+
+    setStatsLoading(true);
+    accountsApi
+      .getStats(activeAccountId)
+      .then(setStats)
+      .catch(() => setStats(null))
+      .finally(() => setStatsLoading(false));
+
+    setEquityLoading(true);
+    accountsApi
+      .getEquityHistory(activeAccountId, 24)
+      .then(setEquityData)
+      .catch(() => setEquityData([]))
+      .finally(() => setEquityLoading(false));
+
+    accountsApi
+      .get(activeAccountId)
+      .then((account) => setAutoTradeEnabled(account.auto_trade_enabled))
+      .catch(() => {});
+  }, [activeAccountId]);
+
+  const handleEquityUpdate = useCallback((point: EquityPoint) => {
+    setEquityData((prev) => {
+      const next = [...prev.slice(-199), point];
+      next.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+      return next;
+    });
+  }, []);
+
+  const handleAutoTradeToggle = useCallback(
+    async (enabled: boolean) => {
+      if (!activeAccountId) return;
+      setAutoTradeEnabled(enabled);
+      try {
+        await accountsApi.update(activeAccountId, { auto_trade_enabled: enabled });
+      } catch {
+        setAutoTradeEnabled(!enabled);
+      }
+    },
+    [activeAccountId]
+  );
+
   return (
     <SidebarInset>
-      <DashboardProvider />
       <AppHeader title="Dashboard" />
+      <DashboardProvider onEquityUpdate={handleEquityUpdate} />
       <div className="flex flex-1 flex-col gap-4 p-4">
         <KillSwitchBanner />
-        <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-          <AccountOverview />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <KpiBar
+          stats={stats}
+          statsLoading={statsLoading}
+          autoTradeEnabled={autoTradeEnabled}
+          onAutoTradeToggle={handleAutoTradeToggle}
+        />
+        <EquityChart data={equityData} loading={equityLoading} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
           <LivePositions />
-          <AISignalsFeed />
+          <RecentTrades accountId={activeAccountId} />
         </div>
       </div>
     </SidebarInset>

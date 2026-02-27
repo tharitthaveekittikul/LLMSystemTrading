@@ -10,6 +10,7 @@ export interface Account {
   is_active: boolean;
   allowed_symbols: string[];
   max_lot_size: number;
+  auto_trade_enabled: boolean;
   created_at: string;
 }
 
@@ -30,6 +31,7 @@ export interface AccountUpdatePayload {
   server?: string;
   is_live?: boolean;
   max_lot_size?: number;
+  auto_trade_enabled?: boolean;
   password?: string;
 }
 
@@ -191,4 +193,19 @@ export interface KillSwitchLog {
   reason: string | null;
   triggered_by: "system" | "user";
   created_at: string;
+}
+
+// ── Account Stats & Equity History ────────────────────────────────────────────
+
+export interface AccountStats {
+  win_rate: number;
+  total_pnl: number;
+  trade_count: number;
+  winning_trades: number;
+}
+
+export interface EquityPoint {
+  ts: string;
+  equity: number;
+  balance: number;
 }

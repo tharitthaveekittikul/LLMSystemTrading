@@ -1,21 +1,20 @@
 "use client";
 
+import { useCallback } from "react";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import { useWebSocket } from "@/hooks/use-websocket";
-import type { EquityUpdateData, PositionsUpdateData } from "@/types/trading";
+import type { EquityPoint, EquityUpdateData, PositionsUpdateData } from "@/types/trading";
 
-/**
- * Mounts once inside the dashboard page.
- * Opens a WebSocket for the active account and pipes events into the store.
- * Polling starts on the backend when the WS connection is established,
- * and stops automatically when the connection closes.
- */
-export function DashboardProvider() {
+interface DashboardProviderProps {
+  onEquityUpdate?: (point: EquityPoint) => void;
+}
+
+export function DashboardProvider({ onEquityUpdate }: DashboardProviderProps) {
   const { activeAccountId, setBalance, setOpenPositions, setKillSwitch } =
     useTradingStore();
 
-  useWebSocket(activeAccountId, {
-    equity_update: (data) => {
+  const handleEquityUpdate = useCallback(
+    (data: unknown) => {
       const d = data as EquityUpdateData;
       setBalance({
         account_id: d.account_id,
@@ -27,18 +26,22 @@ export function DashboardProvider() {
         currency: d.currency,
         timestamp: d.timestamp,
       });
+      if (onEquityUpdate) {
+        onEquityUpdate({ ts: d.timestamp, equity: d.equity, balance: d.balance });
+      }
     },
+    [setBalance, onEquityUpdate]
+  );
+
+  useWebSocket(activeAccountId, {
+    equity_update: handleEquityUpdate,
     positions_update: (data) => {
       const d = data as PositionsUpdateData;
       setOpenPositions(d.positions);
     },
     kill_switch_triggered: (data) => {
       const d = data as { reason: string };
-      setKillSwitch({
-        is_active: true,
-        reason: d.reason,
-        activated_at: new Date().toISOString(),
-      });
+      setKillSwitch({ is_active: true, reason: d.reason, activated_at: new Date().toISOString() });
     },
   });
 

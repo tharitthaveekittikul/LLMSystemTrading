@@ -22,6 +22,7 @@ class Account(Base):
     # Trading config per account
     allowed_symbols: Mapped[str] = mapped_column(Text, default="")  # JSON list
     max_lot_size: Mapped[float] = mapped_column(Float, default=0.1)
+    auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
     trades: Mapped[list["Trade"]] = relationship("Trade", back_populates="account")
     journal_entries: Mapped[list["AIJournal"]] = relationship("AIJournal", back_populates="account")

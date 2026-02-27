@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,7 @@ from api.routes import kill_switch as kill_switch_routes
 from core.config import settings
 from core.logging import setup_logging
 from db.postgres import init_db
+from db.questdb import init_questdb
 from db.redis import close_redis
 
 setup_logging()  # configure logging before anything else
@@ -26,8 +28,20 @@ async def lifespan(app: FastAPI):
         settings.llm_provider,
     )
     await init_db()
+    await init_questdb()
     logger.info("Database tables ready")
+
+    from services.equity_poller import run_equity_poller
+    poller_task = asyncio.create_task(run_equity_poller())
+    logger.info("Equity poller task started")
+
     yield
+
+    poller_task.cancel()
+    try:
+        await poller_task
+    except asyncio.CancelledError:
+        pass
     await close_redis()
     logger.info("Shutting down LLM Trading System")
 

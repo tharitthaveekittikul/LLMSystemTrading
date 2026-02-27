@@ -30,10 +30,32 @@ async def _get_conn() -> asyncpg.Connection:
     return await asyncpg.connect(
         host=settings.questdb_host,
         port=settings.questdb_pg_port,
-        database="qdb",
-        user="admin",
-        password="quest",
+        database=settings.questdb_db,
+        user=settings.questdb_user,
+        password=settings.questdb_password,
     )
+
+
+async def init_questdb() -> None:
+    """Create QuestDB tables if they do not already exist. Called once on startup."""
+    conn = await _get_conn()
+    try:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS equity_snapshots (
+                ts TIMESTAMP,
+                account_id INT,
+                equity DOUBLE,
+                balance DOUBLE,
+                margin DOUBLE
+            ) TIMESTAMP(ts) PARTITION BY DAY WAL;
+            """
+        )
+        logger.info("QuestDB tables ready")
+    except Exception as exc:
+        logger.warning("QuestDB init skipped (not available): %s", exc)
+    finally:
+        await conn.close()
 
 
 async def insert_equity_snapshot(
@@ -53,6 +75,32 @@ async def insert_equity_snapshot(
             balance,
             margin,
         )
+    finally:
+        await conn.close()
+
+
+async def get_equity_history(account_id: int, hours: int = 24) -> list[dict]:
+    """Return equity snapshots for the last N hours. Returns [] if table is empty or missing."""
+    conn = await _get_conn()
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT ts, equity, balance
+            FROM equity_snapshots
+            WHERE account_id = $1
+              AND ts >= dateadd('h', -$2, now())
+            ORDER BY ts ASC
+            """,
+            account_id,
+            hours,
+        )
+        return [
+            {"ts": str(r["ts"]), "equity": float(r["equity"]), "balance": float(r["balance"])}
+            for r in rows
+        ]
+    except Exception as exc:
+        logger.error("get_equity_history failed | account_id=%s | %s", account_id, exc)
+        return []
     finally:
         await conn.close()
 

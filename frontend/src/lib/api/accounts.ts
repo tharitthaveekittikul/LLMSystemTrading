@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import type { Account, AccountCreatePayload, AccountUpdatePayload, MT5AccountInfo } from "@/types/trading";
+import type { Account, AccountCreatePayload, AccountUpdatePayload, MT5AccountInfo, AccountStats, EquityPoint } from "@/types/trading";
 
 export const accountsApi = {
   list: () => apiRequest<Account[]>("/accounts"),
@@ -17,4 +17,10 @@ export const accountsApi = {
   remove: (id: number) =>
     apiRequest<void>(`/accounts/${id}`, { method: "DELETE" }),
   getInfo: (id: number) => apiRequest<MT5AccountInfo>(`/accounts/${id}/info`),
+  getSymbols: (id: number, allSymbols = false): Promise<string[]> =>
+    apiRequest<string[]>(`/accounts/${id}/symbols${allSymbols ? "?all_symbols=true" : ""}`),
+  getEquityHistory: (id: number, hours = 24): Promise<EquityPoint[]> =>
+    apiRequest<EquityPoint[]>(`/accounts/${id}/equity-history?hours=${hours}`),
+  getStats: (id: number): Promise<AccountStats> =>
+    apiRequest<AccountStats>(`/accounts/${id}/stats`),
 };

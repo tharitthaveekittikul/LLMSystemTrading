@@ -59,6 +59,26 @@ export default function SignalsPage() {
   const [symbol, setSymbol] = useState("EURUSD");
   const [timeframe, setTimeframe] = useState("M15");
 
+  // Market Watch symbol selector
+  const [symbols, setSymbols] = useState<string[]>([]);
+  const [symbolsLoading, setSymbolsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedAccountId) {
+      setSymbols([]);
+      return;
+    }
+    setSymbolsLoading(true);
+    accountsApi
+      .getSymbols(Number(selectedAccountId))
+      .then((data) => {
+        setSymbols(data);
+        setSymbol(""); // reset so no stale text carries over
+      })
+      .catch(() => setSymbols([]))
+      .finally(() => setSymbolsLoading(false));
+  }, [selectedAccountId]);
+
   const loadSignals = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -130,12 +150,26 @@ export default function SignalsPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <Label className="text-xs">Symbol</Label>
-                <Input
-                  value={symbol}
-                  onChange={(e) => setSymbol(e.target.value)}
-                  className="w-28 text-sm"
-                  placeholder="EURUSD"
-                />
+                {symbols.length > 0 ? (
+                  <select
+                    className="flex h-9 w-28 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={symbol}
+                    onChange={(e) => setSymbol(e.target.value)}
+                  >
+                    <option value="">Select symbol…</option>
+                    {symbols.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    className="w-28 text-sm"
+                    placeholder={symbolsLoading ? "Loading symbols…" : "e.g. EURUSD (select account first)"}
+                    value={symbol}
+                    onChange={(e) => setSymbol(e.target.value)}
+                    disabled={symbolsLoading}
+                  />
+                )}
               </div>
               <div className="flex flex-col gap-1">
                 <Label className="text-xs">Timeframe</Label>

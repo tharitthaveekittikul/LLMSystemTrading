@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     questdb_host: str = "localhost"
     questdb_pg_port: int = 8812
     questdb_http_port: int = 9000
+    questdb_user: str = "admin"
+    questdb_password: str = "quest"
+    questdb_db: str = "qdb"
     redis_url: str = "redis://localhost:6379/0"
 
     # ── Security ──────────────────────────────────────────────────────────────

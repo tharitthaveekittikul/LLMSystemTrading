@@ -177,6 +177,14 @@ class AITradingService:
             )
             return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
 
+        # Skip execution if auto-trade disabled for this account
+        if not account.auto_trade_enabled:
+            logger.info(
+                "Auto-trade disabled — signal saved but order skipped | account_id=%s",
+                account_id,
+            )
+            return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
+
         # 10. Build order request
         order_req = OrderRequest(
             symbol=symbol,

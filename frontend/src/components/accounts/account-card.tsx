@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Info, Pencil, Trash2 } from "lucide-react";
 import { accountsApi } from "@/lib/api/accounts";
@@ -39,6 +39,15 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
   const [mt5Info, setMt5Info] = useState<MT5AccountInfo | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [liveInfo, setLiveInfo] = useState<MT5AccountInfo | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    accountsApi.getInfo(account.id)
+      .then((info) => { if (isMounted) setLiveInfo(info); })
+      .catch(() => {}); // silently hide row if MT5 unavailable (503/502)
+    return () => { isMounted = false; };
+  }, [account.id]);
 
   async function handleGetInfo() {
     setLoadingInfo(true);
@@ -98,6 +107,24 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
             <span>Added</span>
             <span className="text-foreground">{createdAt}</span>
           </div>
+          {liveInfo && (
+            <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Balance</p>
+                <p className="font-medium tabular-nums">{liveInfo.balance.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Equity</p>
+                <p className="font-medium tabular-nums">{liveInfo.equity.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">P&amp;L</p>
+                <p className={`font-medium tabular-nums ${(liveInfo.profit ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}>
+                  {(liveInfo.profit ?? 0) >= 0 ? "+" : ""}{(liveInfo.profit ?? 0).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          )}
         </CardContent>
 
         <CardFooter className="gap-2 pt-2">

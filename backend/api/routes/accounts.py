@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -28,6 +28,7 @@ class AccountCreate(BaseModel):
     is_live: bool = False
     allowed_symbols: list[str] = []
     max_lot_size: float = Field(default=0.1, gt=0.0, le=100.0)
+    auto_trade_enabled: bool = True
 
 
 class AccountUpdate(BaseModel):
@@ -36,6 +37,7 @@ class AccountUpdate(BaseModel):
     server: str | None = Field(None, min_length=1, max_length=200)
     is_live: bool | None = None
     max_lot_size: float | None = Field(None, gt=0.0, le=100.0)
+    auto_trade_enabled: bool | None = None
     password: str | None = Field(None, min_length=1, description="Leave empty to keep existing password")
 
 
@@ -49,6 +51,7 @@ class AccountResponse(BaseModel):
     is_active: bool
     allowed_symbols: list[str]
     max_lot_size: float
+    auto_trade_enabled: bool = True
     created_at: datetime
 
 
@@ -73,6 +76,7 @@ async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_
         is_live=payload.is_live,
         allowed_symbols=json.dumps(payload.allowed_symbols),
         max_lot_size=payload.max_lot_size,
+        auto_trade_enabled=payload.auto_trade_enabled,
     )
     db.add(account)
     await db.commit()
@@ -105,6 +109,8 @@ async def update_account(account_id: int, payload: AccountUpdate, db: AsyncSessi
         account.is_live = payload.is_live
     if payload.max_lot_size is not None:
         account.max_lot_size = payload.max_lot_size
+    if payload.auto_trade_enabled is not None:
+        account.auto_trade_enabled = payload.auto_trade_enabled
     if payload.password is not None:
         account.password_encrypted = encrypt(payload.password)
 
@@ -197,8 +203,10 @@ async def list_symbols(
         async with MT5Bridge(creds) as bridge:
             symbols = await bridge.get_symbols(market_watch_only=not all_symbols)
     except RuntimeError as exc:
+        logger.error("MT5 unavailable (symbols) | account_id=%s | %s", account_id, exc)
         raise HTTPException(status_code=503, detail=str(exc))
     except ConnectionError as exc:
+        logger.error("MT5 connect failed (symbols) | account_id=%s | %s", account_id, exc)
         raise HTTPException(status_code=502, detail=str(exc))
 
     return sorted(symbols)
@@ -256,6 +264,67 @@ async def analyze_account(
     )
 
 
+class AccountStatsResponse(BaseModel):
+    win_rate: float
+    total_pnl: float
+    trade_count: int
+    winning_trades: int
+
+
+@router.get("/{account_id}/stats", response_model=AccountStatsResponse)
+async def get_account_stats(account_id: int, db: AsyncSession = Depends(get_db)):
+    """Return aggregated trade statistics for an account (closed trades only)."""
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    from db.models import Trade
+
+    result = await db.execute(
+        select(
+            func.count(Trade.id).label("trade_count"),
+            func.coalesce(func.sum(Trade.profit), 0.0).label("total_pnl"),
+            func.count(Trade.id).filter(Trade.profit > 0).label("winning_trades"),
+        ).where(
+            Trade.account_id == account_id,
+            Trade.closed_at.is_not(None),
+        )
+    )
+    row = result.one()
+    trade_count = row.trade_count or 0
+    winning_trades = row.winning_trades or 0
+    win_rate = winning_trades / trade_count if trade_count > 0 else 0.0
+
+    return AccountStatsResponse(
+        win_rate=round(win_rate, 4),
+        total_pnl=round(float(row.total_pnl), 2),
+        trade_count=trade_count,
+        winning_trades=winning_trades,
+    )
+
+
+class EquityPoint(BaseModel):
+    ts: str
+    equity: float
+    balance: float
+
+
+@router.get("/{account_id}/equity-history", response_model=list[EquityPoint])
+async def get_equity_history(
+    account_id: int,
+    hours: int = Query(24, ge=1, le=720),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return equity snapshots for the last N hours (default 24). Empty list if QuestDB unavailable."""
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    from db.questdb import get_equity_history
+    points = await get_equity_history(account_id=account_id, hours=hours)
+    return points
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _parse_symbols(raw: str) -> list[str]:
@@ -276,5 +345,6 @@ def _to_response(a: Account) -> AccountResponse:
         is_active=a.is_active,
         allowed_symbols=_parse_symbols(a.allowed_symbols),
         max_lot_size=a.max_lot_size,
+        auto_trade_enabled=a.auto_trade_enabled,
         created_at=a.created_at,
     )
