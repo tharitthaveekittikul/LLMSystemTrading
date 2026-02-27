@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ai.orchestrator import TradingSignal, analyze_market
+import pytest
+
+from ai.orchestrator import analyze_market
 
 
 def _mock_signal_dict() -> dict:

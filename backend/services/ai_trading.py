@@ -24,10 +24,11 @@ from ai.orchestrator import TradingSignal, analyze_market
 from api.routes.ws import broadcast
 from core.config import settings
 from core.security import decrypt
-from db.models import AIJournal, Account, Trade
+from db.models import Account, AIJournal, Trade
 from db.redis import check_llm_rate_limit, get_candle_cache, set_candle_cache
 from mt5.bridge import AccountCredentials, MT5Bridge
 from mt5.executor import MT5Executor, OrderRequest
+from services.alerting import send_alert
 from services.kill_switch import is_active as kill_switch_active
 
 logger = logging.getLogger(__name__)
@@ -280,6 +281,11 @@ class AITradingService:
                 "Order failed | account_id=%s symbol=%s error=%s",
                 account_id, symbol, order_result.error,
             )
+            await send_alert(
+                f"*Order Failed*\n"
+                f"Account: {account_id} | {signal.action} {symbol}\n"
+                f"Error: {order_result.error}"
+            )
             return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
 
         # 13. Persist Trade row
@@ -314,6 +320,13 @@ class AITradingService:
             "take_profit": signal.take_profit,
         })
 
+        paper_tag = " _(paper)_" if account.paper_trade_enabled else ""
+        await send_alert(
+            f"*Trade Placed{paper_tag}*\n"
+            f"Account: {account_id} | {signal.action} {account.max_lot_size} {symbol}\n"
+            f"Entry: {signal.entry} | SL: {signal.stop_loss} | TP: {signal.take_profit}\n"
+            f"Ticket: {order_result.ticket}"
+        )
         logger.info(
             "Trade executed | account_id=%s symbol=%s direction=%s ticket=%s",
             account_id, symbol, signal.action, order_result.ticket,

@@ -1,8 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from mt5.executor import MT5Executor, OrderRequest
-from services.risk_manager import exceeds_position_limit, exceeds_drawdown_limit
+from services.risk_manager import exceeds_drawdown_limit, exceeds_position_limit
 
 
 def test_position_limit_not_exceeded():

@@ -9,9 +9,9 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, field_validator
 
+from core.config import settings
 from mt5.bridge import MT5Bridge
 from services.kill_switch import is_active as kill_switch_active
-from core.config import settings
 from services.risk_manager import exceeds_position_limit
 
 try:

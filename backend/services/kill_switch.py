@@ -57,6 +57,7 @@ async def activate(reason: str, triggered_by: str = "system") -> None:
         )
         await _persist(action="activated", reason=reason, triggered_by=triggered_by)
         await _broadcast_kill_switch(reason=reason)
+        await _send_kill_switch_alert(reason=reason)
 
 
 async def deactivate(triggered_by: str = "user") -> None:
@@ -70,6 +71,7 @@ async def deactivate(triggered_by: str = "user") -> None:
             triggered_by,
         )
         await _persist(action="deactivated", reason=None, triggered_by=triggered_by)
+        await _send_deactivation_alert()
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -77,8 +79,8 @@ async def deactivate(triggered_by: str = "user") -> None:
 async def _persist(action: str, reason: str | None, triggered_by: str) -> None:
     """Persist kill switch event to PostgreSQL (best effort — never raises)."""
     try:
-        from db.postgres import AsyncSessionLocal
         from db.models import KillSwitchLog
+        from db.postgres import AsyncSessionLocal
 
         async with AsyncSessionLocal() as session:
             log = KillSwitchLog(
@@ -100,3 +102,23 @@ async def _broadcast_kill_switch(reason: str) -> None:
         await broadcast_all("kill_switch_triggered", {"reason": reason})
     except Exception as exc:
         logger.error("Failed to broadcast kill switch event: %s", exc)
+
+
+async def _send_kill_switch_alert(reason: str) -> None:
+    """Send Telegram alert on kill switch activation (best effort — never raises)."""
+    try:
+        from services.alerting import send_alert
+
+        await send_alert(f"*KILL SWITCH ACTIVATED*\nReason: {reason}")
+    except Exception as exc:
+        logger.error("Failed to send kill switch Telegram alert: %s", exc)
+
+
+async def _send_deactivation_alert() -> None:
+    """Send Telegram alert on kill switch deactivation (best effort — never raises)."""
+    try:
+        from services.alerting import send_alert
+
+        await send_alert("*Kill switch DEACTIVATED* — trading resumed")
+    except Exception as exc:
+        logger.error("Failed to send deactivation Telegram alert: %s", exc)
