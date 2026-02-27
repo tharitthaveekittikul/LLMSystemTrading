@@ -4,11 +4,12 @@ Pipeline per call:
   1. Load account credentials from DB
   2. Redis rate limit check (10 LLM calls / 60s per account)
   3. Redis OHLCV cache (TTL by timeframe) — fetch from MT5 on miss
-  4. orchestrator.analyze_market() -> TradingSignal
-  5. Persist to AIJournal (trade_id=None initially)
-  6. Broadcast ai_signal WebSocket event
-  7. If BUY/SELL: check kill switch -> MT5Executor -> persist Trade -> update AIJournal
-  8. Broadcast trade_opened (if order placed)
+  4. Fetch open positions + recent signals for LLM memory context
+  5. orchestrator.analyze_market() -> TradingSignal (with position/news context)
+  6. Persist to AIJournal (trade_id=None initially)
+  7. Broadcast ai_signal WebSocket event
+  8. If BUY/SELL: check kill switch -> MT5Executor -> persist Trade -> update AIJournal
+  9. Broadcast trade_opened (if order placed)
 """
 import json
 import logging
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.orchestrator import TradingSignal, analyze_market
@@ -126,16 +128,75 @@ class AITradingService:
             "candle_count": len(candles),
         }
 
-        # 6. LLM analysis
+        # 6. Fetch position context and recent signals for LLM memory
+        open_positions: list[dict] = []
+        try:
+            pos_password = decrypt(account.password_encrypted)
+            pos_creds = AccountCredentials(
+                login=account.login,
+                password=pos_password,
+                server=account.server,
+                path=settings.mt5_path,
+            )
+            async with MT5Bridge(pos_creds) as pos_bridge:
+                raw_positions = await pos_bridge.get_positions()
+            open_positions = [
+                {
+                    "symbol": p.get("symbol", ""),
+                    "direction": "BUY" if p.get("type") == 0 else "SELL",
+                    "volume": p.get("volume", 0),
+                    "profit": p.get("profit", 0),
+                }
+                for p in raw_positions
+            ]
+        except Exception as exc:
+            logger.warning(
+                "Could not fetch positions for LLM context | account_id=%s: %s", account_id, exc
+            )
+
+        recent_signals: list[dict] = []
+        try:
+            journal_rows = (
+                await db.execute(
+                    select(AIJournal)
+                    .where(AIJournal.account_id == account_id, AIJournal.symbol == symbol)
+                    .order_by(desc(AIJournal.created_at))
+                    .limit(5)
+                )
+            ).scalars().all()
+            recent_signals = [
+                {
+                    "symbol": j.symbol,
+                    "signal": j.signal,
+                    "confidence": j.confidence,
+                    "rationale": j.rationale[:120],
+                }
+                for j in journal_rows
+            ]
+        except Exception as exc:
+            logger.warning(
+                "Could not fetch recent signals for LLM context | account_id=%s: %s", account_id, exc
+            )
+
+        news_context_str: str | None = None
+        if getattr(settings, "news_enabled", False):
+            from services.market_context import fetch_upcoming_events, format_news_context
+            events = await fetch_upcoming_events([symbol])
+            news_context_str = format_news_context(events) or None
+
+        # 7. LLM analysis
         signal = await analyze_market(
             symbol=symbol,
             timeframe=tf_upper,
             current_price=current_price or 0,
             indicators=indicators,
             ohlcv=candles,
+            open_positions=open_positions,
+            recent_signals=recent_signals,
+            news_context=news_context_str,
         )
 
-        # 7. Persist AIJournal
+        # 8. Persist AIJournal
         journal = AIJournal(
             account_id=account_id,
             trade_id=None,
@@ -152,7 +213,7 @@ class AITradingService:
         await db.commit()
         await db.refresh(journal)
 
-        # 8. Broadcast ai_signal
+        # 9. Broadcast ai_signal
         await broadcast(account_id, "ai_signal", {
             "journal_id": journal.id,
             "symbol": symbol,
@@ -165,7 +226,7 @@ class AITradingService:
             "take_profit": signal.take_profit,
         })
 
-        # 9. Skip execution for HOLD or kill switch active
+        # 10. Skip execution for HOLD or kill switch active
         if signal.action == "HOLD":
             logger.info("Signal HOLD — no order | account_id=%s symbol=%s", account_id, symbol)
             return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
@@ -185,7 +246,7 @@ class AITradingService:
             )
             return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
 
-        # 10. Build order request
+        # 11. Build order request
         order_req = OrderRequest(
             symbol=symbol,
             direction=signal.action,
@@ -196,7 +257,7 @@ class AITradingService:
             comment="AI-Trade",
         )
 
-        # 11. Connect MT5 and execute
+        # 12. Connect MT5 and execute
         password = decrypt(account.password_encrypted)
         creds = AccountCredentials(
             login=account.login,
@@ -219,7 +280,7 @@ class AITradingService:
             )
             return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
 
-        # 12. Persist Trade row
+        # 13. Persist Trade row
         trade = Trade(
             account_id=account_id,
             ticket=order_result.ticket,
@@ -239,7 +300,7 @@ class AITradingService:
         await db.commit()
         await db.refresh(trade)
 
-        # 13. Broadcast trade_opened
+        # 14. Broadcast trade_opened
         await broadcast(account_id, "trade_opened", {
             "ticket": order_result.ticket,
             "symbol": symbol,
