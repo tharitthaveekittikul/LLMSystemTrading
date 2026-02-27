@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import accounts, analytics, trades, ws
+from api.routes import signals
 from api.routes import status
+from api.routes import kill_switch as kill_switch_routes
 from core.config import settings
 from core.logging import setup_logging
 from db.postgres import init_db
@@ -46,11 +48,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["accounts"])
-app.include_router(trades.router,   prefix="/api/v1/trades",   tags=["trades"])
-app.include_router(analytics.router,prefix="/api/v1/analytics",tags=["analytics"])
-app.include_router(status.router,   prefix="/api/v1/status",   tags=["status"])
-app.include_router(ws.router,       prefix="/ws",              tags=["websocket"])
+app.include_router(accounts.router,      prefix="/api/v1/accounts",    tags=["accounts"])
+app.include_router(trades.router,        prefix="/api/v1/trades",      tags=["trades"])
+app.include_router(analytics.router,     prefix="/api/v1/analytics",   tags=["analytics"])
+app.include_router(status.router,        prefix="/api/v1/status",      tags=["status"])
+app.include_router(signals.router,           prefix="/api/v1/signals",     tags=["signals"])
+app.include_router(kill_switch_routes.router, prefix="/api/v1/kill-switch", tags=["kill-switch"])
+app.include_router(ws.router,            prefix="/ws",                 tags=["websocket"])
 
 
 @app.get("/health", tags=["system"])

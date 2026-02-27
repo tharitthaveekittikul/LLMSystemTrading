@@ -38,3 +38,62 @@ export async function apiRequest<T>(
 export function createWebSocket(accountId: number): WebSocket {
   return new WebSocket(`${WS_BASE_URL}/ws/dashboard/${accountId}`);
 }
+
+// ── Trades ────────────────────────────────────────────────────────────────────
+
+export const tradesApi = {
+  list: (params?: {
+    account_id?: number;
+    open_only?: boolean;
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.account_id != null) query.set("account_id", String(params.account_id));
+    if (params?.open_only) query.set("open_only", "true");
+    if (params?.date_from) query.set("date_from", params.date_from);
+    if (params?.date_to) query.set("date_to", params.date_to);
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return apiRequest<import("@/types/trading").Trade[]>(`/trades${qs ? `?${qs}` : ""}`);
+  },
+};
+
+// ── Signals ───────────────────────────────────────────────────────────────────
+
+export const signalsApi = {
+  list: (params?: { account_id?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.account_id != null) query.set("account_id", String(params.account_id));
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return apiRequest<import("@/types/trading").AISignal[]>(`/signals${qs ? `?${qs}` : ""}`);
+  },
+  analyze: (
+    accountId: number,
+    body: { symbol: string; timeframe: string },
+  ) =>
+    apiRequest<import("@/types/trading").AnalyzeResult>(`/accounts/${accountId}/analyze`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+};
+
+// ── Kill Switch ───────────────────────────────────────────────────────────────
+
+export const killSwitchApi = {
+  getStatus: () =>
+    apiRequest<import("@/types/trading").KillSwitchStatus>("/kill-switch"),
+  activate: (reason: string) =>
+    apiRequest<import("@/types/trading").KillSwitchStatus>("/kill-switch/activate", {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  deactivate: () =>
+    apiRequest<import("@/types/trading").KillSwitchStatus>("/kill-switch/deactivate", {
+      method: "POST",
+    }),
+  getLogs: () =>
+    apiRequest<import("@/types/trading").KillSwitchLog[]>("/kill-switch/logs"),
+};

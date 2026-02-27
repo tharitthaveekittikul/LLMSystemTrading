@@ -37,7 +37,7 @@ export function DashboardProvider() {
       setKillSwitch({
         is_active: true,
         reason: d.reason,
-        triggered_at: new Date().toISOString(),
+        activated_at: new Date().toISOString(),
       });
     },
   });

@@ -35,7 +35,6 @@ const defaultForm = {
   password: "",
   server: "",
   is_live: "false",
-  mt5_terminal_path: "",
   max_lot_size: "0.1",
 };
 
@@ -63,7 +62,6 @@ export function AddAccountDialog({
         password: form.password,
         server: form.server,
         is_live: form.is_live === "true",
-        mt5_terminal_path: form.mt5_terminal_path,
         allowed_symbols: [],
         max_lot_size: parseFloat(form.max_lot_size),
       });
@@ -174,23 +172,6 @@ export function AddAccountDialog({
                 required
               />
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="mt5_terminal_path">
-              MT5 Terminal Path{" "}
-              <span className="text-xs text-muted-foreground">(optional)</span>
-            </Label>
-            <Input
-              id="mt5_terminal_path"
-              placeholder="C:\Program Files\MetaTrader 5 Demo\terminal64.exe"
-              value={form.mt5_terminal_path}
-              onChange={field("mt5_terminal_path")}
-            />
-            <p className="text-xs text-muted-foreground">
-              Leave empty to use the global MT5_PATH from server config. Set this
-              when demo and live use separate terminal installations.
-            </p>
           </div>
 
           <DialogFooter>

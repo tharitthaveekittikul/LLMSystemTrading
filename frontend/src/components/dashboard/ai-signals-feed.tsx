@@ -8,13 +8,12 @@ import { cn } from "@/lib/utils";
 import type { AISignal } from "@/types/trading";
 
 const actionVariant: Record<
-  AISignal["action"],
-  "default" | "secondary" | "outline" | "destructive"
+  AISignal["signal"],
+  "default" | "secondary" | "outline"
 > = {
-  buy: "default",
-  sell: "secondary",
-  hold: "outline",
-  close: "destructive",
+  BUY: "default",
+  SELL: "secondary",
+  HOLD: "outline",
 };
 
 export function AISignalsFeed() {
@@ -37,8 +36,8 @@ export function AISignalsFeed() {
                   className="flex items-start justify-between gap-2 text-sm"
                 >
                   <div className="flex items-center gap-2">
-                    <Badge variant={actionVariant[signal.action]}>
-                      {signal.action.toUpperCase()}
+                    <Badge variant={actionVariant[signal.signal]}>
+                      {signal.signal}
                     </Badge>
                     <span className="font-medium">{signal.symbol}</span>
                   </div>

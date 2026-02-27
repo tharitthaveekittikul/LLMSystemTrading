@@ -33,7 +33,7 @@ export const useTradingStore = create<TradingState>((set) => ({
   balance: null,
   openPositions: [],
   recentSignals: [],
-  killSwitch: { is_active: false, reason: null, triggered_at: null },
+  killSwitch: { is_active: false, reason: null, activated_at: null },
 
   setAccounts: (accounts) => set({ accounts }),
   setActiveAccount: (accountId) => set({ activeAccountId: accountId }),

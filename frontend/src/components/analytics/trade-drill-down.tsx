@@ -107,14 +107,14 @@ export function TradeDrillDown({ date, entry, open, onClose }: TradeDrillDownPro
                       <span
                         className={cn(
                           "text-xs font-semibold uppercase",
-                          t.type === "buy" ? "text-green-400" : "text-red-400",
+                          t.direction === "BUY" ? "text-green-400" : "text-red-400",
                         )}
                       >
-                        {t.type}
+                        {t.direction}
                       </span>
                     </TableCell>
                     <TableCell className="text-xs">{t.volume}</TableCell>
-                    <TableCell className="font-mono text-xs">{t.open_price}</TableCell>
+                    <TableCell className="font-mono text-xs">{t.entry_price}</TableCell>
                     <TableCell className="font-mono text-xs">
                       {t.close_price ?? "—"}
                     </TableCell>
@@ -133,7 +133,7 @@ export function TradeDrillDown({ date, entry, open, onClose }: TradeDrillDownPro
                         : "—"}
                     </TableCell>
                     <TableCell className="text-xs">
-                      {formatDuration(t.open_time, t.close_time)}
+                      {formatDuration(t.opened_at, t.closed_at)}
                     </TableCell>
                   </TableRow>
                 ))}

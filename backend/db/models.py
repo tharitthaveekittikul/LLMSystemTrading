@@ -24,6 +24,7 @@ class Account(Base):
     max_lot_size: Mapped[float] = mapped_column(Float, default=0.1)
 
     trades: Mapped[list["Trade"]] = relationship("Trade", back_populates="account")
+    journal_entries: Mapped[list["AIJournal"]] = relationship("AIJournal", back_populates="account")
 
 
 class Trade(Base):
@@ -54,7 +55,10 @@ class AIJournal(Base):
     __tablename__ = "ai_journal"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    trade_id: Mapped[int] = mapped_column(Integer, ForeignKey("trades.id"), unique=True)
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), index=True)
+    trade_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("trades.id"), unique=True, nullable=True)
+    symbol: Mapped[str] = mapped_column(String(20), index=True)
+    timeframe: Mapped[str] = mapped_column(String(10))
     signal: Mapped[str] = mapped_column(String(10))       # BUY | SELL | HOLD
     confidence: Mapped[float] = mapped_column(Float)
     rationale: Mapped[str] = mapped_column(Text)
@@ -63,7 +67,8 @@ class AIJournal(Base):
     model_name: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    trade: Mapped["Trade"] = relationship("Trade", back_populates="journal")
+    account: Mapped["Account"] = relationship("Account", back_populates="journal_entries")
+    trade: Mapped["Trade | None"] = relationship("Trade", back_populates="journal")
 
 
 class KillSwitchLog(Base):

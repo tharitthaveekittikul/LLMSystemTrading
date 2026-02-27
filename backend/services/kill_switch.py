@@ -13,10 +13,13 @@ Usage:
 """
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
 _active: bool = False
+_activation_reason: str | None = None
+_activated_at: datetime | None = None
 _lock: asyncio.Lock | None = None  # created lazily (event loop must exist)
 
 
@@ -32,10 +35,21 @@ def is_active() -> bool:
     return _active
 
 
+def get_state() -> dict:
+    """Return current kill switch state dict (safe to call synchronously)."""
+    return {
+        "is_active": _active,
+        "reason": _activation_reason,
+        "activated_at": _activated_at.isoformat() if _activated_at else None,
+    }
+
+
 async def activate(reason: str, triggered_by: str = "system") -> None:
-    global _active
+    global _active, _activation_reason, _activated_at
     async with _get_lock():
         _active = True
+        _activation_reason = reason
+        _activated_at = datetime.now(UTC)
         logger.warning(
             "Kill switch ACTIVATED | triggered_by=%s | reason=%s",
             triggered_by,
@@ -46,9 +60,11 @@ async def activate(reason: str, triggered_by: str = "system") -> None:
 
 
 async def deactivate(triggered_by: str = "user") -> None:
-    global _active
+    global _active, _activation_reason, _activated_at
     async with _get_lock():
         _active = False
+        _activation_reason = None
+        _activated_at = None
         logger.warning(
             "Kill switch DEACTIVATED | triggered_by=%s",
             triggered_by,

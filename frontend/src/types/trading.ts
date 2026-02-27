@@ -81,34 +81,32 @@ export interface Trade {
   account_id: number;
   ticket: number;
   symbol: string;
-  type: "buy" | "sell";
+  direction: "BUY" | "SELL";
   volume: number;
-  open_price: number;
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
   close_price: number | null;
-  sl: number | null;
-  tp: number | null;
-  open_time: string;
-  close_time: string | null;
   profit: number | null;
-  swap: number | null;
-  ai_signal_id: string | null;
-  status: "open" | "closed" | "cancelled";
+  opened_at: string;
+  closed_at: string | null;
+  source: "ai" | "manual";
 }
 
 // ── AI Signals ────────────────────────────────────────────────────────────────
 
 export interface AISignal {
-  id: string;
+  id: number;
   account_id: number;
   symbol: string;
-  action: "buy" | "sell" | "hold" | "close";
+  timeframe: string;
+  signal: "BUY" | "SELL" | "HOLD";
   confidence: number;
-  reasoning: string;
-  provider: string;
-  model: string;
+  rationale: string;
+  llm_provider: string;
+  model_name: string;
   created_at: string;
-  executed: boolean;
-  trade_id: string | null;
+  trade_id: number | null;
 }
 
 // ── Kill Switch ───────────────────────────────────────────────────────────────
@@ -116,7 +114,7 @@ export interface AISignal {
 export interface KillSwitchStatus {
   is_active: boolean;
   reason: string | null;
-  triggered_at: string | null;
+  activated_at: string | null;
 }
 
 // ── WebSocket Events ──────────────────────────────────────────────────────────
@@ -168,4 +166,29 @@ export interface DailyPnLResponse {
   monthly_trade_count: number;
   winning_days: number;
   losing_days: number;
+}
+
+// ── Analyze Result ─────────────────────────────────────────────────────────────
+
+export interface AnalyzeResult {
+  action: "BUY" | "SELL" | "HOLD";
+  entry: number;
+  stop_loss: number;
+  take_profit: number;
+  confidence: number;
+  rationale: string;
+  timeframe: string;
+  order_placed: boolean;
+  ticket: number | null;
+  journal_id: number;
+}
+
+// ── Kill Switch Log ────────────────────────────────────────────────────────────
+
+export interface KillSwitchLog {
+  id: number;
+  action: "activated" | "deactivated";
+  reason: string | null;
+  triggered_by: "system" | "user";
+  created_at: string;
 }
