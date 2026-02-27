@@ -77,3 +77,34 @@ async def test_executor_rejects_when_position_limit_hit():
     assert result.success is False
     assert "Position limit" in result.error
     mock_bridge.send_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_executor_dry_run_does_not_call_bridge():
+    """dry_run=True must succeed without calling bridge.send_order."""
+    mock_bridge = AsyncMock()
+    mock_bridge.get_positions.return_value = []
+
+    executor = MT5Executor(bridge=mock_bridge)
+    with patch("mt5.executor.kill_switch_active", return_value=False):
+        with patch("mt5.executor.settings") as mock_settings:
+            mock_settings.max_open_positions = 10
+            result = await executor.place_order(_make_order(), dry_run=True)
+
+    assert result.success is True
+    assert result.ticket is not None
+    assert result.ticket < 0  # simulated ticket is negative
+    mock_bridge.send_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_executor_dry_run_close_does_not_call_bridge():
+    """dry_run=True on close_position must succeed without MT5 call."""
+    mock_bridge = AsyncMock()
+
+    executor = MT5Executor(bridge=mock_bridge)
+    with patch("mt5.executor.kill_switch_active", return_value=False):
+        result = await executor.close_position(ticket=12345, symbol="EURUSD", volume=0.1, dry_run=True)
+
+    assert result.success is True
+    mock_bridge.send_order.assert_not_called()

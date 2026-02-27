@@ -4,6 +4,7 @@ Kill switch is checked here as the final gate before every order.
 Never import MetaTrader5 directly in this file — use bridge.py.
 """
 import logging
+import time
 from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, field_validator
@@ -59,7 +60,7 @@ class MT5Executor:
     def __init__(self, bridge: MT5Bridge) -> None:
         self._bridge = bridge
 
-    async def place_order(self, request: OrderRequest) -> OrderResult:
+    async def place_order(self, request: OrderRequest, dry_run: bool = False) -> OrderResult:
         # ── Kill switch gate (mandatory check) ───────────────────────────────
         if kill_switch_active():
             logger.warning(
@@ -82,6 +83,15 @@ class MT5Executor:
                 reason, request.symbol, request.direction,
             )
             return OrderResult(success=False, error=reason)
+
+        # ── Paper trading / dry-run mode ──────────────────────────────────────
+        if dry_run:
+            fake_ticket = -int(time.time())  # negative — distinguishable from real tickets
+            logger.info(
+                "DRY RUN order | symbol=%s direction=%s volume=%s fake_ticket=%s",
+                request.symbol, request.direction, request.volume, fake_ticket,
+            )
+            return OrderResult(success=True, ticket=fake_ticket, retcode=10009)
 
         logger.info(
             "Placing order | symbol=%s direction=%s volume=%s entry=%s sl=%s tp=%s",
@@ -128,10 +138,14 @@ class MT5Executor:
         )
         return OrderResult(success=False, error=error_msg, retcode=retcode)
 
-    async def close_position(self, ticket: int, symbol: str, volume: float) -> OrderResult:
+    async def close_position(self, ticket: int, symbol: str, volume: float, dry_run: bool = False) -> OrderResult:
         if kill_switch_active():
             logger.warning("Close rejected — kill switch active | ticket=%s symbol=%s", ticket, symbol)
             return OrderResult(success=False, error="Kill switch is active")
+
+        if dry_run:
+            logger.info("DRY RUN close | ticket=%s symbol=%s volume=%s", ticket, symbol, volume)
+            return OrderResult(success=True, ticket=ticket, retcode=10009)
 
         logger.info("Closing position | ticket=%s symbol=%s volume=%s", ticket, symbol, volume)
 
