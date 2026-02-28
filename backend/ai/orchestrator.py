@@ -104,6 +104,7 @@ Last 20 OHLCV candles (oldest → newest):
 Provide the trading signal JSON."""
 
 _PROMPT = ChatPromptTemplate.from_messages([("system", _SYSTEM), ("human", _HUMAN)])
+_DEFAULT_CHAIN = _PROMPT | _build_llm() | JsonOutputParser()
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -118,6 +119,7 @@ async def analyze_market(
     open_positions: list[dict[str, Any]] | None = None,
     recent_signals: list[dict[str, Any]] | None = None,
     news_context: str | None = None,
+    system_prompt_override: str | None = None,
 ) -> TradingSignal:
     """Run the full LLM analysis pipeline and return a validated TradingSignal.
 
@@ -133,8 +135,12 @@ async def analyze_market(
         settings.llm_provider, symbol, timeframe, current_price,
     )
 
-    llm = _build_llm()
-    chain = _PROMPT | llm | JsonOutputParser()
+    if system_prompt_override:
+        llm = _build_llm()
+        prompt = ChatPromptTemplate.from_messages([("system", system_prompt_override), ("human", _HUMAN)])
+        chain = prompt | llm | JsonOutputParser()
+    else:
+        chain = _DEFAULT_CHAIN
 
     chart_section = (
         f"\nChart Pattern Analysis:\n{chart_analysis}" if chart_analysis else ""

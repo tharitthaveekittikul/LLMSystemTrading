@@ -68,3 +68,28 @@ async def test_analyze_rate_limited_raises():
                 account_id=1, symbol="EURUSD", timeframe="M15", db=mock_db
             )
     assert exc_info.value.status_code == 429
+
+
+def test_strategy_overrides_defaults():
+    from services.ai_trading import StrategyOverrides
+    o = StrategyOverrides()
+    assert o.lot_size is None
+    assert o.sl_pips is None
+    assert o.tp_pips is None
+    assert o.news_filter is True
+    assert o.custom_prompt is None
+
+
+def test_analyze_and_trade_has_strategy_params():
+    import inspect
+    from services.ai_trading import AITradingService
+    sig = inspect.signature(AITradingService.analyze_and_trade)
+    assert "strategy_id" in sig.parameters
+    assert "strategy_overrides" in sig.parameters
+
+
+def test_orchestrator_accepts_system_prompt_override():
+    import inspect
+    from ai.orchestrator import analyze_market
+    sig = inspect.signature(analyze_market)
+    assert "system_prompt_override" in sig.parameters

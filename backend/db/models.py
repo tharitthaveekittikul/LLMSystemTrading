@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.postgres import Base
@@ -27,6 +27,9 @@ class Account(Base):
 
     trades: Mapped[list["Trade"]] = relationship("Trade", back_populates="account")
     journal_entries: Mapped[list["AIJournal"]] = relationship("AIJournal", back_populates="account")
+    strategy_bindings: Mapped[list["AccountStrategy"]] = relationship(
+        "AccountStrategy", back_populates="account", cascade="all, delete-orphan"
+    )
 
 
 class Trade(Base):
@@ -47,6 +50,8 @@ class Trade(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | manual
     is_paper_trade: Mapped[bool] = mapped_column(Boolean, default=False)
+    strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id"), nullable=True)
+    strategy: Mapped["Strategy | None"] = relationship("Strategy", back_populates="trades", foreign_keys="Trade.strategy_id")
 
     account: Mapped["Account"] = relationship("Account", back_populates="trades")
     journal: Mapped["AIJournal | None"] = relationship(
@@ -69,6 +74,8 @@ class AIJournal(Base):
     llm_provider: Mapped[str] = mapped_column(String(50))
     model_name: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id"), nullable=True)
+    strategy: Mapped["Strategy | None"] = relationship("Strategy", back_populates="journal_entries_strategy", foreign_keys="AIJournal.strategy_id")
 
     account: Mapped["Account"] = relationship("Account", back_populates="journal_entries")
     trade: Mapped["Trade | None"] = relationship("Trade", back_populates="journal")
@@ -82,3 +89,58 @@ class KillSwitchLog(Base):
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     triggered_by: Mapped[str] = mapped_column(String(20))  # system | user
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class Strategy(Base):
+    __tablename__ = "strategies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strategy_type: Mapped[str] = mapped_column(String(20), default="config")   # config|prompt|code
+    trigger_type: Mapped[str] = mapped_column(String(20), default="candle_close")  # interval|candle_close
+    interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    symbols: Mapped[str] = mapped_column(Text, default="[]")           # JSON list
+    timeframe: Mapped[str] = mapped_column(String(10), default="M15")
+    lot_size: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sl_pips: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tp_pips: Mapped[float | None] = mapped_column(Float, nullable=True)
+    news_filter: Mapped[bool] = mapped_column(Boolean, default=True)
+    custom_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    module_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    class_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    account_bindings: Mapped[list["AccountStrategy"]] = relationship(
+        "AccountStrategy", back_populates="strategy", cascade="all, delete-orphan"
+    )
+    trades: Mapped[list["Trade"]] = relationship("Trade", back_populates="strategy")
+    journal_entries_strategy: Mapped[list["AIJournal"]] = relationship("AIJournal", back_populates="strategy")
+
+
+@event.listens_for(Strategy, "init")
+def _strategy_init_defaults(_target: Strategy, _args: tuple, kwargs: dict) -> None:
+    """Apply Python-level defaults for Strategy attributes not passed to __init__."""
+    kwargs.setdefault("strategy_type", "config")
+    kwargs.setdefault("trigger_type", "candle_close")
+    kwargs.setdefault("symbols", "[]")
+    kwargs.setdefault("timeframe", "M15")
+    kwargs.setdefault("news_filter", True)
+    kwargs.setdefault("is_active", True)
+    kwargs.setdefault("created_at", datetime.now(UTC))
+
+
+class AccountStrategy(Base):
+    __tablename__ = "account_strategies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    strategy_id: Mapped[int] = mapped_column(ForeignKey("strategies.id"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (UniqueConstraint("account_id", "strategy_id", name="uq_account_strategy"),)
+
+    account: Mapped["Account"] = relationship("Account", back_populates="strategy_bindings")
+    strategy: Mapped["Strategy"] = relationship("Strategy", back_populates="account_bindings")

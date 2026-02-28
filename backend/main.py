@@ -9,6 +9,7 @@ from api.routes import accounts, analytics, trades, ws
 from api.routes import signals
 from api.routes import status
 from api.routes import kill_switch as kill_switch_routes
+from api.routes import strategies
 from core.config import settings
 from core.logging import setup_logging
 from db.postgres import init_db
@@ -35,8 +36,14 @@ async def lifespan(app: FastAPI):
     poller_task = asyncio.create_task(run_equity_poller())
     logger.info("Equity poller task started")
 
+    from services.scheduler import start_scheduler, stop_scheduler
+    from db.postgres import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        await start_scheduler(db)
+
     yield
 
+    stop_scheduler()
     poller_task.cancel()
     try:
         await poller_task
@@ -69,6 +76,7 @@ app.include_router(status.router,        prefix="/api/v1/status",      tags=["st
 app.include_router(signals.router,           prefix="/api/v1/signals",     tags=["signals"])
 app.include_router(kill_switch_routes.router, prefix="/api/v1/kill-switch", tags=["kill-switch"])
 app.include_router(ws.router,            prefix="/ws",                 tags=["websocket"])
+app.include_router(strategies.router,    prefix="/api/v1/strategies",  tags=["strategies"])
 
 
 @app.get("/health", tags=["system"])

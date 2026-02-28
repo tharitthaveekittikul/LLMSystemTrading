@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Brain,
+  Cpu,
   LayoutDashboard,
   Settings,
   Shield,
@@ -28,6 +29,7 @@ import {
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Accounts", url: "/accounts", icon: Users },
+  { title: "Strategies", url: "/strategies", icon: Cpu },
   { title: "Trades", url: "/trades", icon: TrendingUp },
   { title: "AI Signals", url: "/signals", icon: Brain },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },

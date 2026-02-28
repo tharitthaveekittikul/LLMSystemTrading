@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
+from pydantic import BaseModel as PydanticBase
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,6 +47,15 @@ _CACHE_TTL: dict[str, int] = {
 }
 
 
+class StrategyOverrides(PydanticBase):
+    """Per-strategy parameter overrides supplied by the scheduler."""
+    lot_size: float | None = None
+    sl_pips: float | None = None
+    tp_pips: float | None = None
+    news_filter: bool = True
+    custom_prompt: str | None = None
+
+
 @dataclass
 class AnalysisResult:
     signal: TradingSignal
@@ -61,6 +71,8 @@ class AITradingService:
         symbol: str,
         timeframe: str,
         db: AsyncSession,
+        strategy_id: int | None = None,
+        strategy_overrides: "StrategyOverrides | None" = None,
     ) -> AnalysisResult:
         """Run the full AI analysis -> optional trade execution pipeline."""
         # 1. Load account
@@ -195,6 +207,7 @@ class AITradingService:
             open_positions=open_positions,
             recent_signals=recent_signals,
             news_context=news_context_str,
+            system_prompt_override=strategy_overrides.custom_prompt if strategy_overrides else None,
         )
 
         # 8. Persist AIJournal
@@ -209,6 +222,7 @@ class AITradingService:
             indicators_snapshot=json.dumps(indicators),
             llm_provider=settings.llm_provider,
             model_name="",
+            strategy_id=strategy_id,
         )
         db.add(journal)
         await db.commit()
@@ -248,10 +262,15 @@ class AITradingService:
             return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
 
         # 11. Build order request
+        effective_lot_size = (
+            strategy_overrides.lot_size
+            if strategy_overrides and strategy_overrides.lot_size is not None
+            else account.max_lot_size
+        )
         order_req = OrderRequest(
             symbol=symbol,
             direction=signal.action,
-            volume=account.max_lot_size,
+            volume=effective_lot_size,
             entry_price=signal.entry,
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
@@ -294,13 +313,14 @@ class AITradingService:
             ticket=order_result.ticket,
             symbol=symbol,
             direction=signal.action,
-            volume=account.max_lot_size,
+            volume=effective_lot_size,
             entry_price=signal.entry,
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
             opened_at=datetime.now(UTC),
             source="ai",
             is_paper_trade=account.paper_trade_enabled,
+            strategy_id=strategy_id,
         )
         db.add(trade)
         await db.flush()
@@ -314,7 +334,7 @@ class AITradingService:
             "ticket": order_result.ticket,
             "symbol": symbol,
             "direction": signal.action,
-            "volume": account.max_lot_size,
+            "volume": effective_lot_size,
             "entry_price": signal.entry,
             "stop_loss": signal.stop_loss,
             "take_profit": signal.take_profit,
@@ -323,7 +343,7 @@ class AITradingService:
         paper_tag = " _(paper)_" if account.paper_trade_enabled else ""
         await send_alert(
             f"*Trade Placed{paper_tag}*\n"
-            f"Account: {account_id} | {signal.action} {account.max_lot_size} {symbol}\n"
+            f"Account: {account_id} | {signal.action} {effective_lot_size} {symbol}\n"
             f"Entry: {signal.entry} | SL: {signal.stop_loss} | TP: {signal.take_profit}\n"
             f"Ticket: {order_result.ticket}"
         )
