@@ -24,6 +24,7 @@ class Account(Base):
     max_lot_size: Mapped[float] = mapped_column(Float, default=0.1)
     auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     paper_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    mt5_path: Mapped[str] = mapped_column(String(500), default="")
 
     trades: Mapped[list["Trade"]] = relationship("Trade", back_populates="account")
     journal_entries: Mapped[list["AIJournal"]] = relationship("AIJournal", back_populates="account")
@@ -51,6 +52,11 @@ class Trade(Base):
     source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | manual
     is_paper_trade: Mapped[bool] = mapped_column(Boolean, default=False)
     strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id"), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "ticket", name="uq_trade_account_ticket"),
+    )
+
     strategy: Mapped["Strategy | None"] = relationship("Strategy", back_populates="trades", foreign_keys="Trade.strategy_id")
 
     account: Mapped["Account"] = relationship("Account", back_populates="trades")

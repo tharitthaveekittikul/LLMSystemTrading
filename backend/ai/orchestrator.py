@@ -101,6 +101,7 @@ Last 20 OHLCV candles (oldest → newest):
 {signals_section}
 {chart_section}
 {news_section}
+{history_section}
 Provide the trading signal JSON."""
 
 _PROMPT = ChatPromptTemplate.from_messages([("system", _SYSTEM), ("human", _HUMAN)])
@@ -119,6 +120,7 @@ async def analyze_market(
     open_positions: list[dict[str, Any]] | None = None,
     recent_signals: list[dict[str, Any]] | None = None,
     news_context: str | None = None,
+    trade_history_context: str | None = None,
     system_prompt_override: str | None = None,
 ) -> TradingSignal:
     """Run the full LLM analysis pipeline and return a validated TradingSignal.
@@ -167,6 +169,7 @@ async def analyze_market(
         signals_section = ""
 
     news_section = f"\n{news_context}" if news_context else ""
+    history_section = f"\n{trade_history_context}" if trade_history_context else ""
 
     raw: dict = await chain.ainvoke(
         {
@@ -179,6 +182,7 @@ async def analyze_market(
             "positions_section": positions_section,
             "signals_section": signals_section,
             "news_section": news_section,
+            "history_section": history_section,
         }
     )
 

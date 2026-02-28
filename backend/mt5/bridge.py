@@ -13,6 +13,7 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 from functools import partial
 from typing import Any
 
@@ -180,3 +181,29 @@ class MT5Bridge:
         self._require_mt5()
         info = await self._run(mt5.terminal_info)
         return bool(info and info.connected)
+
+    # ── History ───────────────────────────────────────────────────────────────
+
+    async def history_deals_get(self, date_from: datetime, date_to: datetime) -> list[dict]:
+        """Fetch all closed deals in [date_from, date_to].
+
+        Each deal is one fill leg. A completed position produces two deals
+        sharing the same position_id: one DEAL_ENTRY_IN (entry=0) and one
+        DEAL_ENTRY_OUT (entry=1). The OUT deal carries the realised profit.
+        """
+        self._require_mt5()
+        deals = await self._run(mt5.history_deals_get, date_from, date_to)
+        logger.debug("history_deals_get(%s → %s) -> %s deals", date_from, date_to, len(deals) if deals else 0)
+        return [d._asdict() for d in deals] if deals else []
+
+    async def history_orders_get(self, date_from: datetime, date_to: datetime) -> list[dict]:
+        """Fetch all historical orders in [date_from, date_to].
+
+        Note: orders and deals are distinct in MT5. An order is the instruction;
+        a deal is the resulting fill. Each filled order produces one or more
+        deals. Use history_deals_get for realised P&L and position reconstruction.
+        """
+        self._require_mt5()
+        orders = await self._run(mt5.history_orders_get, date_from, date_to)
+        logger.debug("history_orders_get(%s → %s) -> %s orders", date_from, date_to, len(orders) if orders else 0)
+        return [o._asdict() for o in orders] if orders else []

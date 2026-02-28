@@ -4,7 +4,7 @@ Pipeline per call:
   1. Load account credentials from DB
   2. Redis rate limit check (10 LLM calls / 60s per account)
   3. Redis OHLCV cache (TTL by timeframe) — fetch from MT5 on miss
-  4. Fetch open positions + recent signals for LLM memory context
+  4. Fetch open positions + recent signals + trade history for LLM memory context
   5. orchestrator.analyze_market() -> TradingSignal (with position/news context)
   6. Persist to AIJournal (trade_id=None initially)
   7. Broadcast ai_signal WebSocket event
@@ -30,6 +30,7 @@ from db.redis import check_llm_rate_limit, get_candle_cache, set_candle_cache
 from mt5.bridge import AccountCredentials, MT5Bridge
 from mt5.executor import MT5Executor, OrderRequest
 from services.alerting import send_alert
+from services.history_sync import HistoryService
 from services.kill_switch import is_active as kill_switch_active
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ class AITradingService:
                 login=account.login,
                 password=password,
                 server=account.server,
-                path=settings.mt5_path,
+                path=account.mt5_path or settings.mt5_path,
             )
             try:
                 async with MT5Bridge(creds) as bridge:
@@ -149,7 +150,7 @@ class AITradingService:
                 login=account.login,
                 password=pos_password,
                 server=account.server,
-                path=settings.mt5_path,
+                path=account.mt5_path or settings.mt5_path,
             )
             async with MT5Bridge(pos_creds) as pos_bridge:
                 raw_positions = await pos_bridge.get_positions()
@@ -197,6 +198,17 @@ class AITradingService:
             events = await fetch_upcoming_events([symbol])
             news_context_str = format_news_context(events) or None
 
+        trade_history_context: str | None = None
+        try:
+            hist_svc = HistoryService()
+            recent_deals = await hist_svc.get_raw_deals(account, days=30)
+            out_deals, in_by_pos = HistoryService._pair_deals(recent_deals)
+            trade_history_context = HistoryService.format_for_llm(out_deals, in_by_pos, limit=10) or None
+        except Exception as exc:
+            logger.warning(
+                "Could not fetch trade history for LLM context | account_id=%s: %s", account_id, exc
+            )
+
         # 7. LLM analysis
         signal = await analyze_market(
             symbol=symbol,
@@ -207,6 +219,7 @@ class AITradingService:
             open_positions=open_positions,
             recent_signals=recent_signals,
             news_context=news_context_str,
+            trade_history_context=trade_history_context,
             system_prompt_override=strategy_overrides.custom_prompt if strategy_overrides else None,
         )
 
@@ -283,7 +296,7 @@ class AITradingService:
             login=account.login,
             password=password,
             server=account.server,
-            path=settings.mt5_path,
+            path=account.mt5_path or settings.mt5_path,
         )
         try:
             async with MT5Bridge(creds) as bridge:

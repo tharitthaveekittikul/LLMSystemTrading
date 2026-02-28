@@ -12,6 +12,7 @@ from core.security import decrypt, encrypt
 from db.models import Account
 from db.postgres import get_db
 from mt5.bridge import AccountCredentials, MT5Bridge
+from services.history_sync import HistoryService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class AccountCreate(BaseModel):
     allowed_symbols: list[str] = []
     max_lot_size: float = Field(default=0.1, gt=0.0, le=100.0)
     auto_trade_enabled: bool = True
+    mt5_path: str = Field(default="", max_length=500)
 
 
 class AccountUpdate(BaseModel):
@@ -39,6 +41,7 @@ class AccountUpdate(BaseModel):
     max_lot_size: float | None = Field(None, gt=0.0, le=100.0)
     auto_trade_enabled: bool | None = None
     password: str | None = Field(None, min_length=1, description="Leave empty to keep existing password")
+    mt5_path: str | None = Field(None, max_length=500, description="Path to terminal64.exe for this account. Leave empty to use global MT5_PATH.")
 
 
 class AccountResponse(BaseModel):
@@ -52,7 +55,13 @@ class AccountResponse(BaseModel):
     allowed_symbols: list[str]
     max_lot_size: float
     auto_trade_enabled: bool = True
+    mt5_path: str
     created_at: datetime
+
+
+class HistorySyncResponse(BaseModel):
+    imported: int = Field(..., description="Number of new trades written to the database")
+    total_fetched: int = Field(..., description="Total deals returned by MT5 before deduplication")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -77,6 +86,7 @@ async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_
         allowed_symbols=json.dumps(payload.allowed_symbols),
         max_lot_size=payload.max_lot_size,
         auto_trade_enabled=payload.auto_trade_enabled,
+        mt5_path=payload.mt5_path,
     )
     db.add(account)
     await db.commit()
@@ -113,6 +123,8 @@ async def update_account(account_id: int, payload: AccountUpdate, db: AsyncSessi
         account.auto_trade_enabled = payload.auto_trade_enabled
     if payload.password is not None:
         account.password_encrypted = encrypt(payload.password)
+    if payload.mt5_path is not None:
+        account.mt5_path = payload.mt5_path
 
     await db.commit()
     await db.refresh(account)
@@ -131,7 +143,7 @@ async def get_mt5_account_info(account_id: int, db: AsyncSession = Depends(get_d
         login=account.login,
         password=password,
         server=account.server,
-        path=settings.mt5_path,
+        path=account.mt5_path or settings.mt5_path,
     )
 
     logger.info("Fetching MT5 info | account_id=%s login=%s", account_id, account.login)
@@ -197,7 +209,7 @@ async def list_symbols(
         login=account.login,
         password=password,
         server=account.server,
-        path=settings.mt5_path,
+        path=account.mt5_path or settings.mt5_path,
     )
     try:
         async with MT5Bridge(creds) as bridge:
@@ -303,6 +315,68 @@ async def get_account_stats(account_id: int, db: AsyncSession = Depends(get_db))
     )
 
 
+@router.get("/{account_id}/history", response_model=list[dict])
+async def get_account_history(
+    account_id: int,
+    days: int = Query(90, ge=1, le=365, description="Number of days of history to fetch"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return raw MT5 closed deals for the last N days.
+
+    Each item is one deal dict from MT5. Use this for dashboard charts and analytics.
+    Errors: 404 account not found, 502/503 MT5 unavailable.
+    """
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    logger.info("Fetching MT5 history | account_id=%s days=%s", account_id, days)
+    try:
+        svc = HistoryService()
+        deals = await svc.get_raw_deals(account, days)
+    except RuntimeError as exc:
+        logger.error("MT5 unavailable (history) | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ConnectionError as exc:
+        logger.error("MT5 connect failed (history) | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return deals
+
+
+@router.post("/{account_id}/history/sync", response_model=HistorySyncResponse)
+async def sync_account_history(
+    account_id: int,
+    days: int = Query(90, ge=1, le=365, description="Number of days to sync"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sync MT5 closed trades into the local trades table.
+
+    Skips trades already present (idempotent). Returns count of newly imported rows.
+    Errors: 404 account not found, 502/503 MT5 unavailable.
+    """
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    logger.info("Syncing MT5 history | account_id=%s days=%s", account_id, days)
+    try:
+        svc = HistoryService()
+        result = await svc.sync_to_db(account, days, db)
+    except RuntimeError as exc:
+        logger.error("MT5 unavailable (sync) | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ConnectionError as exc:
+        logger.error("MT5 connect failed (sync) | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    logger.info(
+        "History sync complete | account_id=%s imported=%s total=%s",
+        account_id, result["imported"], result["total_fetched"],
+    )
+    return result
+
+
 class EquityPoint(BaseModel):
     ts: str
     equity: float
@@ -346,5 +420,6 @@ def _to_response(a: Account) -> AccountResponse:
         allowed_symbols=_parse_symbols(a.allowed_symbols),
         max_lot_size=a.max_lot_size,
         auto_trade_enabled=a.auto_trade_enabled,
+        mt5_path=a.mt5_path or "",
         created_at=a.created_at,
     )
