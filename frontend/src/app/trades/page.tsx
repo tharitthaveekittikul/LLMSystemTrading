@@ -5,6 +5,7 @@ import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,7 +17,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { tradesApi } from "@/lib/api";
+import { useTradingStore } from "@/hooks/use-trading-store";
 import type { Trade } from "@/types/trading";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const fmt = (n: number | null, digits = 5) =>
   n == null ? "—" : n.toFixed(digits);
@@ -28,7 +32,71 @@ const pnlColor = (p: number | null) => {
   return "";
 };
 
+function formatISO(isoStr: string): string {
+  const d = new Date(isoStr);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const day = pad(d.getDate());
+  const month = pad(d.getMonth() + 1);
+  const year = d.getFullYear();
+  let hours = d.getHours();
+  const minutes = pad(d.getMinutes());
+  const seconds = pad(d.getSeconds());
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  return `${day}/${month}/${year}, ${pad(hours)}:${minutes}:${seconds} ${ampm}`;
+}
+
+// ── Scorecard ─────────────────────────────────────────────────────────────────
+
+function Scorecard({ trades }: { trades: Trade[] }) {
+  const closed = trades.filter((t) => t.closed_at !== null);
+  const wins = closed.filter((t) => (t.profit ?? 0) > 0);
+  const totalPnl = closed.reduce((s, t) => s + (t.profit ?? 0), 0);
+  const winRate = closed.length > 0 ? (wins.length / closed.length) * 100 : 0;
+
+  const stats = [
+    { label: "Total Trades", value: trades.length },
+    { label: "Closed", value: closed.length },
+    {
+      label: "Win Rate",
+      value: `${winRate.toFixed(1)}%`,
+      color:
+        winRate >= 50
+          ? "text-green-600 dark:text-green-400"
+          : "text-red-600 dark:text-red-400",
+    },
+    {
+      label: "Total P&L",
+      value: (totalPnl >= 0 ? "+" : "") + totalPnl.toFixed(2),
+      color:
+        totalPnl > 0
+          ? "text-green-600 dark:text-green-400"
+          : totalPnl < 0
+            ? "text-red-600 dark:text-red-400"
+            : "",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {stats.map((s) => (
+        <Card key={s.label}>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">{s.label}</p>
+            <p className={`text-lg font-semibold font-mono ${s.color ?? ""}`}>
+              {s.value}
+            </p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function TradesPage() {
+  const activeAccountId = useTradingStore((s) => s.activeAccountId);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,10 +109,11 @@ export default function TradesPage() {
     setError(null);
     try {
       const data = await tradesApi.list({
+        account_id: activeAccountId ?? undefined,
         open_only: openOnly,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-        limit: 200,
+        limit: 500,
       });
       setTrades(data);
     } catch (e) {
@@ -52,7 +121,7 @@ export default function TradesPage() {
     } finally {
       setLoading(false);
     }
-  }, [openOnly, dateFrom, dateTo]);
+  }, [activeAccountId, openOnly, dateFrom, dateTo]);
 
   useEffect(() => {
     load();
@@ -105,27 +174,37 @@ export default function TradesPage() {
           <Button size="sm" onClick={load} disabled={loading}>
             {loading ? "Loading…" : "Refresh"}
           </Button>
+          {activeAccountId == null && (
+            <span className="text-xs text-muted-foreground">
+              Select an account in the sidebar to filter
+            </span>
+          )}
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
+        {/* Scorecard */}
+        {trades.length > 0 && <Scorecard trades={trades} />}
+
         {/* Table */}
-        <div className="rounded-md border overflow-x-auto">
+        <div
+          className={`rounded-md border overflow-x-auto${loading ? " opacity-60" : ""}`}
+        >
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Ticket</TableHead>
+                <TableHead>Opened</TableHead>
+                <TableHead>Closed</TableHead>
                 <TableHead>Symbol</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Dir</TableHead>
                 <TableHead className="text-right">Volume</TableHead>
                 <TableHead className="text-right">Entry</TableHead>
-                <TableHead className="text-right">SL</TableHead>
-                <TableHead className="text-right">TP</TableHead>
+                {/* <TableHead className="text-right">SL</TableHead>
+                <TableHead className="text-right">TP</TableHead> */}
                 <TableHead className="text-right">Close</TableHead>
                 <TableHead className="text-right">P&L</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Opened</TableHead>
-                <TableHead>Closed</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -141,11 +220,26 @@ export default function TradesPage() {
               )}
               {trades.map((t) => (
                 <TableRow key={t.id}>
-                  <TableCell className="font-mono text-sm">{t.ticket}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {t.ticket}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                    {formatISO(t.opened_at)}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                    {t.closed_at ? formatISO(t.closed_at) : "Open"}
+                  </TableCell>
                   <TableCell className="font-medium">{t.symbol}</TableCell>
                   <TableCell>
+                    <Badge variant="outline" className="text-xs">
+                      {t.source}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
                     <Badge
-                      variant={t.direction === "BUY" ? "default" : "destructive"}
+                      variant={
+                        t.direction === "BUY" ? "default" : "destructive"
+                      }
                     >
                       {t.direction}
                     </Badge>
@@ -154,12 +248,12 @@ export default function TradesPage() {
                   <TableCell className="text-right font-mono">
                     {fmt(t.entry_price)}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-muted-foreground">
+                  {/* <TableCell className="text-right font-mono text-muted-foreground">
                     {fmt(t.stop_loss)}
                   </TableCell>
                   <TableCell className="text-right font-mono text-muted-foreground">
                     {fmt(t.take_profit)}
-                  </TableCell>
+                  </TableCell> */}
                   <TableCell className="text-right font-mono">
                     {fmt(t.close_price)}
                   </TableCell>
@@ -169,19 +263,6 @@ export default function TradesPage() {
                     {t.profit != null
                       ? (t.profit >= 0 ? "+" : "") + t.profit.toFixed(2)
                       : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs">
-                      {t.source}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {new Date(t.opened_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {t.closed_at
-                      ? new Date(t.closed_at).toLocaleString()
-                      : "Open"}
                   </TableCell>
                 </TableRow>
               ))}

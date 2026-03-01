@@ -176,6 +176,7 @@ export function AccountHistoryView({ accountId }: Props) {
             <SelectItem value="30">Last 30 days</SelectItem>
             <SelectItem value="90">Last 90 days</SelectItem>
             <SelectItem value="180">Last 180 days</SelectItem>
+            <SelectItem value="3650">All time</SelectItem>
           </SelectContent>
         </Select>
 

@@ -318,7 +318,7 @@ async def get_account_stats(account_id: int, db: AsyncSession = Depends(get_db))
 @router.get("/{account_id}/history", response_model=list[dict])
 async def get_account_history(
     account_id: int,
-    days: int = Query(90, ge=1, le=365, description="Number of days of history to fetch"),
+    days: int = Query(90, ge=1, le=3650, description="Number of days of history to fetch"),
     db: AsyncSession = Depends(get_db),
 ):
     """Return raw MT5 closed deals for the last N days.
@@ -347,7 +347,7 @@ async def get_account_history(
 @router.post("/{account_id}/history/sync", response_model=HistorySyncResponse)
 async def sync_account_history(
     account_id: int,
-    days: int = Query(90, ge=1, le=365, description="Number of days to sync"),
+    days: int = Query(90, ge=1, le=3650, description="Number of days to sync"),
     db: AsyncSession = Depends(get_db),
 ):
     """Sync MT5 closed trades into the local trades table.

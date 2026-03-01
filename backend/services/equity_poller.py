@@ -59,7 +59,7 @@ async def _poll_all_accounts() -> None:
 async def _poll_account(account, insert_fn, broadcast_fn) -> None:
     """Poll a single account — catch all errors so other accounts keep running.
 
-    ``account`` is a plain dict with keys: id, login, password_encrypted, server.
+    ``account`` is a plain dict with keys: id, login, password_encrypted, server, mt5_path.
     """
     try:
         password = decrypt(account["password_encrypted"])

@@ -105,7 +105,7 @@ async def _poll_session(account_id: int) -> None:
         login=account.login,
         password=decrypt(account.password_encrypted),
         server=account.server,
-        path=settings.mt5_path,
+        path=account.mt5_path or settings.mt5_path,
     )
 
     bridge = MT5Bridge(creds)
