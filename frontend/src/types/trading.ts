@@ -13,6 +13,7 @@ export interface Account {
   auto_trade_enabled: boolean;
   created_at: string;
   mt5_path: string;
+  account_type: string;
 }
 
 export interface AccountCreatePayload {
@@ -25,6 +26,7 @@ export interface AccountCreatePayload {
   allowed_symbols: string[];
   max_lot_size: number;
   mt5_path?: string;
+  account_type?: string;
 }
 
 export interface AccountUpdatePayload {
@@ -36,6 +38,7 @@ export interface AccountUpdatePayload {
   auto_trade_enabled?: boolean;
   password?: string;
   mt5_path?: string;
+  account_type?: string;
 }
 
 export interface MT5AccountInfo {
@@ -171,6 +174,7 @@ export interface DailyPnLResponse {
   monthly_trade_count: number;
   winning_days: number;
   losing_days: number;
+  currency: string;
 }
 
 // ── Analyze Result ─────────────────────────────────────────────────────────────

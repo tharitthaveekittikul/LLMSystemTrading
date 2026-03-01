@@ -36,6 +36,7 @@ const defaultForm = {
   server: "",
   mt5_path: "",
   is_live: "false",
+  account_type: "USD",
   max_lot_size: "0.1",
 };
 
@@ -66,6 +67,7 @@ export function AddAccountDialog({
         allowed_symbols: [],
         max_lot_size: parseFloat(form.max_lot_size),
         ...(form.mt5_path ? { mt5_path: form.mt5_path } : {}),
+        account_type: form.account_type,
       });
       toast.success(`Account "${account.name}" created`);
       onCreated(account);
@@ -160,7 +162,7 @@ export function AddAccountDialog({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>Account Type</Label>
               <Select
@@ -175,6 +177,23 @@ export function AddAccountDialog({
                 <SelectContent>
                   <SelectItem value="false">Demo</SelectItem>
                   <SelectItem value="true">Live</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Currency</Label>
+              <Select
+                value={form.account_type}
+                onValueChange={(v) =>
+                  setForm((prev) => ({ ...prev, account_type: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="USC">USC</SelectItem>
                 </SelectContent>
               </Select>
             </div>

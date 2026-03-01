@@ -41,6 +41,7 @@ export function EditAccountDialog({
     server: account.server,
     mt5_path: account.mt5_path,
     is_live: String(account.is_live),
+    account_type: account.account_type,
     max_lot_size: String(account.max_lot_size),
     password: "",
   });
@@ -54,6 +55,7 @@ export function EditAccountDialog({
       server: account.server,
       mt5_path: account.mt5_path,
       is_live: String(account.is_live),
+      account_type: account.account_type,
       max_lot_size: String(account.max_lot_size),
       password: "",
     });
@@ -74,6 +76,7 @@ export function EditAccountDialog({
         server: form.server,
         ...(form.mt5_path ? { mt5_path: form.mt5_path } : {}),
         is_live: form.is_live === "true",
+        account_type: form.account_type,
         max_lot_size: parseFloat(form.max_lot_size),
         ...(form.password ? { password: form.password } : {}),
       });
@@ -141,7 +144,7 @@ export function EditAccountDialog({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>Account Type</Label>
               <Select
@@ -156,6 +159,23 @@ export function EditAccountDialog({
                 <SelectContent>
                   <SelectItem value="false">Demo</SelectItem>
                   <SelectItem value="true">Live</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Currency</Label>
+              <Select
+                value={form.account_type}
+                onValueChange={(v) =>
+                  setForm((prev) => ({ ...prev, account_type: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="USC">USC</SelectItem>
                 </SelectContent>
               </Select>
             </div>

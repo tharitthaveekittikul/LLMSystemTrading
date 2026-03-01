@@ -2,10 +2,10 @@ import logging
 from datetime import date
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import cast, Date, extract, func, select
+from sqlalchemy import case, cast, Date, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Trade
+from db.models import Account, Trade
 from db.postgres import get_db
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ class DailyPnLResponse(BaseModel):
     monthly_trade_count: int
     winning_days: int
     losing_days: int
+    currency: str
 
 
 router = APIRouter()
@@ -36,26 +37,57 @@ async def get_summary(
     account_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return institutional-grade trading metrics for closed trades."""
-    query = select(Trade).where(Trade.closed_at != None)  # noqa: E711
-    if account_id is not None:
-        query = query.where(Trade.account_id == account_id)
+    """Return institutional-grade trading metrics for closed trades.
 
-    result = await db.execute(query)
-    trades = result.scalars().all()
+    When account_id is None (all accounts), USC profits are converted to USD
+    (÷ 100) before aggregation so the result is always in USD.
+    When account_id is set, profits are returned in the account's native currency.
+    """
+    empty = {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "total_profit": 0.0,
+        "max_drawdown": 0.0,
+        "avg_win": 0.0,
+        "avg_loss": 0.0,
+    }
 
-    if not trades:
-        return {
-            "total_trades": 0,
-            "win_rate": 0.0,
-            "profit_factor": 0.0,
-            "total_profit": 0.0,
-            "max_drawdown": 0.0,
-            "avg_win": 0.0,
-            "avg_loss": 0.0,
-        }
+    if account_id is None:
+        # All accounts: join to Account to apply USC → USD conversion.
+        query = (
+            select(Trade, Account.account_type)
+            .join(Account, Trade.account_id == Account.id)
+            .where(Trade.closed_at != None)  # noqa: E711
+        )
+        result = await db.execute(query)
+        rows = result.all()
 
-    profits = [t.profit or 0.0 for t in trades]
+        if not rows:
+            return {**empty, "currency": "USD"}
+
+        profits = [
+            (trade.profit or 0.0) * (0.01 if acct_type == "USC" else 1.0)
+            for trade, acct_type in rows
+        ]
+        currency = "USD"
+    else:
+        query = (
+            select(Trade)
+            .where(Trade.closed_at != None)  # noqa: E711
+            .where(Trade.account_id == account_id)
+        )
+        result = await db.execute(query)
+        trades = result.scalars().all()
+
+        account = await db.get(Account, account_id)
+        currency = account.account_type if account else "USD"
+
+        if not trades:
+            return {**empty, "currency": currency}
+
+        profits = [t.profit or 0.0 for t in trades]
+
     wins = [p for p in profits if p > 0]
     losses = [p for p in profits if p < 0]
 
@@ -68,13 +100,14 @@ async def get_summary(
     max_drawdown = _calculate_max_drawdown(profits)
 
     return {
-        "total_trades": len(trades),
+        "total_trades": len(profits),
         "win_rate": round(win_rate * 100, 2),
         "profit_factor": round(profit_factor, 2),
         "total_profit": round(sum(profits), 2),
         "max_drawdown": round(max_drawdown, 2),
         "avg_win": round(sum(wins) / len(wins), 2) if wins else 0.0,
         "avg_loss": round(sum(losses) / len(losses), 2) if losses else 0.0,
+        "currency": currency,
     }
 
 
@@ -89,23 +122,47 @@ async def get_daily_pnl(
 
     Only closed trades (closed_at IS NOT NULL) are included.
     Days with no closed trades are not returned (sparse list).
+
+    When account_id is None, USC profits are converted to USD (÷ 100) via
+    a SQL CASE WHEN expression so all values are in USD.
+    When account_id is set, values are in the account's native currency.
     """
     date_col = cast(Trade.closed_at, Date)
 
-    query = (
-        select(
-            date_col.label("date"),
-            func.sum(Trade.profit).label("net_pnl"),
-            func.count(Trade.id).label("trade_count"),
+    if account_id is None:
+        # All accounts: convert USC → USD using a SQL CASE WHEN multiplier.
+        usd_factor = case((Account.account_type == "USC", 0.01), else_=1.0)
+        query = (
+            select(
+                date_col.label("date"),
+                func.sum(Trade.profit * usd_factor).label("net_pnl"),
+                func.count(Trade.id).label("trade_count"),
+            )
+            .join(Account, Trade.account_id == Account.id)
+            .where(Trade.closed_at != None)  # noqa: E711
+            .where(extract("year", Trade.closed_at) == year)
+            .where(extract("month", Trade.closed_at) == month)
+            .group_by(date_col)
+            .order_by(date_col)
         )
-        .where(Trade.closed_at != None)  # noqa: E711
-        .where(extract("year", Trade.closed_at) == year)
-        .where(extract("month", Trade.closed_at) == month)
-        .group_by(date_col)
-        .order_by(date_col)
-    )
-    if account_id is not None:
-        query = query.where(Trade.account_id == account_id)
+        currency = "USD"
+    else:
+        # Single account: no conversion, keep native currency.
+        query = (
+            select(
+                date_col.label("date"),
+                func.sum(Trade.profit).label("net_pnl"),
+                func.count(Trade.id).label("trade_count"),
+            )
+            .where(Trade.closed_at != None)  # noqa: E711
+            .where(extract("year", Trade.closed_at) == year)
+            .where(extract("month", Trade.closed_at) == month)
+            .where(Trade.account_id == account_id)
+            .group_by(date_col)
+            .order_by(date_col)
+        )
+        account = await db.get(Account, account_id)
+        currency = account.account_type if account else "USD"
 
     result = await db.execute(query)
     rows = result.all()
@@ -133,6 +190,7 @@ async def get_daily_pnl(
         monthly_trade_count=monthly_trade_count,
         winning_days=winning_days,
         losing_days=losing_days,
+        currency=currency,
     )
 
 

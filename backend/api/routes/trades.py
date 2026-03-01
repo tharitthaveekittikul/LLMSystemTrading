@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import cast, Date, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Trade
+from db.models import Account, Trade
 from db.postgres import get_db
 
 router = APIRouter()
@@ -48,16 +48,51 @@ async def list_trades(
             status_code=400,
             detail="Cannot combine open_only=true with date_from/date_to filters.",
         )
-    query = select(Trade)
-    if account_id:
-        query = query.where(Trade.account_id == account_id)
-    if open_only:
-        query = query.where(Trade.closed_at == None)  # noqa: E711
-    if date_from:
-        query = query.where(cast(Trade.closed_at, Date) >= date_from)
-    if date_to:
-        query = query.where(cast(Trade.closed_at, Date) <= date_to)
-    query = query.order_by(Trade.opened_at.desc()).limit(limit)
 
-    result = await db.execute(query)
-    return result.scalars().all()
+    if account_id is None:
+        # All accounts: join to Account to convert USC profits → USD (÷ 100).
+        query = select(Trade, Account.account_type).join(Account, Trade.account_id == Account.id)
+        if open_only:
+            query = query.where(Trade.closed_at == None)  # noqa: E711
+        if date_from:
+            query = query.where(cast(Trade.closed_at, Date) >= date_from)
+        if date_to:
+            query = query.where(cast(Trade.closed_at, Date) <= date_to)
+        query = query.order_by(Trade.opened_at.desc()).limit(limit)
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        out = []
+        for trade, acct_type in rows:
+            factor = 0.01 if acct_type == "USC" else 1.0
+            out.append(TradeResponse(
+                id=trade.id,
+                account_id=trade.account_id,
+                ticket=trade.ticket,
+                symbol=trade.symbol,
+                direction=trade.direction,
+                volume=trade.volume,
+                entry_price=trade.entry_price,
+                stop_loss=trade.stop_loss,
+                take_profit=trade.take_profit,
+                close_price=trade.close_price,
+                profit=round(trade.profit * factor, 2) if trade.profit is not None else None,
+                opened_at=trade.opened_at,
+                closed_at=trade.closed_at,
+                source=trade.source,
+            ))
+        return out
+    else:
+        # Single account: no conversion, native currency.
+        query = select(Trade).where(Trade.account_id == account_id)
+        if open_only:
+            query = query.where(Trade.closed_at == None)  # noqa: E711
+        if date_from:
+            query = query.where(cast(Trade.closed_at, Date) >= date_from)
+        if date_to:
+            query = query.where(cast(Trade.closed_at, Date) <= date_to)
+        query = query.order_by(Trade.opened_at.desc()).limit(limit)
+
+        result = await db.execute(query)
+        return result.scalars().all()

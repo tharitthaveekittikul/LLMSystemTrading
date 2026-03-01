@@ -38,7 +38,9 @@ export function MonthlyStats({ data, loading }: MonthlyStatsProps) {
     <div className="grid grid-cols-3 gap-4">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-muted-foreground">Monthly PnL</CardTitle>
+          <CardTitle className="text-sm text-muted-foreground">
+            Monthly PnL{data?.currency ? ` (${data.currency})` : ""}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <p

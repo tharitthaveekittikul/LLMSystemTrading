@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -31,6 +32,7 @@ class AccountCreate(BaseModel):
     max_lot_size: float = Field(default=0.1, gt=0.0, le=100.0)
     auto_trade_enabled: bool = True
     mt5_path: str = Field(default="", max_length=500)
+    account_type: Literal["USD", "USC"] = "USD"
 
 
 class AccountUpdate(BaseModel):
@@ -42,6 +44,7 @@ class AccountUpdate(BaseModel):
     auto_trade_enabled: bool | None = None
     password: str | None = Field(None, min_length=1, description="Leave empty to keep existing password")
     mt5_path: str | None = Field(None, max_length=500, description="Path to terminal64.exe for this account. Leave empty to use global MT5_PATH.")
+    account_type: Literal["USD", "USC"] | None = None
 
 
 class AccountResponse(BaseModel):
@@ -56,6 +59,7 @@ class AccountResponse(BaseModel):
     max_lot_size: float
     auto_trade_enabled: bool = True
     mt5_path: str
+    account_type: str
     created_at: datetime
 
 
@@ -87,6 +91,7 @@ async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_
         max_lot_size=payload.max_lot_size,
         auto_trade_enabled=payload.auto_trade_enabled,
         mt5_path=payload.mt5_path,
+        account_type=payload.account_type,
     )
     db.add(account)
     await db.commit()
@@ -125,6 +130,8 @@ async def update_account(account_id: int, payload: AccountUpdate, db: AsyncSessi
         account.password_encrypted = encrypt(payload.password)
     if payload.mt5_path is not None:
         account.mt5_path = payload.mt5_path
+    if payload.account_type is not None:
+        account.account_type = payload.account_type
 
     await db.commit()
     await db.refresh(account)
@@ -421,5 +428,6 @@ def _to_response(a: Account) -> AccountResponse:
         max_lot_size=a.max_lot_size,
         auto_trade_enabled=a.auto_trade_enabled,
         mt5_path=a.mt5_path or "",
+        account_type=a.account_type or "USD",
         created_at=a.created_at,
     )

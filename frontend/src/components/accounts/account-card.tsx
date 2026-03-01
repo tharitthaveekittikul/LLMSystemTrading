@@ -94,9 +94,14 @@ export function AccountCard({
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2">
             <CardTitle className="text-base">{account.name}</CardTitle>
-            <Badge variant={account.is_live ? "destructive" : "secondary"}>
-              {account.is_live ? "Live" : "Demo"}
-            </Badge>
+            <div className="flex gap-1.5">
+              <Badge variant="outline" className="text-xs font-mono">
+                {account.account_type}
+              </Badge>
+              <Badge variant={account.is_live ? "destructive" : "secondary"}>
+                {account.is_live ? "Live" : "Demo"}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
 

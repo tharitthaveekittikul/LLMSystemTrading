@@ -25,6 +25,7 @@ class Account(Base):
     auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     paper_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     mt5_path: Mapped[str] = mapped_column(String(500), default="")
+    account_type: Mapped[str] = mapped_column(String(20), default="USD")  # USD | USC
 
     trades: Mapped[list["Trade"]] = relationship("Trade", back_populates="account")
     journal_entries: Mapped[list["AIJournal"]] = relationship("AIJournal", back_populates="account")
