@@ -81,7 +81,9 @@ export function EditAccountDialog({
       onUpdated(updated);
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update account");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update account",
+      );
     } finally {
       setLoading(false);
     }
@@ -130,11 +132,13 @@ export function EditAccountDialog({
             <Label htmlFor="edit-mt5-path">MT5 Path</Label>
             <Input
               id="edit-mt5-path"
-              placeholder="C:\Program Files\MetaTrader 5"
+              placeholder="C:\Program Files\MetaTrader 5\terminal64.exe"
               value={form.mt5_path}
               onChange={field("mt5_path")}
             />
-            <p className="text-xs text-muted-foreground">Leave empty to use default path</p>
+            <p className="text-xs text-muted-foreground">
+              Leave empty to use default path
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -142,7 +146,9 @@ export function EditAccountDialog({
               <Label>Account Type</Label>
               <Select
                 value={form.is_live}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, is_live: v }))}
+                onValueChange={(v) =>
+                  setForm((prev) => ({ ...prev, is_live: v }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -171,7 +177,9 @@ export function EditAccountDialog({
           <div className="space-y-1.5">
             <Label htmlFor="edit-password">
               New Password{" "}
-              <span className="text-xs text-muted-foreground">(leave empty to keep current)</span>
+              <span className="text-xs text-muted-foreground">
+                (leave empty to keep current)
+              </span>
             </Label>
             <Input
               id="edit-password"

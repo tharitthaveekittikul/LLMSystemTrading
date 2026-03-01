@@ -72,7 +72,9 @@ export function AddAccountDialog({
       setForm(defaultForm);
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create account");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to create account",
+      );
     } finally {
       setLoading(false);
     }
@@ -149,11 +151,13 @@ export function AddAccountDialog({
             <Label htmlFor="mt5_path">MT5 Path</Label>
             <Input
               id="mt5_path"
-              placeholder="C:\Program Files\MetaTrader 5"
+              placeholder="C:\Program Files\MetaTrader 5\terminal64.exe"
               value={form.mt5_path}
               onChange={field("mt5_path")}
             />
-            <p className="text-xs text-muted-foreground">Leave empty to use default path</p>
+            <p className="text-xs text-muted-foreground">
+              Leave empty to use default path
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -161,7 +165,9 @@ export function AddAccountDialog({
               <Label>Account Type</Label>
               <Select
                 value={form.is_live}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, is_live: v }))}
+                onValueChange={(v) =>
+                  setForm((prev) => ({ ...prev, is_live: v }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue />

@@ -35,7 +35,11 @@ interface AccountCardProps {
   onRemoved: (id: number) => void;
 }
 
-export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps) {
+export function AccountCard({
+  account,
+  onUpdated,
+  onRemoved,
+}: AccountCardProps) {
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [mt5Info, setMt5Info] = useState<MT5AccountInfo | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -44,10 +48,15 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
 
   useEffect(() => {
     let isMounted = true;
-    accountsApi.getInfo(account.id)
-      .then((info) => { if (isMounted) setLiveInfo(info); })
+    accountsApi
+      .getInfo(account.id)
+      .then((info) => {
+        if (isMounted) setLiveInfo(info);
+      })
       .catch(() => {}); // silently hide row if MT5 unavailable (503/502)
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [account.id]);
 
   async function handleGetInfo() {
@@ -57,7 +66,9 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
       setMt5Info(info);
       setSheetOpen(true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to fetch MT5 info");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to fetch MT5 info",
+      );
     } finally {
       setLoadingInfo(false);
     }
@@ -69,7 +80,9 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
       toast.success(`Account "${account.name}" removed`);
       onRemoved(account.id);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to remove account");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to remove account",
+      );
     }
   }
 
@@ -98,7 +111,9 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
           </div>
           <div className="flex justify-between text-muted-foreground">
             <span>Server</span>
-            <span className="truncate max-w-[160px] text-foreground">{account.server}</span>
+            <span className="truncate max-w-[160px] text-foreground">
+              {account.server}
+            </span>
           </div>
           <div className="flex justify-between text-muted-foreground">
             <span>Max Lot</span>
@@ -108,14 +123,24 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
             <span>Added</span>
             <span className="text-foreground">{createdAt}</span>
           </div>
-          {account.mt5_path && (
+          {account.mt5_path ? (
             <div className="flex justify-between text-muted-foreground">
               <span>MT5 Path</span>
               <span
-                className="truncate max-w-[160px] text-foreground"
+                className="truncate text-foreground"
                 title={account.mt5_path}
               >
                 {account.mt5_path}
+              </span>
+            </div>
+          ) : (
+            <div className="flex justify-between text-muted-foreground">
+              <span>MT5 Path</span>
+              <span
+                className="truncate text-foreground"
+                title={"C:\\Program Files\\MetaTrader 5\\terminal64.exe"}
+              >
+                {"C:\\Program Files\\MetaTrader 5\\terminal64.exe"}
               </span>
             </div>
           )}
@@ -123,16 +148,23 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
             <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t text-sm">
               <div>
                 <p className="text-xs text-muted-foreground">Balance</p>
-                <p className="font-medium tabular-nums">{liveInfo.balance.toLocaleString()}</p>
+                <p className="font-medium tabular-nums">
+                  {liveInfo.balance.toLocaleString()}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Equity</p>
-                <p className="font-medium tabular-nums">{liveInfo.equity.toLocaleString()}</p>
+                <p className="font-medium tabular-nums">
+                  {liveInfo.equity.toLocaleString()}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">P&amp;L</p>
-                <p className={`font-medium tabular-nums ${(liveInfo.profit ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}>
-                  {(liveInfo.profit ?? 0) >= 0 ? "+" : ""}{(liveInfo.profit ?? 0).toLocaleString()}
+                <p
+                  className={`font-medium tabular-nums ${(liveInfo.profit ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}
+                >
+                  {(liveInfo.profit ?? 0) >= 0 ? "+" : ""}
+                  {(liveInfo.profit ?? 0).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -158,17 +190,17 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
             </Link>
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setEditOpen(true)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="h-3.5 w-3.5" />
           </Button>
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+              >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </AlertDialogTrigger>
@@ -176,20 +208,26 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
               <AlertDialogHeader>
                 <AlertDialogTitle>Remove account?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will deactivate <strong>{account.name}</strong> (login {account.login}).
-                  No trades or history will be deleted.
+                  This will deactivate <strong>{account.name}</strong> (login{" "}
+                  {account.login}). No trades or history will be deleted.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete}>Remove</AlertDialogAction>
+                <AlertDialogAction onClick={handleDelete}>
+                  Remove
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
         </CardFooter>
       </Card>
 
-      <MT5InfoSheet info={mt5Info} open={sheetOpen} onOpenChange={setSheetOpen} />
+      <MT5InfoSheet
+        info={mt5Info}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
       <EditAccountDialog
         account={account}
         open={editOpen}
