@@ -38,13 +38,14 @@ export function AccountSelector() {
 
   return (
     <Select
-      value={activeAccountId?.toString() ?? ""}
-      onValueChange={(v) => setActiveAccount(Number(v))}
+      value={activeAccountId?.toString() ?? "all"}
+      onValueChange={(v) => setActiveAccount(v === "all" ? null : Number(v))}
     >
       <SelectTrigger className="h-8 w-64 text-xs">
         <SelectValue placeholder="Select account…" />
       </SelectTrigger>
       <SelectContent>
+        <SelectItem value="all">All accounts</SelectItem>
         {accounts.map((a) => (
           <SelectItem key={a.id} value={a.id.toString()}>
             <span className="font-mono">{a.login}</span>

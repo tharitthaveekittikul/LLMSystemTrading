@@ -18,7 +18,7 @@ interface TradingState {
 
   // Actions
   setAccounts: (accounts: Account[]) => void;
-  setActiveAccount: (accountId: number) => void;
+  setActiveAccount: (accountId: number | null) => void;
   updateAccount: (id: number, updates: Partial<Account>) => void;
   removeAccount: (id: number) => void;
   setBalance: (balance: AccountBalance) => void;

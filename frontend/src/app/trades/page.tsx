@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
@@ -95,14 +96,26 @@ function Scorecard({ trades }: { trades: Trade[] }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function TradesPage() {
+function TradesContent() {
   const activeAccountId = useTradingStore((s) => s.activeAccountId);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [openOnly, setOpenOnly] = useState(false);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const openOnly = searchParams.get("open_only") === "true";
+  const dateFrom = searchParams.get("date_from") ?? "";
+  const dateTo = searchParams.get("date_to") ?? "";
+
+  function updateParams(patch: Record<string, string | undefined>) {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) next.set(k, v);
+      else next.delete(k);
+    }
+    router.push(`/trades?${next.toString()}`);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,7 +151,13 @@ export default function TradesPage() {
               type="checkbox"
               id="open-only"
               checked={openOnly}
-              onChange={(e) => setOpenOnly(e.target.checked)}
+              onChange={(e) =>
+                updateParams(
+                  e.target.checked
+                    ? { open_only: "true", date_from: undefined, date_to: undefined }
+                    : { open_only: undefined }
+                )
+              }
               className="h-4 w-4"
             />
             <Label htmlFor="open-only">Open only</Label>
@@ -153,7 +172,7 @@ export default function TradesPage() {
                   id="date-from"
                   type="date"
                   value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
+                  onChange={(e) => updateParams({ date_from: e.target.value || undefined })}
                   className="w-36 text-sm"
                 />
               </div>
@@ -165,7 +184,7 @@ export default function TradesPage() {
                   id="date-to"
                   type="date"
                   value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
+                  onChange={(e) => updateParams({ date_to: e.target.value || undefined })}
                   className="w-36 text-sm"
                 />
               </div>
@@ -174,11 +193,9 @@ export default function TradesPage() {
           <Button size="sm" onClick={load} disabled={loading}>
             {loading ? "Loading…" : "Refresh"}
           </Button>
-          {activeAccountId == null && (
-            <span className="text-xs text-muted-foreground">
-              Select an account in the sidebar to filter
-            </span>
-          )}
+          <span className="text-xs text-muted-foreground">
+            {activeAccountId == null ? "Showing all accounts" : `Account ${activeAccountId}`}
+          </span>
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -271,5 +288,24 @@ export default function TradesPage() {
         </div>
       </div>
     </SidebarInset>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <SidebarInset>
+      <AppHeader title="Trades" />
+      <div className="flex flex-1 flex-col gap-4 p-4">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    </SidebarInset>
+  );
+}
+
+export default function TradesPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <TradesContent />
+    </Suspense>
   );
 }
