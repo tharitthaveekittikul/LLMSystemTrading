@@ -6,6 +6,7 @@ import {
   BarChart3,
   Brain,
   Cpu,
+  FlaskConical,
   LayoutDashboard,
   ScrollText,
   Settings,
@@ -34,6 +35,7 @@ const navItems = [
   { title: "Trades", url: "/trades", icon: TrendingUp },
   { title: "AI Signals", url: "/signals", icon: Brain },
   { title: "Pipeline Logs", url: "/logs", icon: ScrollText },
+  { title: "Backtest", url: "/backtest", icon: FlaskConical },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 

@@ -13,6 +13,7 @@
 ## Task 1: Add DB models — `PipelineRun` and `PipelineStep`
 
 **Files:**
+
 - Modify: `backend/db/models.py`
 
 **Step 1: Add the two model classes at the end of `backend/db/models.py`**
@@ -78,6 +79,7 @@ Expected: `OK`
 ## Task 2: Alembic migration
 
 **Files:**
+
 - Create: `backend/alembic/versions/<hash>_add_pipeline_runs_and_steps.py` (auto-generated)
 
 **Step 1: Generate the migration**
@@ -122,6 +124,7 @@ Expected: `['pipeline_runs', 'pipeline_steps']` (order may vary)
 ## Task 3: Create `PipelineTracer` service
 
 **Files:**
+
 - Create: `backend/services/pipeline_tracer.py`
 
 **Step 1: Write `backend/services/pipeline_tracer.py`**
@@ -279,6 +282,7 @@ Expected: `OK`
 ## Task 4: Change `analyze_market` to return prompt text and raw response
 
 **Files:**
+
 - Modify: `backend/ai/orchestrator.py`
 
 **Step 1: Add `LLMAnalysisResult` dataclass and change return type**
@@ -286,6 +290,7 @@ Expected: `OK`
 Replace the current `analyze_market` function signature and body.
 
 The key changes:
+
 1. Add `from dataclasses import dataclass` to imports
 2. Add `LLMAnalysisResult` dataclass after `TradingSignal`
 3. Change `analyze_market` to capture the rendered prompt and raw response, then return `LLMAnalysisResult`
@@ -303,6 +308,7 @@ class LLMAnalysisResult:
 ```
 
 In the `analyze_market` function:
+
 - Change the return annotation from `-> TradingSignal:` to `-> LLMAnalysisResult:`
 - After building `chart_section`, `positions_section`, etc., capture the rendered prompt:
 
@@ -347,6 +353,7 @@ Expected: `OK`
 ## Task 5: Instrument `ai_trading.py` with `PipelineTracer`
 
 **Files:**
+
 - Modify: `backend/services/ai_trading.py`
 
 **Step 1: Add imports at the top of `ai_trading.py`**
@@ -755,6 +762,7 @@ Expected: `OK`
 ## Task 6: API routes for pipeline runs
 
 **Files:**
+
 - Create: `backend/api/routes/pipeline.py`
 - Modify: `backend/main.py`
 
@@ -838,7 +846,7 @@ async def list_runs(
     if account_id is not None:
         q = q.where(PipelineRun.account_id == account_id)
     if symbol:
-        q = q.where(PipelineRun.symbol == symbol.upper())
+        q = q.where(PipelineRun.symbol == symbol)
     if status:
         q = q.where(PipelineRun.status == status)
     q = q.limit(limit).offset(offset)
@@ -896,6 +904,7 @@ Expected: `['/api/v1/pipeline/runs', '/api/v1/pipeline/runs/{run_id}']`
 ## Task 7: Frontend types
 
 **Files:**
+
 - Modify: `frontend/src/types/trading.ts`
 
 **Step 1: Add `PipelineStep`, `PipelineRunSummary`, `PipelineRunDetail` interfaces and update `WSEventType`**
@@ -972,6 +981,7 @@ Expected: no errors
 ## Task 8: Frontend API client
 
 **Files:**
+
 - Modify: `frontend/src/lib/api.ts`
 
 **Step 1: Add `logsApi` to `frontend/src/lib/api.ts`**
@@ -990,19 +1000,22 @@ export const logsApi = {
     offset?: number;
   }) => {
     const query = new URLSearchParams();
-    if (params?.account_id != null) query.set("account_id", String(params.account_id));
+    if (params?.account_id != null)
+      query.set("account_id", String(params.account_id));
     if (params?.symbol) query.set("symbol", params.symbol);
     if (params?.status) query.set("status", params.status);
     if (params?.limit != null) query.set("limit", String(params.limit));
     if (params?.offset != null) query.set("offset", String(params.offset));
     const qs = query.toString();
     return apiRequest<import("@/types/trading").PipelineRunSummary[]>(
-      `/pipeline/runs${qs ? `?${qs}` : ""}`
+      `/pipeline/runs${qs ? `?${qs}` : ""}`,
     );
   },
 
   getRun: (runId: number) =>
-    apiRequest<import("@/types/trading").PipelineRunDetail>(`/pipeline/runs/${runId}`),
+    apiRequest<import("@/types/trading").PipelineRunDetail>(
+      `/pipeline/runs/${runId}`,
+    ),
 };
 ```
 
@@ -1019,6 +1032,7 @@ Expected: no errors
 ## Task 9: Frontend components
 
 **Files:**
+
 - Create: `frontend/src/components/logs/pipeline-step-card.tsx`
 - Create: `frontend/src/components/logs/pipeline-run-detail.tsx`
 - Create: `frontend/src/components/logs/pipeline-runs-list.tsx`
@@ -1123,13 +1137,17 @@ export function PipelineStepCard({ step }: PipelineStepCardProps) {
           )}
           {step.input_json && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-1">Input</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-1">
+                Input
+              </p>
               <JsonViewer raw={step.input_json} />
             </div>
           )}
           {step.output_json && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-1">Output</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-1">
+                Output
+              </p>
               <JsonViewer raw={step.output_json} />
             </div>
           )}
@@ -1213,7 +1231,8 @@ export function PipelineRunDetailPanel({ run }: PipelineRunDetailPanelProps) {
         </div>
         <p className="text-xs text-muted-foreground">
           {ts}
-          {run.total_duration_ms != null && ` · ${run.total_duration_ms}ms total`}
+          {run.total_duration_ms != null &&
+            ` · ${run.total_duration_ms}ms total`}
           {run.trade_id && ` · Trade #${run.trade_id}`}
         </p>
       </div>
@@ -1257,7 +1276,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { logsApi } from "@/lib/api";
 import { useTradingStore } from "@/hooks/use-trading-store";
-import type { PipelineRunCompleteData, PipelineRunSummary } from "@/types/trading";
+import type {
+  PipelineRunCompleteData,
+  PipelineRunSummary,
+} from "@/types/trading";
 
 const STATUS_STYLES: Record<string, string> = {
   completed: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -1346,7 +1368,7 @@ export function PipelineRunsList({
         newRunIdsRef.current.delete(data.run_id);
       }, 3000);
     },
-    [activeAccountId]
+    [activeAccountId],
   );
 
   // Expose handleNewRun to parent
@@ -1443,6 +1465,7 @@ export function PipelineRunsList({
 ## Task 10: Frontend page and sidebar
 
 **Files:**
+
 - Create: `frontend/src/app/logs/page.tsx`
 - Modify: `frontend/src/components/app-sidebar.tsx`
 
@@ -1465,8 +1488,12 @@ import type {
 
 export default function LogsPage() {
   const { activeAccountId } = useTradingStore();
-  const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(null);
-  const handleNewRunRef = useRef<((data: PipelineRunCompleteData) => void) | null>(null);
+  const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(
+    null,
+  );
+  const handleNewRunRef = useRef<
+    ((data: PipelineRunCompleteData) => void) | null
+  >(null);
 
   const handleNewRun = useCallback((data: PipelineRunCompleteData) => {
     handleNewRunRef.current?.(data);
@@ -1492,7 +1519,9 @@ export default function LogsPage() {
           selectedRunId={selectedRun?.id ?? null}
           onSelect={setSelectedRun}
           onNewRun={(fn) => {
-            handleNewRunRef.current = fn as unknown as (data: PipelineRunCompleteData) => void;
+            handleNewRunRef.current = fn as unknown as (
+              data: PipelineRunCompleteData,
+            ) => void;
           }}
         />
       </div>

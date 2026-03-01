@@ -229,3 +229,65 @@ class TaskLLMAssignment(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
+
+
+class BacktestRun(Base):
+    __tablename__ = "backtest_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    strategy_id: Mapped[int] = mapped_column(Integer, ForeignKey("strategies.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(20), index=True)
+    timeframe: Mapped[str] = mapped_column(String(10))
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    initial_balance: Mapped[float] = mapped_column(Float, default=10000.0)
+    spread_pips: Mapped[float] = mapped_column(Float, default=1.5)
+    execution_mode: Mapped[str] = mapped_column(String(20), default="close_price")
+    max_llm_calls: Mapped[int] = mapped_column(Integer, default=100)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    progress_pct: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    total_trades: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    win_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profit_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expectancy: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_drawdown_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recovery_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sharpe_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sortino_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_return_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    avg_win: Mapped[float | None] = mapped_column(Float, nullable=True)
+    avg_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_consec_wins: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_consec_losses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+    trades: Mapped[list["BacktestTrade"]] = relationship(
+        "BacktestTrade", back_populates="run", cascade="all, delete-orphan"
+    )
+    strategy: Mapped["Strategy"] = relationship("Strategy")
+
+
+class BacktestTrade(Base):
+    __tablename__ = "backtest_trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("backtest_runs.id", ondelete="CASCADE"), index=True
+    )
+    symbol: Mapped[str] = mapped_column(String(20))
+    direction: Mapped[str] = mapped_column(String(4))
+    entry_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    exit_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    entry_price: Mapped[float] = mapped_column(Float)
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stop_loss: Mapped[float] = mapped_column(Float)
+    take_profit: Mapped[float] = mapped_column(Float)
+    volume: Mapped[float] = mapped_column(Float)
+    profit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    equity_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="trades")

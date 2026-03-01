@@ -81,13 +81,14 @@ class MT5Bridge:
     async def connect(self) -> bool:
         self._require_mt5()
         logger.info("Connecting to MT5 | login=%s server=%s", self._creds.login, self._creds.server)
-        ok = await self._run(
-            mt5.initialize,
-            path=self._creds.path or None,
-            login=self._creds.login,
-            password=self._creds.password,
-            server=self._creds.server,
-        )
+        kwargs: dict = {
+            "login": self._creds.login,
+            "password": self._creds.password,
+            "server": self._creds.server,
+        }
+        if self._creds.path:
+            kwargs["path"] = self._creds.path
+        ok = await self._run(mt5.initialize, **kwargs)
         if ok:
             logger.info("MT5 connected | login=%s", self._creds.login)
         else:
@@ -151,6 +152,41 @@ class MT5Bridge:
 
         df = pd.DataFrame(rates)
         df["time"] = pd.to_datetime(df["time"], unit="s")
+        return df.to_dict("records")
+
+    async def get_rates_range(
+        self,
+        symbol: str,
+        timeframe: int,
+        date_from: "datetime",
+        date_to: "datetime",
+    ) -> list[dict]:
+        """Fetch OHLCV candles between two UTC datetimes.
+
+        Uses copy_rates_range — designed for large historical datasets (backtesting).
+        Returns list of dicts with keys: time (UTC-aware datetime), open, high, low,
+        close, tick_volume.
+        """
+        self._require_mt5()
+        selected = await self._run(mt5.symbol_select, symbol, True)
+        if not selected:
+            err = await self.get_last_error()
+            logger.warning("symbol_select(%s) failed | error=%s", symbol, err)
+        rates = await self._run(mt5.copy_rates_range, symbol, timeframe, date_from, date_to)
+        logger.debug(
+            "copy_rates_range(%s, tf=%s, %s → %s) -> %s rows",
+            symbol,
+            timeframe,
+            date_from,
+            date_to,
+            len(rates) if rates is not None else "None",
+        )
+        if rates is None:
+            return []
+        import pandas as pd  # lazy import — same pattern as get_rates
+
+        df = pd.DataFrame(rates)
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
         return df.to_dict("records")
 
     # ── Tick data ─────────────────────────────────────────────────────────────

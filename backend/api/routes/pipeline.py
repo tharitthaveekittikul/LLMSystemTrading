@@ -75,7 +75,7 @@ async def list_runs(
     if account_id is not None:
         q = q.where(PipelineRun.account_id == account_id)
     if symbol:
-        q = q.where(PipelineRun.symbol == symbol.upper())
+        q = q.where(PipelineRun.symbol == symbol)
     if status:
         q = q.where(PipelineRun.status == status)
     q = q.limit(limit).offset(offset)

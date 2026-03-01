@@ -123,3 +123,62 @@ export const logsApi = {
   getRun: (runId: number) =>
     apiRequest<import("@/types/trading").PipelineRunDetail>(`/pipeline/runs/${runId}`),
 };
+
+// ── Backtest ──────────────────────────────────────────────────────────────────
+
+export const backtestApi = {
+  submitRun: (req: import("@/types/trading").BacktestRunRequest) =>
+    apiRequest<import("@/types/trading").BacktestRunSummary>("/backtest/runs", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  listRuns: (params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return apiRequest<import("@/types/trading").BacktestRunSummary[]>(
+      `/backtest/runs${qs ? `?${qs}` : ""}`,
+    );
+  },
+
+  getRun: (runId: number) =>
+    apiRequest<import("@/types/trading").BacktestRunSummary>(`/backtest/runs/${runId}`),
+
+  getTrades: (runId: number, params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return apiRequest<import("@/types/trading").BacktestTrade[]>(
+      `/backtest/runs/${runId}/trades${qs ? `?${qs}` : ""}`,
+    );
+  },
+
+  getEquityCurve: (runId: number) =>
+    apiRequest<import("@/types/trading").BacktestEquityPoint[]>(
+      `/backtest/runs/${runId}/equity-curve`,
+    ),
+
+  getMonthlyPnl: (runId: number) =>
+    apiRequest<import("@/types/trading").BacktestMonthlyPnl[]>(
+      `/backtest/runs/${runId}/monthly-pnl`,
+    ),
+
+  deleteRun: (runId: number) =>
+    apiRequest<void>(`/backtest/runs/${runId}`, { method: "DELETE" }),
+
+  uploadCsv: async (file: File): Promise<{ upload_id: string; size_bytes: number }> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_V1}/backtest/data/upload`, { method: "POST", body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(
+        (err as { detail?: string }).detail || `Upload failed: ${res.statusText}`,
+      );
+    }
+    return res.json();
+  },
+};

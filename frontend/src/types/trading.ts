@@ -341,3 +341,77 @@ export interface PipelineRunCompleteData {
   total_duration_ms: number;
   step_count: number;
 }
+
+// ── Backtest ──────────────────────────────────────────────────────────────────
+
+export interface BacktestRunSummary {
+  id: number;
+  strategy_id: number;
+  symbol: string;
+  timeframe: string;
+  start_date: string;
+  end_date: string;
+  initial_balance: number;
+  spread_pips: number;
+  execution_mode: string;
+  status: "pending" | "running" | "completed" | "failed";
+  progress_pct: number;
+  error_message: string | null;
+  total_trades: number | null;
+  win_rate: number | null;
+  profit_factor: number | null;
+  expectancy: number | null;
+  max_drawdown_pct: number | null;
+  recovery_factor: number | null;
+  sharpe_ratio: number | null;
+  sortino_ratio: number | null;
+  total_return_pct: number | null;
+  avg_win: number | null;
+  avg_loss: number | null;
+  max_consec_wins: number | null;
+  max_consec_losses: number | null;
+  created_at: string;
+}
+
+export interface BacktestTrade {
+  id: number;
+  run_id: number;
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entry_time: string;
+  exit_time: string | null;
+  entry_price: number;
+  exit_price: number | null;
+  stop_loss: number;
+  take_profit: number;
+  volume: number;
+  profit: number | null;
+  exit_reason: "sl" | "tp" | "signal_reverse" | "end_of_data" | null;
+  equity_after: number | null;
+}
+
+export interface BacktestEquityPoint {
+  time: string;
+  equity: number;
+}
+
+export interface BacktestMonthlyPnl {
+  year: number;
+  month: number;
+  pnl: number;
+  trade_count: number;
+}
+
+export interface BacktestRunRequest {
+  strategy_id: number;
+  symbol: string;
+  timeframe?: string;
+  start_date: string;
+  end_date: string;
+  initial_balance?: number;
+  spread_pips?: number;
+  execution_mode?: "close_price" | "intra_candle";
+  max_llm_calls?: number;
+  volume?: number;
+  csv_upload_id?: string;
+}
