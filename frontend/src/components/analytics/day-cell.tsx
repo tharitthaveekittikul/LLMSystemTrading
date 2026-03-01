@@ -35,8 +35,8 @@ export function DayCell({
       className={cn(
         "min-h-[80px] rounded-md border p-2 transition-colors",
         isCurrentMonth ? "opacity-100" : "opacity-30",
-        hasTrades && isProfit && "border-green-700/50 bg-green-900/30",
-        hasTrades && isLoss && "border-red-700/50 bg-red-900/30",
+        hasTrades && isProfit && "border-green-700/50 bg-green-700/10",
+        hasTrades && isLoss && "border-red-700/50 bg-red-700/10",
         !hasTrades && "border-border bg-muted/10",
         hasTrades && isCurrentMonth && "cursor-pointer hover:opacity-80",
         isSelected && "ring-2 ring-blue-500",
@@ -53,7 +53,7 @@ export function DayCell({
           <p
             className={cn(
               "text-sm font-semibold",
-              isProfit && "text-green-400",
+              isProfit && "text-green-600",
               isLoss && "text-red-400",
             )}
           >
