@@ -47,6 +47,7 @@ async def _poll_all_accounts() -> None:
                 "login": a.login,
                 "password_encrypted": a.password_encrypted,
                 "server": a.server,
+                "mt5_path": a.mt5_path,
             }
             for a in result.scalars().all()
         ]
@@ -66,7 +67,7 @@ async def _poll_account(account, insert_fn, broadcast_fn) -> None:
             login=account["login"],
             password=password,
             server=account["server"],
-            path=settings.mt5_path,
+            path=account["mt5_path"] or settings.mt5_path,
         )
         async with MT5Bridge(creds) as bridge:
             info = await bridge.get_account_info()

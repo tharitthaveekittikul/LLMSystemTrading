@@ -12,6 +12,7 @@ async def test_poll_account_calls_insert_and_broadcast():
         "login": 12345,
         "server": "test.server",
         "password_encrypted": "dummy",
+        "mt5_path": "",
     }
 
     mock_info = {
@@ -53,6 +54,7 @@ async def test_poll_account_swallows_mt5_error():
         "login": 99999,
         "server": "test.server",
         "password_encrypted": "dummy",
+        "mt5_path": "",
     }
 
     insert_mock = AsyncMock()
@@ -104,7 +106,7 @@ async def test_poll_account_activates_kill_switch_on_drawdown(monkeypatch):
             mock_bridge.get_account_info.return_value = mock_info
             mock_bridge_cls.return_value.__aenter__.return_value = mock_bridge
 
-            account = {"id": 99, "login": 1, "password_encrypted": "x", "server": "srv"}
+            account = {"id": 99, "login": 1, "password_encrypted": "x", "server": "srv", "mt5_path": ""}
             with patch("services.equity_poller.decrypt", return_value="pass"):
                 await _poll_account(
                     account,
