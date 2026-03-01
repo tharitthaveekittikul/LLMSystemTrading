@@ -1,1 +1,3 @@
-# Strategy package. Each .py file defines one tradeable strategy inheriting BaseStrategy.
+from strategies.base import BaseStrategy
+
+__all__ = ["BaseStrategy"]

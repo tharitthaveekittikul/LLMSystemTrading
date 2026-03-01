@@ -69,13 +69,17 @@ def _add_binding_jobs(scheduler: AsyncIOScheduler, binding) -> None:
     strategy = binding.strategy
     symbols, overrides, strategy_id = _build_overrides(strategy)
     trigger = _make_trigger(strategy)
+    # Pass module_path/class_name so the job can reload the instance fresh each run.
+    module_path = strategy.module_path if strategy.strategy_type == "code" else None
+    class_name  = strategy.class_name  if strategy.strategy_type == "code" else None
     for symbol in symbols:
         job_id = _job_id(binding.id, symbol)
         scheduler.add_job(
             _run_strategy_job,
             trigger=trigger,
             id=job_id,
-            args=[binding.account_id, symbol, strategy.timeframe, strategy_id, overrides],
+            args=[binding.account_id, symbol, strategy.timeframe, strategy_id, overrides,
+                  module_path, class_name],
             replace_existing=True,
             misfire_grace_time=60,
         )
@@ -84,16 +88,30 @@ def _add_binding_jobs(scheduler: AsyncIOScheduler, binding) -> None:
 
 async def _run_strategy_job(
     account_id: int, symbol: str, timeframe: str,
-    strategy_id: int | None, overrides
+    strategy_id: int | None, overrides,
+    module_path: str | None = None,
+    class_name: str | None = None,
 ) -> None:
     from db.postgres import AsyncSessionLocal
     from services.ai_trading import AITradingService
+
+    # Load code strategy instance fresh each run.
+    strategy_instance = None
+    if module_path and class_name:
+        try:
+            mod = importlib.import_module(module_path)
+            strategy_instance = getattr(mod, class_name)()
+        except Exception:
+            logger.exception("Failed to load code strategy %s.%s — running LLM fallback",
+                             module_path, class_name)
+
     try:
         async with AsyncSessionLocal() as db:
             service = AITradingService()
             result = await service.analyze_and_trade(
                 account_id=account_id, symbol=symbol, timeframe=timeframe,
                 db=db, strategy_id=strategy_id, strategy_overrides=overrides,
+                strategy_instance=strategy_instance,
             )
             logger.info("Job done: account=%d symbol=%s action=%s order=%s",
                         account_id, symbol, result.signal.action, result.order_placed)

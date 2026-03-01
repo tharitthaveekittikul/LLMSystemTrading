@@ -78,11 +78,13 @@ class AITradingService:
         db: AsyncSession,
         strategy_id: int | None = None,
         strategy_overrides: "StrategyOverrides | None" = None,
+        strategy_instance: object | None = None,
     ) -> AnalysisResult:
         """Run the full AI analysis -> optional trade execution pipeline."""
         async with PipelineTracer(account_id, symbol, timeframe) as tracer:
             return await self._run_pipeline(
-                tracer, account_id, symbol, timeframe, db, strategy_id, strategy_overrides
+                tracer, account_id, symbol, timeframe, db, strategy_id, strategy_overrides,
+                strategy_instance,
             )
 
     async def _run_pipeline(
@@ -94,6 +96,7 @@ class AITradingService:
         db: AsyncSession,
         strategy_id: int | None,
         strategy_overrides: "StrategyOverrides | None",
+        strategy_instance: object | None = None,
     ) -> AnalysisResult:
         """Full instrumented pipeline — every step recorded to PipelineTracer."""
 
@@ -118,29 +121,7 @@ class AITradingService:
             duration_ms=int((time.monotonic() - t0) * 1000),
         )
 
-        # ── 2. Rate limit ────────────────────────────────────────────────────
-        t0 = time.monotonic()
-        allowed = await check_llm_rate_limit(account_id)
-        if not allowed:
-            await tracer.record(
-                "rate_limit_check", status="error",
-                output_data={"allowed": False},
-                error="LLM rate limit exceeded",
-                duration_ms=int((time.monotonic() - t0) * 1000),
-            )
-            tracer.finalize(status="failed")
-            logger.warning("LLM rate limit exceeded | account_id=%s", account_id)
-            raise HTTPException(
-                status_code=429,
-                detail="LLM rate limit exceeded — max 10 calls per 60 seconds per account",
-            )
-        await tracer.record(
-            "rate_limit_check",
-            output_data={"allowed": True},
-            duration_ms=int((time.monotonic() - t0) * 1000),
-        )
-
-        # ── 3. Resolve timeframe int ─────────────────────────────────────────
+        # ── 2. Resolve timeframe int ─────────────────────────────────────────
         tf_upper = timeframe.upper()
         tf_int = _TIMEFRAME_MAP.get(tf_upper)
         if tf_int is None:
@@ -295,51 +276,112 @@ class AITradingService:
             duration_ms=int((time.monotonic() - t0) * 1000),
         )
 
-        news_context_str: str | None = None
-        if getattr(settings, "news_enabled", False):
-            from services.market_context import fetch_upcoming_events, format_news_context
-            events = await fetch_upcoming_events([symbol])
-            news_context_str = format_news_context(events) or None
+        # ── 7. Rule-based signal (code strategies that override generate_signal) ─
+        rule_based = False
+        signal: TradingSignal | None = None
 
-        trade_history_context: str | None = None
-        try:
-            hist_svc = HistoryService()
-            recent_deals = await hist_svc.get_raw_deals(account, days=30)
-            out_deals, in_by_pos = HistoryService._pair_deals(recent_deals)
-            trade_history_context = HistoryService.format_for_llm(out_deals, in_by_pos, limit=10) or None
-        except Exception as exc:
-            logger.warning(
-                "Could not fetch trade history for LLM context | account_id=%s: %s", account_id, exc
+        if strategy_instance is not None:
+            t0 = time.monotonic()
+            market_data = {
+                "symbol":         symbol,
+                "timeframe":      tf_upper,
+                "current_price":  current_price or 0,
+                "candles":        candles,
+                "indicators":     indicators,
+                "open_positions": open_positions,
+                "recent_signals": recent_signals,
+            }
+            try:
+                rule_result = strategy_instance.generate_signal(market_data)
+            except Exception as exc:
+                logger.error(
+                    "generate_signal raised | strategy=%s | %s",
+                    type(strategy_instance).__name__, exc,
+                )
+                rule_result = None
+            if rule_result is not None:
+                rule_based = True
+                await tracer.record(
+                    "rule_signal",
+                    output_data={
+                        "strategy":   type(strategy_instance).__name__,
+                        "action":     rule_result.get("action"),
+                        "confidence": rule_result.get("confidence"),
+                        "rationale":  str(rule_result.get("rationale", ""))[:200],
+                    },
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                )
+                signal = TradingSignal(**rule_result)
+
+        # ── 8. LLM analysis (skipped for rule-based strategies) ───────────────
+        if not rule_based:
+            # Rate limit applies only to LLM calls.
+            t0 = time.monotonic()
+            allowed = await check_llm_rate_limit(account_id)
+            if not allowed:
+                await tracer.record(
+                    "rate_limit_check", status="error",
+                    output_data={"allowed": False},
+                    error="LLM rate limit exceeded",
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                )
+                tracer.finalize(status="failed")
+                logger.warning("LLM rate limit exceeded | account_id=%s", account_id)
+                raise HTTPException(
+                    status_code=429,
+                    detail="LLM rate limit exceeded — max 10 calls per 60 seconds per account",
+                )
+            await tracer.record(
+                "rate_limit_check",
+                output_data={"allowed": True},
+                duration_ms=int((time.monotonic() - t0) * 1000),
             )
 
-        # ── 7. LLM analysis ──────────────────────────────────────────────────
-        t0 = time.monotonic()
-        llm_result: LLMAnalysisResult = await analyze_market(
-            symbol=symbol,
-            timeframe=tf_upper,
-            current_price=current_price or 0,
-            indicators=indicators,
-            ohlcv=candles,
-            open_positions=open_positions,
-            recent_signals=recent_signals,
-            news_context=news_context_str,
-            trade_history_context=trade_history_context,
-            system_prompt_override=strategy_overrides.custom_prompt if strategy_overrides else None,
-        )
-        signal = llm_result.signal
-        await tracer.record(
-            "llm_analyzed",
-            input_data={"prompt": llm_result.prompt_text[:4000]},  # cap at 4000 chars
-            output_data={
-                "raw_response": llm_result.raw_response,
-                "provider": settings.llm_provider,
-                "action": signal.action,
-                "confidence": signal.confidence,
-            },
-            duration_ms=int((time.monotonic() - t0) * 1000),
-        )
+            news_context_str: str | None = None
+            if getattr(settings, "news_enabled", False):
+                from services.market_context import fetch_upcoming_events, format_news_context
+                events = await fetch_upcoming_events([symbol])
+                news_context_str = format_news_context(events) or None
 
-        # ── 8. Confidence gate ───────────────────────────────────────────────
+            trade_history_context: str | None = None
+            try:
+                hist_svc = HistoryService()
+                recent_deals = await hist_svc.get_raw_deals(account, days=30)
+                out_deals, in_by_pos = HistoryService._pair_deals(recent_deals)
+                trade_history_context = HistoryService.format_for_llm(out_deals, in_by_pos, limit=10) or None
+            except Exception as exc:
+                logger.warning(
+                    "Could not fetch trade history for LLM context | account_id=%s: %s", account_id, exc
+                )
+
+            t0 = time.monotonic()
+            llm_result: LLMAnalysisResult = await analyze_market(
+                symbol=symbol,
+                timeframe=tf_upper,
+                current_price=current_price or 0,
+                indicators=indicators,
+                ohlcv=candles,
+                open_positions=open_positions,
+                recent_signals=recent_signals,
+                news_context=news_context_str,
+                trade_history_context=trade_history_context,
+                system_prompt_override=strategy_overrides.custom_prompt if strategy_overrides else None,
+            )
+            signal = llm_result.signal
+            await tracer.record(
+                "llm_analyzed",
+                input_data={"prompt": llm_result.prompt_text[:4000]},
+                output_data={
+                    "raw_response": llm_result.raw_response,
+                    "provider":     settings.llm_provider,
+                    "action":       signal.action,
+                    "confidence":   signal.confidence,
+                },
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
+
+        # ── 9. Confidence gate ───────────────────────────────────────────────
+        assert signal is not None, "signal must be set by either rule-based or LLM path"
         action_before = signal.action
         if signal.confidence < settings.llm_confidence_threshold:
             logger.info(
@@ -372,8 +414,8 @@ class AITradingService:
             confidence=signal.confidence,
             rationale=signal.rationale,
             indicators_snapshot=json.dumps(indicators),
-            llm_provider=settings.llm_provider,
-            model_name="",
+            llm_provider="rule_based" if rule_based else settings.llm_provider,
+            model_name=type(strategy_instance).__name__ if rule_based else "",
             strategy_id=strategy_id,
         )
         db.add(journal)
