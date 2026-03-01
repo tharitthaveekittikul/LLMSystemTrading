@@ -52,6 +52,50 @@ _CACHE_TTL: dict[str, int] = {
 }
 
 
+def _provider_name(llm: object) -> str:
+    """Derive a short provider name from a LangChain LLM class."""
+    mod = type(llm).__module__
+    if "openai" in mod:
+        return "openai"
+    if "google" in mod or "gemini" in mod:
+        return "gemini"
+    if "anthropic" in mod:
+        return "anthropic"
+    return "unknown"
+
+
+async def _get_task_llm(task: str, db: AsyncSession):
+    """Load task-specific LLM from DB assignments. Returns None to use env-var default."""
+    from sqlalchemy import select as _select
+    from db.models import LLMProviderConfig, TaskLLMAssignment
+    from core.security import decrypt as _decrypt
+    from ai.orchestrator import _build_llm
+
+    assignment = (await db.execute(
+        _select(TaskLLMAssignment).where(TaskLLMAssignment.task == task)
+    )).scalar_one_or_none()
+
+    if not assignment or not assignment.provider:
+        return None
+
+    provider_row = (await db.execute(
+        _select(LLMProviderConfig).where(
+            LLMProviderConfig.provider == assignment.provider,
+            LLMProviderConfig.is_active.is_(True),
+        )
+    )).scalar_one_or_none()
+
+    if not provider_row:
+        return None
+
+    api_key = _decrypt(provider_row.encrypted_api_key)
+    return _build_llm(
+        provider=assignment.provider,
+        api_key=api_key,
+        model=assignment.model_name or None,
+    )
+
+
 class StrategyOverrides(PydanticBase):
     """Per-strategy parameter overrides supplied by the scheduler."""
     lot_size: float | None = None
@@ -314,6 +358,7 @@ class AITradingService:
                 signal = TradingSignal(**rule_result)
 
         # ── 8. LLM analysis (skipped for rule-based strategies) ───────────────
+        market_analysis_llm = None
         if not rule_based:
             # Rate limit applies only to LLM calls.
             t0 = time.monotonic()
@@ -354,6 +399,7 @@ class AITradingService:
                     "Could not fetch trade history for LLM context | account_id=%s: %s", account_id, exc
                 )
 
+            market_analysis_llm = await _get_task_llm("market_analysis", db)
             t0 = time.monotonic()
             llm_result: LLMAnalysisResult = await analyze_market(
                 symbol=symbol,
@@ -366,6 +412,7 @@ class AITradingService:
                 news_context=news_context_str,
                 trade_history_context=trade_history_context,
                 system_prompt_override=strategy_overrides.custom_prompt if strategy_overrides else None,
+                llm_override=market_analysis_llm,
             )
             signal = llm_result.signal
             await tracer.record(
@@ -414,7 +461,9 @@ class AITradingService:
             confidence=signal.confidence,
             rationale=signal.rationale,
             indicators_snapshot=json.dumps(indicators),
-            llm_provider="rule_based" if rule_based else settings.llm_provider,
+            llm_provider="rule_based" if rule_based else (
+                _provider_name(market_analysis_llm) if market_analysis_llm else settings.llm_provider
+            ),
             model_name=type(strategy_instance).__name__ if rule_based else "",
             strategy_id=strategy_id,
         )

@@ -46,29 +46,43 @@ class LLMAnalysisResult:
 
 # ── LLM factory ───────────────────────────────────────────────────────────────
 
-def _build_llm() -> BaseChatModel:
-    provider = settings.llm_provider
-    if provider == "openai":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(model="gpt-4o", api_key=settings.openai_api_key, temperature=0)
+def _build_llm(
+    provider: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+) -> BaseChatModel:
+    """Build a LangChain chat model.
 
-    if provider == "gemini":
+    If provider/api_key/model are given, use them directly (DB-sourced task assignment).
+    Otherwise fall back to env-var settings.
+    """
+    resolved_provider = provider or settings.llm_provider
+
+    if resolved_provider == "openai":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=model or "gpt-4o",
+            api_key=api_key or settings.openai_api_key,
+            temperature=0,
+        )
+
+    if resolved_provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            model=settings.gemini_model,
-            google_api_key=settings.gemini_api_key,
+            model=model or settings.gemini_model,
+            google_api_key=api_key or settings.gemini_api_key,
             temperature=0,
         )
 
-    if provider == "anthropic":
+    if resolved_provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
         return ChatAnthropic(
-            model="claude-sonnet-4-6",
-            api_key=settings.anthropic_api_key,
+            model=model or "claude-sonnet-4-6",
+            api_key=api_key or settings.anthropic_api_key,
             temperature=0,
         )
 
-    raise ValueError(f"Unknown llm_provider: {provider!r}")
+    raise ValueError(f"Unknown llm_provider: {resolved_provider!r}")
 
 
 # ── Prompt template ───────────────────────────────────────────────────────────
@@ -130,6 +144,7 @@ async def analyze_market(
     news_context: str | None = None,
     trade_history_context: str | None = None,
     system_prompt_override: str | None = None,
+    llm_override: BaseChatModel | None = None,
 ) -> LLMAnalysisResult:
     """Run the full LLM analysis pipeline and return a validated TradingSignal.
 
@@ -140,15 +155,27 @@ async def analyze_market(
 
     If confidence is below the configured threshold the action is forced to HOLD.
     """
+    active_llm = llm_override or _build_llm()
+
+    _mod = type(active_llm).__module__
+    if "openai" in _mod:
+        effective_provider = "openai"
+    elif "google" in _mod or "gemini" in _mod:
+        effective_provider = "gemini"
+    elif "anthropic" in _mod:
+        effective_provider = "anthropic"
+    else:
+        effective_provider = settings.llm_provider
+
     logger.info(
         "Analyzing market | provider=%s symbol=%s timeframe=%s price=%s",
-        settings.llm_provider, symbol, timeframe, current_price,
+        effective_provider, symbol, timeframe, current_price,
     )
-
     if system_prompt_override:
-        llm = _build_llm()
         prompt = ChatPromptTemplate.from_messages([("system", system_prompt_override), ("human", _HUMAN)])
-        chain = prompt | llm | JsonOutputParser()
+        chain = prompt | active_llm | JsonOutputParser()
+    elif llm_override:
+        chain = _PROMPT | active_llm | JsonOutputParser()
     else:
         chain = _DEFAULT_CHAIN
 

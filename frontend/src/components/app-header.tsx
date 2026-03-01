@@ -1,5 +1,8 @@
+"use client";
+
 import { AccountSelector } from "@/components/dashboard/account-selector";
 import { ConnectionStatus } from "@/components/dashboard/connection-status";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface AppHeaderProps {
   title: string;
@@ -11,6 +14,7 @@ export function AppHeader({ title }: AppHeaderProps) {
       <h1 className="font-semibold">{title}</h1>
       <div className="ml-auto flex items-center gap-3">
         <ConnectionStatus />
+        <ThemeToggle />
         <AccountSelector />
       </div>
     </header>

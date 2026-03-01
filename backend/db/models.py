@@ -196,3 +196,36 @@ class PipelineStep(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
 
     run: Mapped["PipelineRun"] = relationship("PipelineRun", back_populates="steps")
+
+
+class LLMProviderConfig(Base):
+    __tablename__ = "llm_provider_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    # 'openai' | 'gemini' | 'anthropic'
+    encrypted_api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    key_hint: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
+class TaskLLMAssignment(Base):
+    __tablename__ = "task_llm_assignments"
+
+    task: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # 'market_analysis' | 'vision' | 'execution_decision'
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
