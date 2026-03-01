@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Monitor, Moon, Sun, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -226,16 +226,45 @@ interface TaskAssignmentsProps {
 function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
   const [saving, setSaving] = useState(false);
+  const [modelOptions, setModelOptions] = useState<Record<string, string[]>>({});
+  const [loadingModels, setLoadingModels] = useState<Record<string, boolean>>({});
+  const fetchedRef = useRef<Set<string>>(new Set());
   const connectedProviders = providers.filter((p) => p.is_configured);
 
-  useEffect(() => {
-    settingsApi.getAssignments().then(setAssignments).catch(() => {});
+  const fetchModels = useCallback(async (provider: string) => {
+    if (!provider || fetchedRef.current.has(provider)) return;
+    fetchedRef.current.add(provider);
+    setLoadingModels((prev) => ({ ...prev, [provider]: true }));
+    try {
+      const models = await settingsApi.listProviderModels(provider);
+      setModelOptions((prev) => ({ ...prev, [provider]: models }));
+    } catch {
+      fetchedRef.current.delete(provider);
+    } finally {
+      setLoadingModels((prev) => ({ ...prev, [provider]: false }));
+    }
   }, []);
+
+  useEffect(() => {
+    settingsApi.getAssignments().then((data) => {
+      setAssignments(data);
+      data.forEach((a) => { if (a.provider) fetchModels(a.provider); });
+    }).catch(() => {
+      toast.error("Failed to load task assignments");
+    });
+  }, [fetchModels]);
 
   function update(task: string, field: "provider" | "model_name", value: string) {
     setAssignments((prev) =>
       prev.map((a) => (a.task === task ? { ...a, [field]: value } : a))
     );
+  }
+
+  function handleProviderChange(task: string, value: string) {
+    const provider = value === "none" ? "" : value;
+    update(task, "provider", provider);
+    update(task, "model_name", "");
+    if (provider) fetchModels(provider);
   }
 
   async function handleSave() {
@@ -263,12 +292,14 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
       <CardContent className="space-y-4">
         {TASKS.map(({ key, label }) => {
           const a = assignments.find((x) => x.task === key) ?? { task: key, provider: "", model_name: "" };
+          const models = a.provider ? (modelOptions[a.provider] ?? []) : [];
+          const isLoadingModel = a.provider ? (loadingModels[a.provider] ?? false) : false;
           return (
             <div key={key} className="grid grid-cols-[160px_1fr_1fr] gap-3 items-center">
               <Label className="text-sm font-medium">{label}</Label>
               <Select
                 value={a.provider || "none"}
-                onValueChange={(v) => update(key, "provider", v === "none" ? "" : v)}
+                onValueChange={(v) => handleProviderChange(key, v)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Provider" />
@@ -282,13 +313,30 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                placeholder="Model (e.g. gpt-4o)"
-                value={a.model_name}
-                onChange={(e) => update(key, "model_name", e.target.value)}
-                className="font-mono text-sm"
-                disabled={!a.provider}
-              />
+              {models.length > 0 ? (
+                <Select
+                  value={a.model_name || "none"}
+                  onValueChange={(v) => update(key, "model_name", v === "none" ? "" : v)}
+                >
+                  <SelectTrigger className="font-mono text-sm">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Select model —</SelectItem>
+                    {models.map((m) => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  placeholder={isLoadingModel ? "Loading models…" : "Model (e.g. gpt-4o)"}
+                  value={a.model_name}
+                  onChange={(e) => update(key, "model_name", e.target.value)}
+                  className="font-mono text-sm"
+                  disabled={!a.provider || isLoadingModel}
+                />
+              )}
             </div>
           );
         })}
@@ -306,19 +354,13 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
-
-  const loadProviders = useCallback(async () => {
-    try {
-      const data = await settingsApi.listProviders();
-      setProviders(data);
-    } catch (e) {
-      console.error("Failed to load providers", e);
-    }
-  }, []);
+  const [providerRefresh, setProviderRefresh] = useState(0);
 
   useEffect(() => {
-    loadProviders();
-  }, [loadProviders]);
+    settingsApi.listProviders().then(setProviders).catch((e) => {
+      console.error("Failed to load providers", e);
+    });
+  }, [providerRefresh]);
 
   return (
     <SidebarInset>
@@ -337,7 +379,7 @@ export default function SettingsPage() {
                 key={p}
                 provider={p}
                 status={providers.find((s) => s.provider === p)}
-                onSaved={loadProviders}
+                onSaved={() => setProviderRefresh((k) => k + 1)}
               />
             ))}
           </div>

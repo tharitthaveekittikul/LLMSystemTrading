@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.security import encrypt
+from core.security import decrypt, encrypt
 from db.models import LLMProviderConfig, TaskLLMAssignment
 from db.postgres import get_db
 
@@ -53,6 +53,39 @@ def _mask_key(raw_key: str) -> str:
     if len(raw_key) < 16:
         return "****"
     return f"{raw_key[:6]}...{raw_key[-4:]}"
+
+
+async def _fetch_provider_models(provider: str, api_key: str) -> list[str]:
+    """Fetch available model IDs from the provider's API."""
+    try:
+        if provider == "openai":
+            import openai  # noqa: PLC0415
+            client = openai.AsyncOpenAI(api_key=api_key)
+            response = await client.models.list()
+            return sorted(
+                m.id for m in response.data
+                if m.id.startswith(("gpt-", "o1", "o3", "o4"))
+            )
+
+        if provider == "gemini":
+            from google import genai as google_genai  # noqa: PLC0415
+            gc = google_genai.Client(api_key=api_key)
+            loop = asyncio.get_event_loop()
+            raw = await loop.run_in_executor(None, lambda: list(gc.models.list()))
+            return sorted(
+                m.name.removeprefix("models/") for m in raw
+                if "gemini" in m.name.lower()
+            )
+
+        if provider == "anthropic":
+            import anthropic  # noqa: PLC0415
+            client = anthropic.AsyncAnthropic(api_key=api_key)
+            response = await client.models.list()
+            return [m.id for m in response.data]
+
+    except Exception as exc:
+        logger.warning("Failed to fetch models for %s: %s", provider, exc)
+    return []
 
 
 async def _test_provider_connection(provider: str, api_key: str) -> tuple[bool, str]:
@@ -167,6 +200,29 @@ async def test_provider(
 
     success, message = await _test_provider_connection(provider, body.api_key.strip())
     return TestProviderResponse(success=success, message=message)
+
+
+@router.get("/llm/providers/{provider}/models", response_model=list[str])
+async def list_provider_models(
+    provider: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[str]:
+    """Return available model IDs for a configured provider using its stored API key."""
+    if provider not in _VALID_PROVIDERS:
+        raise HTTPException(status_code=422, detail=f"Unknown provider: {provider!r}")
+
+    row = (await db.execute(
+        select(LLMProviderConfig).where(
+            LLMProviderConfig.provider == provider,
+            LLMProviderConfig.is_active.is_(True),
+        )
+    )).scalar_one_or_none()
+
+    if not row:
+        raise HTTPException(status_code=404, detail=f"No active API key configured for {provider!r}")
+
+    api_key = decrypt(row.encrypted_api_key)
+    return await _fetch_provider_models(provider, api_key)
 
 
 @router.get("/llm/assignments", response_model=list[TaskAssignment])

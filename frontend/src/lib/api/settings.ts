@@ -32,6 +32,9 @@ export const settingsApi = {
       },
     ),
 
+  listProviderModels: (provider: string) =>
+    apiRequest<string[]>(`/settings/llm/providers/${provider}/models`),
+
   getAssignments: () =>
     apiRequest<TaskAssignment[]>("/settings/llm/assignments"),
 
