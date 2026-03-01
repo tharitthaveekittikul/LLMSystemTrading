@@ -10,6 +10,7 @@ from api.routes import signals
 from api.routes import status
 from api.routes import kill_switch as kill_switch_routes
 from api.routes import strategies
+from api.routes import pipeline as pipeline_routes
 from core.config import settings
 from core.logging import setup_logging
 from db.postgres import init_db
@@ -77,6 +78,7 @@ app.include_router(signals.router,           prefix="/api/v1/signals",     tags=
 app.include_router(kill_switch_routes.router, prefix="/api/v1/kill-switch", tags=["kill-switch"])
 app.include_router(ws.router,            prefix="/ws",                 tags=["websocket"])
 app.include_router(strategies.router,    prefix="/api/v1/strategies",  tags=["strategies"])
+app.include_router(pipeline_routes.router, prefix="/api/v1/pipeline", tags=["pipeline"])
 
 
 @app.get("/health", tags=["system"])

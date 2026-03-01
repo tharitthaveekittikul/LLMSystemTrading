@@ -5,6 +5,7 @@ The signal pipeline: market data → prompt → LLM → TradingSignal (validated
 """
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -34,6 +35,13 @@ class TradingSignal(BaseModel):
         if v.upper() not in {"BUY", "SELL", "HOLD"}:
             raise ValueError("action must be BUY, SELL, or HOLD")
         return v.upper()
+
+
+@dataclass
+class LLMAnalysisResult:
+    signal: TradingSignal
+    prompt_text: str        # rendered human message sent to the LLM
+    raw_response: dict      # raw dict from LLM before Pydantic parsing
 
 
 # ── LLM factory ───────────────────────────────────────────────────────────────
@@ -122,7 +130,7 @@ async def analyze_market(
     news_context: str | None = None,
     trade_history_context: str | None = None,
     system_prompt_override: str | None = None,
-) -> TradingSignal:
+) -> LLMAnalysisResult:
     """Run the full LLM analysis pipeline and return a validated TradingSignal.
 
     Optional context parameters for LLM memory and awareness:
@@ -171,20 +179,26 @@ async def analyze_market(
     news_section = f"\n{news_context}" if news_context else ""
     history_section = f"\n{trade_history_context}" if trade_history_context else ""
 
-    raw: dict = await chain.ainvoke(
-        {
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "current_price": current_price,
-            "indicators": json.dumps(indicators, indent=2),
-            "ohlcv": json.dumps(ohlcv[-20:], indent=2, default=str),
-            "chart_section": chart_section,
-            "positions_section": positions_section,
-            "signals_section": signals_section,
-            "news_section": news_section,
-            "history_section": history_section,
-        }
-    )
+    prompt_vars = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "current_price": current_price,
+        "indicators": json.dumps(indicators, indent=2),
+        "ohlcv": json.dumps(ohlcv[-20:], indent=2, default=str),
+        "chart_section": chart_section,
+        "positions_section": positions_section,
+        "signals_section": signals_section,
+        "news_section": news_section,
+        "history_section": history_section,
+    }
+
+    # Render prompt text for audit capture (uses Python str.format on the template)
+    try:
+        prompt_text = _HUMAN.format(**prompt_vars)
+    except Exception:
+        prompt_text = ""
+
+    raw: dict = await chain.ainvoke(prompt_vars)
 
     signal = TradingSignal(**raw)
 
@@ -200,4 +214,4 @@ async def analyze_market(
         "Signal result | symbol=%s action=%s confidence=%.2f timeframe=%s",
         symbol, signal.action, signal.confidence, signal.timeframe,
     )
-    return signal
+    return LLMAnalysisResult(signal=signal, prompt_text=prompt_text, raw_response=raw)

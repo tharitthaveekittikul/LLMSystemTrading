@@ -97,3 +97,29 @@ export const killSwitchApi = {
   getLogs: () =>
     apiRequest<import("@/types/trading").KillSwitchLog[]>("/kill-switch/logs"),
 };
+
+// ── Pipeline Logs ─────────────────────────────────────────────────────────────
+
+export const logsApi = {
+  listRuns: (params?: {
+    account_id?: number;
+    symbol?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.account_id != null) query.set("account_id", String(params.account_id));
+    if (params?.symbol) query.set("symbol", params.symbol);
+    if (params?.status) query.set("status", params.status);
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return apiRequest<import("@/types/trading").PipelineRunSummary[]>(
+      `/pipeline/runs${qs ? `?${qs}` : ""}`
+    );
+  },
+
+  getRun: (runId: number) =>
+    apiRequest<import("@/types/trading").PipelineRunDetail>(`/pipeline/runs/${runId}`),
+};

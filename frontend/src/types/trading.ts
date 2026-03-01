@@ -133,7 +133,8 @@ export type WSEventType =
   | "trade_opened"
   | "trade_closed"
   | "ai_signal"
-  | "kill_switch_triggered";
+  | "kill_switch_triggered"
+  | "pipeline_run_complete";
 
 export interface WSEvent<T = unknown> {
   event: WSEventType;
@@ -297,4 +298,46 @@ export interface HistoryDeal {
 export interface HistorySyncResult {
   imported: number;
   total_fetched: number;
+}
+
+// ── Pipeline Logs ─────────────────────────────────────────────────────────────
+
+export interface PipelineStep {
+  id: number;
+  run_id: number;
+  seq: number;
+  step_name: string;
+  status: "ok" | "skip" | "error";
+  input_json: string | null;
+  output_json: string | null;
+  error: string | null;
+  duration_ms: number;
+}
+
+export interface PipelineRunSummary {
+  id: number;
+  account_id: number;
+  symbol: string;
+  timeframe: string;
+  status: "running" | "completed" | "hold" | "skipped" | "failed";
+  final_action: "BUY" | "SELL" | "HOLD" | null;
+  total_duration_ms: number | null;
+  journal_id: number | null;
+  trade_id: number | null;
+  created_at: string;
+}
+
+export interface PipelineRunDetail {
+  run: PipelineRunSummary;
+  steps: PipelineStep[];
+}
+
+export interface PipelineRunCompleteData {
+  run_id: number;
+  symbol: string;
+  timeframe: string;
+  status: string;
+  final_action: string | null;
+  total_duration_ms: number;
+  step_count: number;
 }

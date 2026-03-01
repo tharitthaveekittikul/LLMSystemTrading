@@ -5,14 +5,17 @@ Pipeline per call:
   2. Redis rate limit check (10 LLM calls / 60s per account)
   3. Redis OHLCV cache (TTL by timeframe) — fetch from MT5 on miss
   4. Fetch open positions + recent signals + trade history for LLM memory context
-  5. orchestrator.analyze_market() -> TradingSignal (with position/news context)
+  5. orchestrator.analyze_market() -> LLMAnalysisResult (with position/news context)
   6. Persist to AIJournal (trade_id=None initially)
   7. Broadcast ai_signal WebSocket event
   8. If BUY/SELL: check kill switch -> MT5Executor -> persist Trade -> update AIJournal
   9. Broadcast trade_opened (if order placed)
+
+Every step is recorded by PipelineTracer to pipeline_runs / pipeline_steps tables.
 """
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -21,7 +24,7 @@ from pydantic import BaseModel as PydanticBase
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.orchestrator import TradingSignal, analyze_market
+from ai.orchestrator import LLMAnalysisResult, TradingSignal, analyze_market
 from api.routes.ws import broadcast
 from core.config import settings
 from core.security import decrypt
@@ -32,6 +35,7 @@ from mt5.executor import MT5Executor, OrderRequest
 from services.alerting import send_alert
 from services.history_sync import HistoryService
 from services.kill_switch import is_active as kill_switch_active
+from services.pipeline_tracer import PipelineTracer
 
 logger = logging.getLogger(__name__)
 
@@ -76,53 +80,125 @@ class AITradingService:
         strategy_overrides: "StrategyOverrides | None" = None,
     ) -> AnalysisResult:
         """Run the full AI analysis -> optional trade execution pipeline."""
-        # 1. Load account
+        async with PipelineTracer(account_id, symbol, timeframe) as tracer:
+            return await self._run_pipeline(
+                tracer, account_id, symbol, timeframe, db, strategy_id, strategy_overrides
+            )
+
+    async def _run_pipeline(
+        self,
+        tracer: PipelineTracer,
+        account_id: int,
+        symbol: str,
+        timeframe: str,
+        db: AsyncSession,
+        strategy_id: int | None,
+        strategy_overrides: "StrategyOverrides | None",
+    ) -> AnalysisResult:
+        """Full instrumented pipeline — every step recorded to PipelineTracer."""
+
+        # ── 1. Load account ──────────────────────────────────────────────────
+        t0 = time.monotonic()
         account: Account | None = await db.get(Account, account_id)
         if not account or not account.is_active:
+            await tracer.record(
+                "account_loaded", status="error",
+                error="Account not found or inactive",
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
+            tracer.finalize(status="failed")
             raise HTTPException(status_code=404, detail="Account not found")
+        await tracer.record(
+            "account_loaded",
+            output_data={
+                "name": account.name,
+                "auto_trade_enabled": account.auto_trade_enabled,
+                "max_lot_size": account.max_lot_size,
+            },
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
 
-        # 2. Rate limit
+        # ── 2. Rate limit ────────────────────────────────────────────────────
+        t0 = time.monotonic()
         allowed = await check_llm_rate_limit(account_id)
         if not allowed:
+            await tracer.record(
+                "rate_limit_check", status="error",
+                output_data={"allowed": False},
+                error="LLM rate limit exceeded",
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
+            tracer.finalize(status="failed")
             logger.warning("LLM rate limit exceeded | account_id=%s", account_id)
             raise HTTPException(
                 status_code=429,
                 detail="LLM rate limit exceeded — max 10 calls per 60 seconds per account",
             )
+        await tracer.record(
+            "rate_limit_check",
+            output_data={"allowed": True},
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
 
-        # 3. Resolve timeframe int
+        # ── 3. Resolve timeframe int ─────────────────────────────────────────
         tf_upper = timeframe.upper()
         tf_int = _TIMEFRAME_MAP.get(tf_upper)
         if tf_int is None:
+            tracer.finalize(status="failed")
             raise HTTPException(
                 status_code=422,
                 detail=f"Unknown timeframe '{timeframe}'. Supported: {list(_TIMEFRAME_MAP)}",
             )
 
-        # 4. Fetch / cache OHLCV
+        # ── 4. Fetch / cache OHLCV ───────────────────────────────────────────
+        t0 = time.monotonic()
         candles = await get_candle_cache(account_id, symbol, tf_upper)
         current_price: float | None = None
+        ohlcv_source = "cache"
 
         if candles is None:
+            ohlcv_source = "mt5"
             logger.info("OHLCV cache miss | account_id=%s symbol=%s tf=%s", account_id, symbol, tf_upper)
             password = decrypt(account.password_encrypted)
             creds = AccountCredentials(
-                login=account.login,
-                password=password,
-                server=account.server,
-                path=account.mt5_path or settings.mt5_path,
+                login=account.login, password=password,
+                server=account.server, path=account.mt5_path or settings.mt5_path,
             )
             try:
                 async with MT5Bridge(creds) as bridge:
                     candles = await bridge.get_rates(symbol, tf_int, 50)
                     tick = await bridge.get_tick(symbol)
             except RuntimeError as exc:
+                await tracer.record(
+                    "ohlcv_fetch", status="error",
+                    input_data={"symbol": symbol, "timeframe": tf_upper},
+                    error=str(exc),
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                )
+                tracer.finalize(status="failed")
                 raise HTTPException(status_code=503, detail=str(exc))
             except ConnectionError as exc:
+                await tracer.record(
+                    "ohlcv_fetch", status="error",
+                    input_data={"symbol": symbol, "timeframe": tf_upper},
+                    error=str(exc),
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                )
+                tracer.finalize(status="failed")
                 raise HTTPException(status_code=502, detail=str(exc))
 
             if not candles:
-                raise HTTPException(status_code=502, detail=f"MT5 returned no candles for {symbol} {timeframe}")
+                await tracer.record(
+                    "ohlcv_fetch", status="error",
+                    input_data={"symbol": symbol, "timeframe": tf_upper},
+                    error="MT5 returned no candles",
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                )
+                tracer.finalize(status="failed")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"MT5 returned no candles for {symbol} {timeframe}",
+                )
 
             ttl = _CACHE_TTL.get(tf_upper, 60)
             await set_candle_cache(account_id, symbol, tf_upper, candles, ttl)
@@ -133,7 +209,19 @@ class AITradingService:
         if current_price is None and candles:
             current_price = float(candles[-1].get("close", 0))
 
-        # 5. Compute basic indicators
+        await tracer.record(
+            "ohlcv_fetch",
+            input_data={"symbol": symbol, "timeframe": tf_upper},
+            output_data={
+                "source": ohlcv_source,
+                "candle_count": len(candles or []),
+                "current_price": current_price,
+            },
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
+
+        # ── 5. Compute basic indicators ──────────────────────────────────────
+        t0 = time.monotonic()
         closes = [float(c.get("close", 0)) for c in candles[-20:]]
         indicators = {
             "sma_20": round(sum(closes) / len(closes), 5) if closes else 0,
@@ -141,16 +229,20 @@ class AITradingService:
             "recent_low": min(float(c.get("low", 0)) for c in candles[-20:]),
             "candle_count": len(candles),
         }
+        await tracer.record(
+            "indicators_computed",
+            output_data=indicators,
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
 
-        # 6. Fetch position context and recent signals for LLM memory
+        # ── 6. Fetch position context and recent signals ─────────────────────
+        t0 = time.monotonic()
         open_positions: list[dict] = []
         try:
             pos_password = decrypt(account.password_encrypted)
             pos_creds = AccountCredentials(
-                login=account.login,
-                password=pos_password,
-                server=account.server,
-                path=account.mt5_path or settings.mt5_path,
+                login=account.login, password=pos_password,
+                server=account.server, path=account.mt5_path or settings.mt5_path,
             )
             async with MT5Bridge(pos_creds) as pos_bridge:
                 raw_positions = await pos_bridge.get_positions()
@@ -167,7 +259,13 @@ class AITradingService:
             logger.warning(
                 "Could not fetch positions for LLM context | account_id=%s: %s", account_id, exc
             )
+        await tracer.record(
+            "positions_fetched",
+            output_data={"positions": open_positions, "count": len(open_positions)},
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
 
+        t0 = time.monotonic()
         recent_signals: list[dict] = []
         try:
             journal_rows = (
@@ -191,6 +289,11 @@ class AITradingService:
             logger.warning(
                 "Could not fetch recent signals for LLM context | account_id=%s: %s", account_id, exc
             )
+        await tracer.record(
+            "signals_fetched",
+            output_data={"signals": recent_signals, "count": len(recent_signals)},
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
 
         news_context_str: str | None = None
         if getattr(settings, "news_enabled", False):
@@ -209,8 +312,9 @@ class AITradingService:
                 "Could not fetch trade history for LLM context | account_id=%s: %s", account_id, exc
             )
 
-        # 7. LLM analysis
-        signal = await analyze_market(
+        # ── 7. LLM analysis ──────────────────────────────────────────────────
+        t0 = time.monotonic()
+        llm_result: LLMAnalysisResult = await analyze_market(
             symbol=symbol,
             timeframe=tf_upper,
             current_price=current_price or 0,
@@ -222,8 +326,43 @@ class AITradingService:
             trade_history_context=trade_history_context,
             system_prompt_override=strategy_overrides.custom_prompt if strategy_overrides else None,
         )
+        signal = llm_result.signal
+        await tracer.record(
+            "llm_analyzed",
+            input_data={"prompt": llm_result.prompt_text[:4000]},  # cap at 4000 chars
+            output_data={
+                "raw_response": llm_result.raw_response,
+                "provider": settings.llm_provider,
+                "action": signal.action,
+                "confidence": signal.confidence,
+            },
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
 
-        # 8. Persist AIJournal
+        # ── 8. Confidence gate ───────────────────────────────────────────────
+        action_before = signal.action
+        if signal.confidence < settings.llm_confidence_threshold:
+            logger.info(
+                "Signal downgraded to HOLD — confidence %.2f below threshold %.2f | symbol=%s",
+                signal.confidence, settings.llm_confidence_threshold, symbol,
+            )
+            signal.action = "HOLD"
+        await tracer.record(
+            "confidence_gate",
+            input_data={
+                "confidence": signal.confidence,
+                "threshold": settings.llm_confidence_threshold,
+            },
+            output_data={"action_before": action_before, "action_after": signal.action},
+        )
+
+        logger.info(
+            "Signal result | symbol=%s action=%s confidence=%.2f timeframe=%s",
+            symbol, signal.action, signal.confidence, signal.timeframe,
+        )
+
+        # ── 9. Persist AIJournal ─────────────────────────────────────────────
+        t0 = time.monotonic()
         journal = AIJournal(
             account_id=account_id,
             trade_id=None,
@@ -240,8 +379,13 @@ class AITradingService:
         db.add(journal)
         await db.commit()
         await db.refresh(journal)
+        await tracer.record(
+            "journal_saved",
+            output_data={"journal_id": journal.id},
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
 
-        # 9. Broadcast ai_signal
+        # ── 10. Broadcast ai_signal ──────────────────────────────────────────
         await broadcast(account_id, "ai_signal", {
             "journal_id": journal.id,
             "symbol": symbol,
@@ -254,27 +398,43 @@ class AITradingService:
             "take_profit": signal.take_profit,
         })
 
-        # 10. Skip execution for HOLD or kill switch active
+        # ── 11. Skip if HOLD ─────────────────────────────────────────────────
         if signal.action == "HOLD":
+            await tracer.record(
+                "kill_switch_check",
+                output_data={"active": False, "skipped": "HOLD signal"},
+            )
             logger.info("Signal HOLD — no order | account_id=%s symbol=%s", account_id, symbol)
-            return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
+            tracer.finalize(status="hold", final_action="HOLD", journal_id=journal.id)
+            return AnalysisResult(
+                signal=signal, order_placed=False, ticket=None, journal_id=journal.id
+            )
 
-        if kill_switch_active():
+        # ── 12. Kill switch check ────────────────────────────────────────────
+        ks_active = kill_switch_active()
+        await tracer.record("kill_switch_check", output_data={"active": ks_active})
+        if ks_active:
             logger.warning(
                 "Kill switch active — signal saved but order skipped | account_id=%s symbol=%s",
                 account_id, symbol,
             )
-            return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
+            tracer.finalize(status="skipped", final_action=signal.action, journal_id=journal.id)
+            return AnalysisResult(
+                signal=signal, order_placed=False, ticket=None, journal_id=journal.id
+            )
 
-        # Skip execution if auto-trade disabled for this account
+        # ── 13. Auto-trade disabled check ────────────────────────────────────
         if not account.auto_trade_enabled:
             logger.info(
                 "Auto-trade disabled — signal saved but order skipped | account_id=%s",
                 account_id,
             )
-            return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
+            tracer.finalize(status="skipped", final_action=signal.action, journal_id=journal.id)
+            return AnalysisResult(
+                signal=signal, order_placed=False, ticket=None, journal_id=journal.id
+            )
 
-        # 11. Build order request
+        # ── 14. Build order request ──────────────────────────────────────────
         effective_lot_size = (
             strategy_overrides.lot_size
             if strategy_overrides and strategy_overrides.lot_size is not None
@@ -289,14 +449,24 @@ class AITradingService:
             take_profit=signal.take_profit,
             comment="AI-Trade",
         )
+        await tracer.record(
+            "order_built",
+            input_data={
+                "symbol": symbol,
+                "direction": signal.action,
+                "volume": effective_lot_size,
+                "entry": signal.entry,
+                "sl": signal.stop_loss,
+                "tp": signal.take_profit,
+            },
+        )
 
-        # 12. Connect MT5 and execute
+        # ── 15. Connect MT5 and execute ──────────────────────────────────────
+        t0 = time.monotonic()
         password = decrypt(account.password_encrypted)
         creds = AccountCredentials(
-            login=account.login,
-            password=password,
-            server=account.server,
-            path=account.mt5_path or settings.mt5_path,
+            login=account.login, password=password,
+            server=account.server, path=account.mt5_path or settings.mt5_path,
         )
         try:
             async with MT5Bridge(creds) as bridge:
@@ -306,21 +476,47 @@ class AITradingService:
                 )
         except (RuntimeError, ConnectionError) as exc:
             logger.error("MT5 error during order execution | account_id=%s | %s", account_id, exc)
-            return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
+            await tracer.record(
+                "mt5_executed", status="error",
+                error=str(exc),
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
+            tracer.finalize(status="failed", final_action=signal.action, journal_id=journal.id)
+            return AnalysisResult(
+                signal=signal, order_placed=False, ticket=None, journal_id=journal.id
+            )
 
         if not order_result.success:
             logger.error(
                 "Order failed | account_id=%s symbol=%s error=%s",
                 account_id, symbol, order_result.error,
             )
+            await tracer.record(
+                "mt5_executed", status="error",
+                output_data={"success": False, "error": order_result.error},
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
             await send_alert(
                 f"*Order Failed*\n"
                 f"Account: {account_id} | {signal.action} {symbol}\n"
                 f"Error: {order_result.error}"
             )
-            return AnalysisResult(signal=signal, order_placed=False, ticket=None, journal_id=journal.id)
+            tracer.finalize(status="failed", final_action=signal.action, journal_id=journal.id)
+            return AnalysisResult(
+                signal=signal, order_placed=False, ticket=None, journal_id=journal.id
+            )
 
-        # 13. Persist Trade row
+        await tracer.record(
+            "mt5_executed",
+            output_data={
+                "success": True,
+                "ticket": order_result.ticket,
+                "paper_trade": account.paper_trade_enabled,
+            },
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
+
+        # ── 16. Persist Trade row ────────────────────────────────────────────
         trade = Trade(
             account_id=account_id,
             ticket=order_result.ticket,
@@ -342,7 +538,7 @@ class AITradingService:
         await db.commit()
         await db.refresh(trade)
 
-        # 14. Broadcast trade_opened
+        # ── 17. Broadcast trade_opened ───────────────────────────────────────
         await broadcast(account_id, "trade_opened", {
             "ticket": order_result.ticket,
             "symbol": symbol,
@@ -353,16 +549,32 @@ class AITradingService:
             "take_profit": signal.take_profit,
         })
 
+        # ── 18. Send Telegram alert ──────────────────────────────────────────
+        t0 = time.monotonic()
         paper_tag = " _(paper)_" if account.paper_trade_enabled else ""
-        await send_alert(
+        alert_msg = (
             f"*Trade Placed{paper_tag}*\n"
             f"Account: {account_id} | {signal.action} {effective_lot_size} {symbol}\n"
             f"Entry: {signal.entry} | SL: {signal.stop_loss} | TP: {signal.take_profit}\n"
             f"Ticket: {order_result.ticket}"
         )
+        await send_alert(alert_msg)
+        await tracer.record(
+            "telegram_sent",
+            output_data={"sent": True, "preview": alert_msg[:100]},
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
+
         logger.info(
             "Trade executed | account_id=%s symbol=%s direction=%s ticket=%s",
             account_id, symbol, signal.action, order_result.ticket,
+        )
+
+        tracer.finalize(
+            status="completed",
+            final_action=signal.action,
+            journal_id=journal.id,
+            trade_id=trade.id,
         )
         return AnalysisResult(
             signal=signal,

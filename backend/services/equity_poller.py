@@ -3,6 +3,7 @@
 Started as an asyncio.Task in main.py lifespan. Runs every 60 seconds.
 Broadcasts equity_update WebSocket events after each poll.
 Each account's failure is isolated — one bad account won't stop polling of others.
+Skips polling during Forex market close (Fri 22:00 UTC → Sun 22:00 UTC).
 """
 import asyncio
 import logging
@@ -18,14 +19,38 @@ logger = logging.getLogger(__name__)
 _POLL_INTERVAL = 60  # seconds
 
 
+def _forex_market_open(now: datetime) -> bool:
+    """Return True if the Forex market is open.
+
+    Forex is open Mon 00:00 UTC → Fri 22:00 UTC (approximately).
+    weekday(): 0=Monday … 4=Friday, 5=Saturday, 6=Sunday.
+    """
+    weekday = now.weekday()
+    hour = now.hour
+    if weekday == 5:  # Saturday — always closed
+        return False
+    if weekday == 6 and hour < 22:  # Sunday before 22:00 UTC — closed
+        return False
+    if weekday == 4 and hour >= 22:  # Friday from 22:00 UTC — closed
+        return False
+    return True
+
+
 async def run_equity_poller() -> None:
     """Background loop — runs forever until task is cancelled."""
     logger.info("Equity poller started | interval=%ds", _POLL_INTERVAL)
     while True:
-        try:
-            await _poll_all_accounts()
-        except Exception as exc:
-            logger.error("Equity poller cycle error: %s", exc)
+        now = datetime.now(UTC)
+        if _forex_market_open(now):
+            try:
+                await _poll_all_accounts()
+            except Exception as exc:
+                logger.error("Equity poller cycle error: %s", exc)
+        else:
+            logger.debug(
+                "Equity poller skipped — market closed | weekday=%d hour=%d UTC",
+                now.weekday(), now.hour,
+            )
         await asyncio.sleep(_POLL_INTERVAL)
 
 

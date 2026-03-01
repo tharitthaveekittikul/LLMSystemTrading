@@ -69,7 +69,7 @@ async def insert_equity_snapshot(
             INSERT INTO equity_snapshots (ts, account_id, equity, balance, margin)
             VALUES ($1, $2, $3, $4, $5)
             """,
-            datetime.now(UTC).replace(tzinfo=None),  # QuestDB asyncpg requires naive UTC
+            datetime.now(UTC),  # asyncpg requires timezone-aware UTC for TIMESTAMP columns
             account_id,
             equity,
             balance,

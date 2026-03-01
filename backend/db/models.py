@@ -151,3 +151,48 @@ class AccountStrategy(Base):
 
     account: Mapped["Account"] = relationship("Account", back_populates="strategy_bindings")
     strategy: Mapped["Strategy"] = relationship("Strategy", back_populates="account_bindings")
+
+
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(20), index=True)
+    timeframe: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(20), default="running")
+    # running | completed | hold | skipped | failed
+    final_action: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    total_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    journal_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("ai_journal.id"), nullable=True
+    )
+    trade_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("trades.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+    steps: Mapped[list["PipelineStep"]] = relationship(
+        "PipelineStep", back_populates="run", cascade="all, delete-orphan",
+        order_by="PipelineStep.seq",
+    )
+
+
+class PipelineStep(Base):
+    __tablename__ = "pipeline_steps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer)
+    step_name: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(10))  # ok | skip | error
+    input_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    run: Mapped["PipelineRun"] = relationship("PipelineRun", back_populates="steps")

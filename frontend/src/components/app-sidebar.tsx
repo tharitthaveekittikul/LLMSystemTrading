@@ -7,6 +7,7 @@ import {
   Brain,
   Cpu,
   LayoutDashboard,
+  ScrollText,
   Settings,
   Shield,
   TrendingUp,
@@ -32,6 +33,7 @@ const navItems = [
   { title: "Strategies", url: "/strategies", icon: Cpu },
   { title: "Trades", url: "/trades", icon: TrendingUp },
   { title: "AI Signals", url: "/signals", icon: Brain },
+  { title: "Pipeline Logs", url: "/logs", icon: ScrollText },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
