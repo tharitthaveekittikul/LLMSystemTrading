@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import type { Account, AccountCreatePayload, AccountUpdatePayload, MT5AccountInfo, AccountStats, EquityPoint } from "@/types/trading";
+import type { Account, AccountCreatePayload, AccountUpdatePayload, MT5AccountInfo, AccountStats, EquityPoint, HistoryDeal, HistorySyncResult } from "@/types/trading";
 
 export const accountsApi = {
   list: () => apiRequest<Account[]>("/accounts"),
@@ -23,4 +23,10 @@ export const accountsApi = {
     apiRequest<EquityPoint[]>(`/accounts/${id}/equity-history?hours=${hours}`),
   getStats: (id: number): Promise<AccountStats> =>
     apiRequest<AccountStats>(`/accounts/${id}/stats`),
+  getHistory: (id: number, days?: number) =>
+    apiRequest<HistoryDeal[]>(`/accounts/${id}/history?days=${days ?? 90}`),
+  syncHistory: (id: number, days?: number) =>
+    apiRequest<HistorySyncResult>(`/accounts/${id}/history/sync?days=${days ?? 90}`, {
+      method: "POST",
+    }),
 };

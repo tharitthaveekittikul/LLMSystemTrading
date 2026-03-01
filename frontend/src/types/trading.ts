@@ -12,6 +12,7 @@ export interface Account {
   max_lot_size: number;
   auto_trade_enabled: boolean;
   created_at: string;
+  mt5_path: string;
 }
 
 export interface AccountCreatePayload {
@@ -23,6 +24,7 @@ export interface AccountCreatePayload {
   is_live: boolean;
   allowed_symbols: string[];
   max_lot_size: number;
+  mt5_path?: string;
 }
 
 export interface AccountUpdatePayload {
@@ -33,6 +35,7 @@ export interface AccountUpdatePayload {
   max_lot_size?: number;
   auto_trade_enabled?: boolean;
   password?: string;
+  mt5_path?: string;
 }
 
 export interface MT5AccountInfo {
@@ -266,4 +269,28 @@ export interface StrategyRun {
   confidence: number
   reasoning: string
   created_at: string
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+
+export interface HistoryDeal {
+  ticket: number;
+  order: number;
+  time: number;
+  time_msc: number;
+  type: number;
+  entry: number;
+  position_id: number;
+  volume: number;
+  price: number;
+  commission: number;
+  swap: number;
+  profit: number;
+  symbol: string;
+  comment: string | null;
+}
+
+export interface HistorySyncResult {
+  imported: number;
+  total_fetched: number;
 }

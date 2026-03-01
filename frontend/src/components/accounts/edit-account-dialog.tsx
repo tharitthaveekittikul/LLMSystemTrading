@@ -39,6 +39,7 @@ export function EditAccountDialog({
     name: account.name,
     broker: account.broker,
     server: account.server,
+    mt5_path: account.mt5_path,
     is_live: String(account.is_live),
     max_lot_size: String(account.max_lot_size),
     password: "",
@@ -51,6 +52,7 @@ export function EditAccountDialog({
       name: account.name,
       broker: account.broker,
       server: account.server,
+      mt5_path: account.mt5_path,
       is_live: String(account.is_live),
       max_lot_size: String(account.max_lot_size),
       password: "",
@@ -70,6 +72,7 @@ export function EditAccountDialog({
         name: form.name,
         broker: form.broker,
         server: form.server,
+        ...(form.mt5_path ? { mt5_path: form.mt5_path } : {}),
         is_live: form.is_live === "true",
         max_lot_size: parseFloat(form.max_lot_size),
         ...(form.password ? { password: form.password } : {}),
@@ -121,6 +124,17 @@ export function EditAccountDialog({
               onChange={field("server")}
               required
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-mt5-path">MT5 Path</Label>
+            <Input
+              id="edit-mt5-path"
+              placeholder="C:\Program Files\MetaTrader 5"
+              value={form.mt5_path}
+              onChange={field("mt5_path")}
+            />
+            <p className="text-xs text-muted-foreground">Leave empty to use default path</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

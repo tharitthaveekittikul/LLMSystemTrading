@@ -34,6 +34,7 @@ const defaultForm = {
   login: "",
   password: "",
   server: "",
+  mt5_path: "",
   is_live: "false",
   max_lot_size: "0.1",
 };
@@ -64,6 +65,7 @@ export function AddAccountDialog({
         is_live: form.is_live === "true",
         allowed_symbols: [],
         max_lot_size: parseFloat(form.max_lot_size),
+        ...(form.mt5_path ? { mt5_path: form.mt5_path } : {}),
       });
       toast.success(`Account "${account.name}" created`);
       onCreated(account);
@@ -141,6 +143,17 @@ export function AddAccountDialog({
               onChange={field("server")}
               required
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="mt5_path">MT5 Path</Label>
+            <Input
+              id="mt5_path"
+              placeholder="C:\Program Files\MetaTrader 5"
+              value={form.mt5_path}
+              onChange={field("mt5_path")}
+            />
+            <p className="text-xs text-muted-foreground">Leave empty to use default path</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

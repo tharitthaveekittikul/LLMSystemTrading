@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Info, Pencil, Trash2 } from "lucide-react";
+import { History, Info, Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { accountsApi } from "@/lib/api/accounts";
 import type { Account, MT5AccountInfo } from "@/types/trading";
 import {
@@ -107,6 +108,17 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
             <span>Added</span>
             <span className="text-foreground">{createdAt}</span>
           </div>
+          {account.mt5_path && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>MT5 Path</span>
+              <span
+                className="truncate max-w-[160px] text-foreground"
+                title={account.mt5_path}
+              >
+                {account.mt5_path}
+              </span>
+            </div>
+          )}
           {liveInfo && (
             <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t text-sm">
               <div>
@@ -137,6 +149,13 @@ export function AccountCard({ account, onUpdated, onRemoved }: AccountCardProps)
           >
             <Info className="mr-1.5 h-3.5 w-3.5" />
             {loadingInfo ? "Connecting…" : "MT5 Info"}
+          </Button>
+
+          <Button variant="outline" size="sm" asChild className="flex-1">
+            <Link href={`/accounts/${account.id}/history`}>
+              <History className="mr-1.5 h-3.5 w-3.5" />
+              History
+            </Link>
           </Button>
 
           <Button
