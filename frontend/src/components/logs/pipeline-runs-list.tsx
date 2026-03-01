@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatDateTime } from "@/lib/date";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -29,13 +30,6 @@ const ACTION_DOT: Record<string, string> = {
   HOLD: "bg-yellow-500",
 };
 
-function timeAgo(isoString: string): string {
-  const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return new Date(isoString).toLocaleDateString();
-}
 
 interface PipelineRunsListProps {
   selectedRunId: number | null;
@@ -169,7 +163,7 @@ export function PipelineRunsList({
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5 pl-4">
-                  #{run.id} · {timeAgo(run.created_at)}
+                  #{run.id} · {formatDateTime(run.created_at)}
                   {run.total_duration_ms != null &&
                     ` · ${run.total_duration_ms}ms`}
                 </p>

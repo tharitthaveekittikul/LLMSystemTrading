@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { History, Info, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { accountsApi } from "@/lib/api/accounts";
+import { formatDateTime } from "@/lib/date";
 import type { Account, MT5AccountInfo } from "@/types/trading";
 import {
   Card,
@@ -86,7 +87,7 @@ export function AccountCard({
     }
   }
 
-  const createdAt = new Date(account.created_at).toLocaleDateString();
+  const createdAt = formatDateTime(account.created_at);
 
   return (
     <>

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { tradesApi } from "@/lib/api";
 import { useTradingStore } from "@/hooks/use-trading-store";
+import { formatDateTime } from "@/lib/date";
 import type { Trade } from "@/types/trading";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -32,20 +33,6 @@ const pnlColor = (p: number | null) => {
   if (p < 0) return "text-red-600 dark:text-red-400";
   return "";
 };
-
-function formatISO(isoStr: string): string {
-  const d = new Date(isoStr);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const day = pad(d.getDate());
-  const month = pad(d.getMonth() + 1);
-  const year = d.getFullYear();
-  let hours = d.getHours();
-  const minutes = pad(d.getMinutes());
-  const seconds = pad(d.getSeconds());
-  const ampm = hours >= 12 ? "PM" : "AM";
-  hours = hours % 12 || 12;
-  return `${day}/${month}/${year}, ${pad(hours)}:${minutes}:${seconds} ${ampm}`;
-}
 
 // ── Scorecard ─────────────────────────────────────────────────────────────────
 
@@ -241,10 +228,10 @@ function TradesContent() {
                     {t.ticket}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatISO(t.opened_at)}
+                    {formatDateTime(t.opened_at)}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                    {t.closed_at ? formatISO(t.closed_at) : "Open"}
+                    {t.closed_at ? formatDateTime(t.closed_at) : "Open"}
                   </TableCell>
                   <TableCell className="font-medium">{t.symbol}</TableCell>
                   <TableCell>

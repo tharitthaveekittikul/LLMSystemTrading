@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { formatTime } from "@/lib/date";
 import {
   ResponsiveContainer,
   LineChart,
@@ -21,7 +22,7 @@ export function EquityChart({ data, loading }: EquityChartProps) {
   const formatted = useMemo(
     () =>
       data.map((p) => ({
-        ts: new Date(p.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        ts: formatTime(p.ts),
         equity: p.equity,
         balance: p.balance,
       })),

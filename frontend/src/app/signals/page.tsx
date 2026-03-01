@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatDateTime } from "@/lib/date";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
@@ -246,7 +247,7 @@ export default function SignalsPage() {
                     )}
                   </div>
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(s.created_at).toLocaleString()}
+                    {formatDateTime(s.created_at)}
                   </span>
                 </div>
                 <div className="mt-2">

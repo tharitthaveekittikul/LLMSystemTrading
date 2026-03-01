@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { killSwitchApi } from "@/lib/api";
 import type { KillSwitchLog, KillSwitchStatus } from "@/types/trading";
+import { formatDateTime } from "@/lib/date";
 
 export default function KillSwitchPage() {
   const [status, setStatus] = useState<KillSwitchStatus | null>(null);
@@ -104,8 +105,7 @@ export default function KillSwitchPage() {
               </p>
               {status.activated_at && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Activated at{" "}
-                  {new Date(status.activated_at).toLocaleString()}
+                  Activated at {new Date(status.activated_at).toLocaleString()}
                 </p>
               )}
             </CardContent>
@@ -183,11 +183,9 @@ export default function KillSwitchPage() {
                     <TableCell className="text-sm">
                       {l.reason ?? "\u2014"}
                     </TableCell>
-                    <TableCell className="text-sm">
-                      {l.triggered_by}
-                    </TableCell>
+                    <TableCell className="text-sm">{l.triggered_by}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {new Date(l.created_at).toLocaleString()}
+                      {formatDateTime(l.created_at)}
                     </TableCell>
                   </TableRow>
                 ))}

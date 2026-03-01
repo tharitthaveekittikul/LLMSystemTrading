@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDistanceToNow } from "date-fns";
+import { formatDateTime } from "@/lib/date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useTradingStore } from "@/hooks/use-trading-store";
@@ -55,9 +55,7 @@ export function AISignalsFeed() {
                       {(signal.confidence * 100).toFixed(0)}%
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(signal.created_at), {
-                        addSuffix: true,
-                      })}
+                      {formatDateTime(signal.created_at)}
                     </div>
                   </div>
                 </div>

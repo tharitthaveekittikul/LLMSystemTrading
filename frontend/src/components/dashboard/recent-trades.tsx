@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { tradesApi } from "@/lib/api";
+import { formatDateTime } from "@/lib/date";
 import type { Trade } from "@/types/trading";
 
 interface RecentTradesProps {
@@ -72,14 +73,7 @@ export function RecentTrades({ accountId }: RecentTradesProps) {
                     {fmt(t.profit)}
                   </td>
                   <td className="p-2 text-right text-xs text-muted-foreground hidden sm:table-cell">
-                    {t.closed_at
-                      ? new Date(t.closed_at).toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "—"}
+                    {t.closed_at ? formatDateTime(t.closed_at) : "—"}
                   </td>
                 </tr>
               ))}

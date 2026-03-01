@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { accountsApi } from "@/lib/api/accounts";
+import { formatDateTime } from "@/lib/date";
 import type { HistoryDeal } from "@/types/trading";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,20 +45,6 @@ interface PairedTrade {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatDateTime(unixSecs: number): string {
-  const d = new Date(unixSecs * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const day = pad(d.getDate());
-  const month = pad(d.getMonth() + 1);
-  const year = d.getFullYear();
-  let hours = d.getHours();
-  const minutes = pad(d.getMinutes());
-  const seconds = pad(d.getSeconds());
-  const ampm = hours >= 12 ? "PM" : "AM";
-  hours = hours % 12 || 12;
-  return `${day}/${month}/${year}, ${pad(hours)}:${minutes}:${seconds} ${ampm}`;
-}
 
 function pnlColor(value: number): string {
   if (value > 0) return "text-green-600 dark:text-green-400";
@@ -223,10 +210,10 @@ export function AccountHistoryView({ accountId }: Props) {
             {rows.map((trade) => (
               <TableRow key={trade.position_id}>
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                  {formatDateTime(trade.open_time)}
+                  {formatDateTime(trade.open_time * 1000)}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                  {formatDateTime(trade.close_time)}
+                  {formatDateTime(trade.close_time * 1000)}
                 </TableCell>
                 <TableCell className="font-medium">{trade.symbol}</TableCell>
                 <TableCell>

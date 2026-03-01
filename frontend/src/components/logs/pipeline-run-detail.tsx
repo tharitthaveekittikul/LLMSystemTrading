@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatDateTime } from "@/lib/date";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PipelineStepCard } from "./pipeline-step-card";
@@ -39,7 +40,7 @@ export function PipelineRunDetailPanel({ run }: PipelineRunDetailPanelProps) {
       .finally(() => setLoading(false));
   }, [run.id]);
 
-  const ts = new Date(run.created_at).toLocaleString();
+  const ts = formatDateTime(run.created_at);
 
   return (
     <div className="h-full flex flex-col">
