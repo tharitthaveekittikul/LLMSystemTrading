@@ -69,15 +69,18 @@ export default function SignalsPage() {
       setSymbols([]);
       return;
     }
-    setSymbolsLoading(true);
-    accountsApi
-      .getSymbols(Number(selectedAccountId))
-      .then((data) => {
+    (async () => {
+      setSymbolsLoading(true);
+      try {
+        const data = await accountsApi.getSymbols(Number(selectedAccountId));
         setSymbols(data);
         setSymbol(""); // reset so no stale text carries over
-      })
-      .catch(() => setSymbols([]))
-      .finally(() => setSymbolsLoading(false));
+      } catch {
+        setSymbols([]);
+      } finally {
+        setSymbolsLoading(false);
+      }
+    })();
   }, [selectedAccountId]);
 
   const loadSignals = useCallback(async () => {
@@ -95,10 +98,14 @@ export default function SignalsPage() {
 
   useEffect(() => {
     loadSignals();
-    accountsApi
-      .list()
-      .then(setAccounts)
-      .catch(() => {});
+    (async () => {
+      try {
+        const data = await accountsApi.list();
+        setAccounts(data);
+      } catch {
+        // silently ignore — accounts list is optional for signal display
+      }
+    })();
   }, [loadSignals]);
 
   async function handleAnalyze() {
@@ -159,13 +166,19 @@ export default function SignalsPage() {
                   >
                     <option value="">Select symbol…</option>
                     {symbols.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
                     ))}
                   </select>
                 ) : (
                   <Input
                     className="w-28 text-sm"
-                    placeholder={symbolsLoading ? "Loading symbols…" : "e.g. EURUSD (select account first)"}
+                    placeholder={
+                      symbolsLoading
+                        ? "Loading symbols…"
+                        : "e.g. EURUSD (select account first)"
+                    }
                     value={symbol}
                     onChange={(e) => setSymbol(e.target.value)}
                     disabled={symbolsLoading}

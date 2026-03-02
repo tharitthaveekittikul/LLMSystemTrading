@@ -16,7 +16,9 @@ interface StrategyItem {
 
 export default function BacktestPage() {
   const [runs, setRuns] = useState<BacktestRunSummary[]>([]);
-  const [selectedRun, setSelectedRun] = useState<BacktestRunSummary | null>(null);
+  const [selectedRun, setSelectedRun] = useState<BacktestRunSummary | null>(
+    null,
+  );
   const [strategies, setStrategies] = useState<StrategyItem[]>([]);
 
   const refreshRuns = useCallback(async () => {
@@ -35,10 +37,15 @@ export default function BacktestPage() {
 
   // Initial data load
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/v1/strategies`)
-      .then((r) => r.json())
-      .then((data: StrategyItem[]) => setStrategies(Array.isArray(data) ? data : []))
-      .catch(() => {});
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/strategies`);
+        const data: StrategyItem[] = await res.json();
+        setStrategies(Array.isArray(data) ? data : []);
+      } catch {
+        // silently ignore on error — strategies list is optional
+      }
+    })();
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshRuns();
@@ -71,7 +78,10 @@ export default function BacktestPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
-          <BacktestConfigForm strategies={strategies} onRunCreated={handleRunCreated} />
+          <BacktestConfigForm
+            strategies={strategies}
+            onRunCreated={handleRunCreated}
+          />
 
           <div>
             <h2 className="text-xs font-medium mb-1.5">Past Runs</h2>
@@ -93,7 +103,8 @@ export default function BacktestPage() {
             <div>
               <p className="text-base font-medium">Select or run a backtest</p>
               <p className="text-xs mt-1">
-                Configure a strategy and date range on the left, then click Run Backtest.
+                Configure a strategy and date range on the left, then click Run
+                Backtest.
               </p>
             </div>
           </div>

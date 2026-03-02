@@ -1,13 +1,13 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
-import { SidebarInset } from "@/components/ui/sidebar"
-import { AppHeader } from "@/components/app-header"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Switch } from "@/components/ui/switch"
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { SidebarInset } from "@/components/ui/sidebar";
+import { AppHeader } from "@/components/app-header";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -16,45 +16,55 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { strategiesApi } from "@/lib/api/strategies"
-import type { Strategy } from "@/types/trading"
-import { Plus, Edit2, Trash2 } from "lucide-react"
+} from "@/components/ui/dialog";
+import { strategiesApi } from "@/lib/api/strategies";
+import type { Strategy } from "@/types/trading";
+import { Plus, Edit2, Trash2 } from "lucide-react";
 
 const TYPE_COLORS: Record<string, string> = {
   config: "bg-blue-100 text-blue-800",
   prompt: "bg-purple-100 text-purple-800",
   code: "bg-green-100 text-green-800",
-}
+};
 
 export default function StrategiesPage() {
-  const [strategies, setStrategies] = useState<Strategy[]>([])
-  const [loading, setLoading] = useState(true)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
-    strategiesApi.list()
-      .then(setStrategies)
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [])
+    (async () => {
+      try {
+        const data = await strategiesApi.list();
+        setStrategies(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   async function handleToggle(strategy: Strategy) {
     try {
-      const updated = await strategiesApi.update(strategy.id, { is_active: !strategy.is_active })
-      setStrategies(prev => prev.map(s => s.id === strategy.id ? updated : s))
+      const updated = await strategiesApi.update(strategy.id, {
+        is_active: !strategy.is_active,
+      });
+      setStrategies((prev) =>
+        prev.map((s) => (s.id === strategy.id ? updated : s)),
+      );
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
   }
 
   async function handleDelete(id: number) {
     try {
-      await strategiesApi.delete(id)
-      setStrategies(prev => prev.filter(s => s.id !== id))
-      setDeletingId(null)
+      await strategiesApi.delete(id);
+      setStrategies((prev) => prev.filter((s) => s.id !== id));
+      setDeletingId(null);
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
   }
 
@@ -65,16 +75,25 @@ export default function StrategiesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">Trading Strategies</h2>
-            <p className="text-sm text-muted-foreground">Manage automated trading strategies and account bindings</p>
+            <p className="text-sm text-muted-foreground">
+              Manage automated trading strategies and account bindings
+            </p>
           </div>
           <Button asChild>
-            <Link href="/strategies/new"><Plus className="mr-2 h-4 w-4" />New Strategy</Link>
+            <Link href="/strategies/new">
+              <Plus className="mr-2 h-4 w-4" />
+              New Strategy
+            </Link>
           </Button>
         </div>
 
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map(i => <Card key={i}><CardContent className="h-40 animate-pulse bg-muted rounded-lg" /></Card>)}
+            {[1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardContent className="h-40 animate-pulse bg-muted rounded-lg" />
+              </Card>
+            ))}
           </div>
         ) : strategies.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
@@ -85,7 +104,7 @@ export default function StrategiesPage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {strategies.map(s => (
+            {strategies.map((s) => (
               <Card key={s.id}>
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
@@ -95,35 +114,73 @@ export default function StrategiesPage() {
                       onCheckedChange={() => handleToggle(s)}
                     />
                   </div>
-                  {s.description && <p className="text-xs text-muted-foreground">{s.description}</p>}
+                  {s.description && (
+                    <p className="text-xs text-muted-foreground">
+                      {s.description}
+                    </p>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant="secondary" className={TYPE_COLORS[s.strategy_type]}>{s.strategy_type}</Badge>
+                    <Badge
+                      variant="secondary"
+                      className={TYPE_COLORS[s.strategy_type]}
+                    >
+                      {s.strategy_type}
+                    </Badge>
                     <Badge variant="outline">{s.timeframe}</Badge>
-                    <Badge variant="outline">{s.trigger_type === "candle_close" ? "Candle close" : `Every ${s.interval_minutes}m`}</Badge>
+                    <Badge variant="outline">
+                      {s.trigger_type === "candle_close"
+                        ? "Candle close"
+                        : `Every ${s.interval_minutes}m`}
+                    </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {s.symbols.join(", ")} · {s.binding_count} account{s.binding_count !== 1 ? "s" : ""} bound
+                    {s.symbols.join(", ")} · {s.binding_count} account
+                    {s.binding_count !== 1 ? "s" : ""} bound
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" asChild>
-                      <Link href={`/strategies/${s.id}`}><Edit2 className="mr-1 h-3 w-3" />Edit</Link>
+                      <Link href={`/strategies/${s.id}`}>
+                        <Edit2 className="mr-1 h-3 w-3" />
+                        Edit
+                      </Link>
                     </Button>
-                    <Dialog open={deletingId === s.id} onOpenChange={open => setDeletingId(open ? s.id : null)}>
+                    <Dialog
+                      open={deletingId === s.id}
+                      onOpenChange={(open) => setDeletingId(open ? s.id : null)}
+                    >
                       <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
-                          <Trash2 className="mr-1 h-3 w-3" />Delete
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="mr-1 h-3 w-3" />
+                          Delete
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Delete strategy?</DialogTitle>
-                          <DialogDescription>This will remove &ldquo;{s.name}&rdquo; and all scheduler jobs. This cannot be undone.</DialogDescription>
+                          <DialogDescription>
+                            This will remove &ldquo;{s.name}&rdquo; and all
+                            scheduler jobs. This cannot be undone.
+                          </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
-                          <Button variant="outline" onClick={() => setDeletingId(null)}>Cancel</Button>
-                          <Button variant="destructive" onClick={() => handleDelete(s.id)}>Delete</Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setDeletingId(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={() => handleDelete(s.id)}
+                          >
+                            Delete
+                          </Button>
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
@@ -135,5 +192,5 @@ export default function StrategiesPage() {
         )}
       </div>
     </SidebarInset>
-  )
+  );
 }

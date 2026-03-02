@@ -11,16 +11,23 @@ import { AccountCard } from "./account-card";
 import { AddAccountDialog } from "./add-account-dialog";
 
 export function AccountsView() {
-  const { accounts, setAccounts, updateAccount, removeAccount } = useTradingStore();
+  const { accounts, setAccounts, updateAccount, removeAccount } =
+    useTradingStore();
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
-    accountsApi
-      .list()
-      .then(setAccounts)
-      .catch(() => toast.error("Failed to load accounts"))
-      .finally(() => setLoading(false));
+    (async () => {
+      setLoading(true);
+      try {
+        const data = await accountsApi.list();
+        setAccounts(data);
+      } catch {
+        toast.error("Failed to load accounts");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [setAccounts]);
 
   function handleCreated(account: Account) {
@@ -39,7 +46,9 @@ export function AccountsView() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {loading ? "Loading…" : `${accounts.length} account${accounts.length !== 1 ? "s" : ""}`}
+          {loading
+            ? "Loading…"
+            : `${accounts.length} account${accounts.length !== 1 ? "s" : ""}`}
         </p>
         <Button size="sm" onClick={() => setDialogOpen(true)}>
           <Plus className="mr-1.5 h-4 w-4" />
@@ -54,7 +63,11 @@ export function AccountsView() {
           <p className="mt-1 text-sm text-muted-foreground">
             Add an MT5 account to get started
           </p>
-          <Button className="mt-4" size="sm" onClick={() => setDialogOpen(true)}>
+          <Button
+            className="mt-4"
+            size="sm"
+            onClick={() => setDialogOpen(true)}
+          >
             <Plus className="mr-1.5 h-4 w-4" />
             Add Account
           </Button>

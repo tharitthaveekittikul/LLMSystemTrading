@@ -18,18 +18,26 @@ export function RecentTrades({ accountId }: RecentTradesProps) {
       setTrades([]);
       return;
     }
-    setLoading(true);
-    tradesApi
-      .list({ account_id: accountId, limit: 10 })
-      .then((data) => setTrades(data.filter((t) => t.closed_at !== null)))
-      .catch(() => setTrades([]))
-      .finally(() => setLoading(false));
+    (async () => {
+      setLoading(true);
+      try {
+        const data = await tradesApi.list({ account_id: accountId, limit: 10 });
+        setTrades(data.filter((t) => t.closed_at !== null));
+      } catch {
+        setTrades([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [accountId]);
 
   const fmt = (v: number | null) =>
     v == null
       ? "—"
-      : new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+      : new Intl.NumberFormat("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(v);
 
   return (
     <div className="rounded-lg border bg-card flex flex-col h-full">
@@ -40,7 +48,9 @@ export function RecentTrades({ accountId }: RecentTradesProps) {
         {loading ? (
           <p className="text-sm text-muted-foreground p-4">Loading…</p>
         ) : trades.length === 0 ? (
-          <p className="text-sm text-muted-foreground p-4">No closed trades yet.</p>
+          <p className="text-sm text-muted-foreground p-4">
+            No closed trades yet.
+          </p>
         ) : (
           <table className="w-full text-sm">
             <thead>

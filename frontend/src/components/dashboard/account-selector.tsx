@@ -20,15 +20,16 @@ export function AccountSelector() {
   useEffect(() => {
     if (accounts.length === 0 && !isFetchingRef.current) {
       isFetchingRef.current = true;
-      accountsApi
-        .list()
-        .then(setAccounts)
-        .catch((err) => {
+      (async () => {
+        try {
+          const data = await accountsApi.list();
+          setAccounts(data);
+        } catch (err) {
           console.error("[AccountSelector] Failed to load accounts:", err);
-        })
-        .finally(() => {
+        } finally {
           isFetchingRef.current = false;
-        });
+        }
+      })();
     }
   }, [accounts.length, setAccounts]);
 

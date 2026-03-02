@@ -49,12 +49,14 @@ export function AccountCard({
 
   useEffect(() => {
     let isMounted = true;
-    accountsApi
-      .getInfo(account.id)
-      .then((info) => {
+    (async () => {
+      try {
+        const info = await accountsApi.getInfo(account.id);
         if (isMounted) setLiveInfo(info);
-      })
-      .catch(() => {}); // silently hide row if MT5 unavailable (503/502)
+      } catch {
+        // silently hide row if MT5 unavailable (503/502)
+      }
+    })();
     return () => {
       isMounted = false;
     };

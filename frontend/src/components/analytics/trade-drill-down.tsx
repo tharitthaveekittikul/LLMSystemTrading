@@ -21,7 +21,7 @@ import { useTradingStore } from "@/hooks/use-trading-store";
 import type { Trade, DailyEntry } from "@/types/trading";
 
 interface TradeDrillDownProps {
-  date: string | null;       // "YYYY-MM-DD"
+  date: string | null; // "YYYY-MM-DD"
   entry: DailyEntry | null;
   open: boolean;
   onClose: () => void;
@@ -35,7 +35,12 @@ function formatDuration(openTime: string, closeTime: string | null): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
-export function TradeDrillDown({ date, entry, open, onClose }: TradeDrillDownProps) {
+export function TradeDrillDown({
+  date,
+  entry,
+  open,
+  onClose,
+}: TradeDrillDownProps) {
   const { activeAccountId } = useTradingStore();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,17 +48,23 @@ export function TradeDrillDown({ date, entry, open, onClose }: TradeDrillDownPro
   useEffect(() => {
     if (!open || !date) return;
     const controller = new AbortController();
-    setLoading(true);
-    const q = new URLSearchParams({ date_from: date, date_to: date });
-    if (activeAccountId != null) q.set("account_id", String(activeAccountId));
-    apiRequest<Trade[]>(`/trades?${q}`, { signal: controller.signal })
-      .then(setTrades)
-      .catch((err) => {
+    (async () => {
+      setLoading(true);
+      const q = new URLSearchParams({ date_from: date, date_to: date });
+      if (activeAccountId != null) q.set("account_id", String(activeAccountId));
+      try {
+        const data = await apiRequest<Trade[]>(`/trades?${q}`, {
+          signal: controller.signal,
+        });
+        setTrades(data);
+      } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         console.error("[TradeDrillDown] Failed to load trades:", err);
         setTrades([]);
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    })();
     return () => controller.abort();
   }, [open, date, activeAccountId]);
 
@@ -71,7 +82,11 @@ export function TradeDrillDown({ date, entry, open, onClose }: TradeDrillDownPro
               <span
                 className={cn(
                   "text-base font-semibold",
-                  isProfit ? "text-green-400" : isLoss ? "text-red-400" : "text-muted-foreground",
+                  isProfit
+                    ? "text-green-400"
+                    : isLoss
+                      ? "text-red-400"
+                      : "text-muted-foreground",
                 )}
               >
                 {pnl > 0 ? "+" : ""}
@@ -83,9 +98,13 @@ export function TradeDrillDown({ date, entry, open, onClose }: TradeDrillDownPro
 
         <div className="mt-4">
           {loading ? (
-            <p className="text-sm text-muted-foreground animate-pulse">Loading trades…</p>
+            <p className="text-sm text-muted-foreground animate-pulse">
+              Loading trades…
+            </p>
           ) : trades.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No trades found for this day.</p>
+            <p className="text-sm text-muted-foreground">
+              No trades found for this day.
+            </p>
           ) : (
             <Table>
               <TableHeader>
@@ -102,19 +121,25 @@ export function TradeDrillDown({ date, entry, open, onClose }: TradeDrillDownPro
               <TableBody>
                 {trades.map((t) => (
                   <TableRow key={t.id}>
-                    <TableCell className="font-mono text-xs">{t.symbol}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {t.symbol}
+                    </TableCell>
                     <TableCell>
                       <span
                         className={cn(
                           "text-xs font-semibold uppercase",
-                          t.direction === "BUY" ? "text-green-400" : "text-red-400",
+                          t.direction === "BUY"
+                            ? "text-green-400"
+                            : "text-red-400",
                         )}
                       >
                         {t.direction}
                       </span>
                     </TableCell>
                     <TableCell className="text-xs">{t.volume}</TableCell>
-                    <TableCell className="font-mono text-xs">{t.entry_price}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {t.entry_price}
+                    </TableCell>
                     <TableCell className="font-mono text-xs">
                       {t.close_price ?? "—"}
                     </TableCell>
@@ -124,8 +149,8 @@ export function TradeDrillDown({ date, entry, open, onClose }: TradeDrillDownPro
                         (t.profit ?? 0) > 0
                           ? "text-green-400"
                           : (t.profit ?? 0) < 0
-                          ? "text-red-400"
-                          : "text-muted-foreground",
+                            ? "text-red-400"
+                            : "text-muted-foreground",
                       )}
                     >
                       {t.profit != null

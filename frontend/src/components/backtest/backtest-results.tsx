@@ -34,15 +34,20 @@ export function BacktestResults({ run }: Props) {
 
   useEffect(() => {
     if (run.status !== "completed") return;
-    Promise.all([
-      backtestApi.getTrades(run.id, { limit: 1000 }),
-      backtestApi.getEquityCurve(run.id),
-      backtestApi.getMonthlyPnl(run.id),
-    ]).then(([t, e, m]) => {
-      setTrades(t);
-      setEquity(e);
-      setMonthly(m);
-    });
+    (async () => {
+      try {
+        const [t, e, m] = await Promise.all([
+          backtestApi.getTrades(run.id, { limit: 1000 }),
+          backtestApi.getEquityCurve(run.id),
+          backtestApi.getMonthlyPnl(run.id),
+        ]);
+        setTrades(t);
+        setEquity(e);
+        setMonthly(m);
+      } catch (err) {
+        console.error("[BacktestResults] Failed to load results:", err);
+      }
+    })();
   }, [run.id, run.status]);
 
   if (run.status === "pending" || run.status === "running") {
@@ -120,7 +125,10 @@ export function BacktestResults({ run }: Props) {
 
         {/* Tab panels */}
         {activeTab === "equity" && (
-          <EquityCurveChart data={equity} initialBalance={run.initial_balance} />
+          <EquityCurveChart
+            data={equity}
+            initialBalance={run.initial_balance}
+          />
         )}
         {activeTab === "monthly" && <MonthlyHeatmap data={monthly} />}
         {activeTab === "trades" && <BacktestTradeTable trades={trades} />}

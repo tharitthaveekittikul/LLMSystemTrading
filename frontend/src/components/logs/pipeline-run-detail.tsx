@@ -31,13 +31,18 @@ export function PipelineRunDetailPanel({ run }: PipelineRunDetailPanelProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    setDetail(null);
-    logsApi
-      .getRun(run.id)
-      .then(setDetail)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    (async () => {
+      setLoading(true);
+      setDetail(null);
+      try {
+        const data = await logsApi.getRun(run.id);
+        setDetail(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [run.id]);
 
   const ts = formatDateTime(run.created_at);
@@ -67,7 +72,8 @@ export function PipelineRunDetailPanel({ run }: PipelineRunDetailPanelProps) {
         </div>
         <p className="text-xs text-muted-foreground">
           {ts}
-          {run.total_duration_ms != null && ` · ${run.total_duration_ms}ms total`}
+          {run.total_duration_ms != null &&
+            ` · ${run.total_duration_ms}ms total`}
           {run.trade_id && ` · Trade #${run.trade_id}`}
         </p>
       </div>

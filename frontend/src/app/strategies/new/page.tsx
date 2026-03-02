@@ -44,7 +44,14 @@ export default function NewStrategyPage() {
   });
 
   useEffect(() => {
-    accountsApi.list().then(setAccounts).catch(console.error);
+    (async () => {
+      try {
+        const data = await accountsApi.list();
+        setAccounts(data);
+      } catch (err) {
+        console.error(err);
+      }
+    })();
   }, []);
 
   function addSymbol() {

@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { Monitor, Moon, Sun, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import {
+  Monitor,
+  Moon,
+  Sun,
+  CheckCircle,
+  XCircle,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
@@ -18,7 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { settingsApi, type ProviderStatus, type TaskAssignment } from "@/lib/api/settings";
+import {
+  settingsApi,
+  type ProviderStatus,
+  type TaskAssignment,
+} from "@/lib/api/settings";
 import { accountsApi } from "@/lib/api/accounts";
 import { useSettings } from "@/hooks/use-settings";
 import type { Account } from "@/types/trading";
@@ -29,14 +40,14 @@ const PROVIDERS = ["openai", "gemini", "anthropic"] as const;
 type Provider = (typeof PROVIDERS)[number];
 
 const TASKS: { key: string; label: string }[] = [
-  { key: "market_analysis",    label: "Market Analysis" },
-  { key: "vision",             label: "Vision / Chart Reading" },
+  { key: "market_analysis", label: "Market Analysis" },
+  { key: "vision", label: "Vision / Chart Reading" },
   { key: "execution_decision", label: "Execution Decision" },
 ];
 
 const PROVIDER_LABELS: Record<Provider, string> = {
-  openai:    "OpenAI",
-  gemini:    "Gemini",
+  openai: "OpenAI",
+  gemini: "Gemini",
   anthropic: "Anthropic",
 };
 
@@ -46,8 +57,8 @@ function ThemeSection() {
   const { theme, setTheme } = useTheme();
 
   const options = [
-    { value: "light",  label: "Light",  icon: <Sun  className="h-4 w-4" /> },
-    { value: "dark",   label: "Dark",   icon: <Moon className="h-4 w-4" /> },
+    { value: "light", label: "Light", icon: <Sun className="h-4 w-4" /> },
+    { value: "dark", label: "Dark", icon: <Moon className="h-4 w-4" /> },
     { value: "system", label: "System", icon: <Monitor className="h-4 w-4" /> },
   ];
 
@@ -57,7 +68,9 @@ function ThemeSection() {
         <CardTitle className="text-base">Appearance</CardTitle>
       </CardHeader>
       <CardContent>
-        <Label className="text-sm text-muted-foreground mb-3 block">Theme</Label>
+        <Label className="text-sm text-muted-foreground mb-3 block">
+          Theme
+        </Label>
         <div className="flex gap-2">
           {options.map((opt) => (
             <Button
@@ -84,9 +97,14 @@ function DisplaySection() {
   const [accounts, setAccounts] = useState<Account[]>([]);
 
   useEffect(() => {
-    accountsApi.list().then(setAccounts).catch(() => {
-      toast.error("Failed to load accounts");
-    });
+    (async () => {
+      try {
+        const data = await accountsApi.list();
+        setAccounts(data);
+      } catch {
+        toast.error("Failed to load accounts");
+      }
+    })();
   }, []);
 
   return (
@@ -102,7 +120,9 @@ function DisplaySection() {
           </p>
           <Select
             value={defaultAccountId != null ? String(defaultAccountId) : "none"}
-            onValueChange={(v) => setDefaultAccountId(v === "none" ? null : Number(v))}
+            onValueChange={(v) =>
+              setDefaultAccountId(v === "none" ? null : Number(v))
+            }
           >
             <SelectTrigger className="w-64">
               <SelectValue placeholder="No default" />
@@ -136,7 +156,10 @@ function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
   const [testing, setTesting] = useState(false);
 
   async function handleTest() {
-    if (!apiKey.trim()) { toast.error("Enter an API key to test"); return; }
+    if (!apiKey.trim()) {
+      toast.error("Enter an API key to test");
+      return;
+    }
     setTesting(true);
     try {
       const result = await settingsApi.testProvider(provider, apiKey);
@@ -150,7 +173,10 @@ function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
   }
 
   async function handleSave() {
-    if (!apiKey.trim()) { toast.error("Enter an API key to save"); return; }
+    if (!apiKey.trim()) {
+      toast.error("Enter an API key to save");
+      return;
+    }
     setSaving(true);
     try {
       await settingsApi.saveProvider(provider, apiKey);
@@ -168,9 +194,14 @@ function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">{PROVIDER_LABELS[provider]}</CardTitle>
+          <CardTitle className="text-sm font-semibold">
+            {PROVIDER_LABELS[provider]}
+          </CardTitle>
           {status?.is_configured ? (
-            <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+            <Badge
+              variant="outline"
+              className="text-xs text-green-600 border-green-600"
+            >
               <CheckCircle className="h-3 w-3 mr-1" /> Configured
             </Badge>
           ) : (
@@ -180,7 +211,9 @@ function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
           )}
         </div>
         {status?.key_hint && (
-          <p className="text-xs text-muted-foreground font-mono">{status.key_hint}</p>
+          <p className="text-xs text-muted-foreground font-mono">
+            {status.key_hint}
+          </p>
         )}
       </CardHeader>
       <CardContent className="space-y-2">
@@ -226,8 +259,12 @@ interface TaskAssignmentsProps {
 function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
   const [saving, setSaving] = useState(false);
-  const [modelOptions, setModelOptions] = useState<Record<string, string[]>>({});
-  const [loadingModels, setLoadingModels] = useState<Record<string, boolean>>({});
+  const [modelOptions, setModelOptions] = useState<Record<string, string[]>>(
+    {},
+  );
+  const [loadingModels, setLoadingModels] = useState<Record<string, boolean>>(
+    {},
+  );
   const fetchedRef = useRef<Set<string>>(new Set());
   const connectedProviders = providers.filter((p) => p.is_configured);
 
@@ -246,17 +283,26 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
   }, []);
 
   useEffect(() => {
-    settingsApi.getAssignments().then((data) => {
-      setAssignments(data);
-      data.forEach((a) => { if (a.provider) fetchModels(a.provider); });
-    }).catch(() => {
-      toast.error("Failed to load task assignments");
-    });
+    (async () => {
+      try {
+        const data = await settingsApi.getAssignments();
+        setAssignments(data);
+        data.forEach((a) => {
+          if (a.provider) fetchModels(a.provider);
+        });
+      } catch {
+        toast.error("Failed to load task assignments");
+      }
+    })();
   }, [fetchModels]);
 
-  function update(task: string, field: "provider" | "model_name", value: string) {
+  function update(
+    task: string,
+    field: "provider" | "model_name",
+    value: string,
+  ) {
     setAssignments((prev) =>
-      prev.map((a) => (a.task === task ? { ...a, [field]: value } : a))
+      prev.map((a) => (a.task === task ? { ...a, [field]: value } : a)),
     );
   }
 
@@ -285,17 +331,26 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
       <CardHeader>
         <CardTitle className="text-base">Task LLM Assignments</CardTitle>
         <p className="text-xs text-muted-foreground">
-          Choose which provider and model handles each AI task.
-          Only configured providers appear in the dropdown.
+          Choose which provider and model handles each AI task. Only configured
+          providers appear in the dropdown.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {TASKS.map(({ key, label }) => {
-          const a = assignments.find((x) => x.task === key) ?? { task: key, provider: "", model_name: "" };
+          const a = assignments.find((x) => x.task === key) ?? {
+            task: key,
+            provider: "",
+            model_name: "",
+          };
           const models = a.provider ? (modelOptions[a.provider] ?? []) : [];
-          const isLoadingModel = a.provider ? (loadingModels[a.provider] ?? false) : false;
+          const isLoadingModel = a.provider
+            ? (loadingModels[a.provider] ?? false)
+            : false;
           return (
-            <div key={key} className="grid grid-cols-[160px_1fr_1fr] gap-3 items-center">
+            <div
+              key={key}
+              className="grid grid-cols-[160px_1fr_1fr] gap-3 items-center"
+            >
               <Label className="text-sm font-medium">{label}</Label>
               <Select
                 value={a.provider || "none"}
@@ -316,7 +371,9 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
               {models.length > 0 ? (
                 <Select
                   value={a.model_name || "none"}
-                  onValueChange={(v) => update(key, "model_name", v === "none" ? "" : v)}
+                  onValueChange={(v) =>
+                    update(key, "model_name", v === "none" ? "" : v)
+                  }
                 >
                   <SelectTrigger className="font-mono text-sm">
                     <SelectValue placeholder="Select model" />
@@ -324,13 +381,17 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
                   <SelectContent>
                     <SelectItem value="none">— Select model —</SelectItem>
                     {models.map((m) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               ) : (
                 <Input
-                  placeholder={isLoadingModel ? "Loading models…" : "Model (e.g. gpt-4o)"}
+                  placeholder={
+                    isLoadingModel ? "Loading models…" : "Model (e.g. gpt-4o)"
+                  }
                   value={a.model_name}
                   onChange={(e) => update(key, "model_name", e.target.value)}
                   className="font-mono text-sm"
@@ -357,9 +418,14 @@ export default function SettingsPage() {
   const [providerRefresh, setProviderRefresh] = useState(0);
 
   useEffect(() => {
-    settingsApi.listProviders().then(setProviders).catch((e) => {
-      console.error("Failed to load providers", e);
-    });
+    (async () => {
+      try {
+        const data = await settingsApi.listProviders();
+        setProviders(data);
+      } catch (e) {
+        console.error("Failed to load providers", e);
+      }
+    })();
   }, [providerRefresh]);
 
   return (

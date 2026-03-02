@@ -29,24 +29,26 @@ export default function DashboardPage() {
       return;
     }
 
-    setStatsLoading(true);
-    accountsApi
-      .getStats(activeAccountId)
-      .then(setStats)
-      .catch(() => setStats(null))
-      .finally(() => setStatsLoading(false));
-
-    setEquityLoading(true);
-    accountsApi
-      .getEquityHistory(activeAccountId, 24)
-      .then(setEquityData)
-      .catch(() => setEquityData([]))
-      .finally(() => setEquityLoading(false));
-
-    accountsApi
-      .get(activeAccountId)
-      .then((account) => setAutoTradeEnabled(account.auto_trade_enabled))
-      .catch(() => {});
+    (async () => {
+      setStatsLoading(true);
+      setEquityLoading(true);
+      try {
+        const [stats, equity, account] = await Promise.all([
+          accountsApi.getStats(activeAccountId),
+          accountsApi.getEquityHistory(activeAccountId, 24),
+          accountsApi.get(activeAccountId),
+        ]);
+        setStats(stats);
+        setEquityData(equity);
+        setAutoTradeEnabled(account.auto_trade_enabled);
+      } catch {
+        setStats(null);
+        setEquityData([]);
+      } finally {
+        setStatsLoading(false);
+        setEquityLoading(false);
+      }
+    })();
   }, [activeAccountId]);
 
   const handleEquityUpdate = useCallback((point: EquityPoint) => {
@@ -62,12 +64,14 @@ export default function DashboardPage() {
       if (!activeAccountId) return;
       setAutoTradeEnabled(enabled);
       try {
-        await accountsApi.update(activeAccountId, { auto_trade_enabled: enabled });
+        await accountsApi.update(activeAccountId, {
+          auto_trade_enabled: enabled,
+        });
       } catch {
         setAutoTradeEnabled(!enabled);
       }
     },
-    [activeAccountId]
+    [activeAccountId],
   );
 
   return (
