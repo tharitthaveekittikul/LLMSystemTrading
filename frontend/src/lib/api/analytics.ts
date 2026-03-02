@@ -6,6 +6,7 @@ export const analyticsApi = {
     year: number;
     month: number;
     accountId?: number | null;
+    isLive?: boolean | null;
     signal?: AbortSignal;
   }): Promise<DailyPnLResponse> {
     const q = new URLSearchParams({
@@ -13,6 +14,7 @@ export const analyticsApi = {
       month: String(params.month),
     });
     if (params.accountId != null) q.set("account_id", String(params.accountId));
+    if (params.isLive != null) q.set("is_live", String(params.isLive));
     return apiRequest<DailyPnLResponse>(`/analytics/daily?${q}`, {
       signal: params.signal,
     });

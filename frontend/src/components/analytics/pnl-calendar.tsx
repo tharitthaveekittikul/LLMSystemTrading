@@ -15,11 +15,33 @@ interface PnlCalendarProps {
 }
 
 const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
-export function PnlCalendar({ selectedDate, onDaySelect, onDataChange }: PnlCalendarProps) {
+type AccountTypeFilter = "all" | "live" | "demo";
+
+const ACCOUNT_TYPE_FILTERS: { label: string; value: AccountTypeFilter }[] = [
+  { label: "All", value: "all" },
+  { label: "Live", value: "live" },
+  { label: "Demo", value: "demo" },
+];
+
+export function PnlCalendar({
+  selectedDate,
+  onDaySelect,
+  onDataChange,
+}: PnlCalendarProps) {
   const { activeAccountId } = useTradingStore();
   const now = new Date();
   const [year, setYear] = useState(now.getUTCFullYear());
@@ -27,35 +49,57 @@ export function PnlCalendar({ selectedDate, onDaySelect, onDataChange }: PnlCale
   const [data, setData] = useState<DailyPnLResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accountTypeFilter, setAccountTypeFilter] =
+    useState<AccountTypeFilter>("all");
+
+  // Reset filter when user selects a specific account (filter doesn't apply there)
+  useEffect(() => {
+    if (activeAccountId !== null) {
+      setAccountTypeFilter("all");
+    }
+  }, [activeAccountId]);
 
   const onDataChangeRef = useRef(onDataChange);
   useEffect(() => {
     onDataChangeRef.current = onDataChange;
   });
 
-  const fetchData = useCallback(async (signal: AbortSignal) => {
-    setLoading(true);
-    setError(null);
-    onDataChangeRef.current?.(null, true);
-    try {
-      const result = await analyticsApi.getDaily({
-        year,
-        month,
-        accountId: activeAccountId,
-        signal,
-      });
-      if (signal.aborted) return;
-      setData(result);
-      onDataChangeRef.current?.(result, false);
-    } catch (e) {
-      if (signal.aborted) return;
-      const msg = e instanceof Error ? e.message : "Failed to load data";
-      setError(msg);
-      onDataChangeRef.current?.(null, false);
-    } finally {
-      if (!signal.aborted) setLoading(false);
-    }
-  }, [year, month, activeAccountId]);
+  const isLiveParam =
+    activeAccountId !== null
+      ? undefined
+      : accountTypeFilter === "live"
+        ? true
+        : accountTypeFilter === "demo"
+          ? false
+          : undefined;
+
+  const fetchData = useCallback(
+    async (signal: AbortSignal) => {
+      setLoading(true);
+      setError(null);
+      onDataChangeRef.current?.(null, true);
+      try {
+        const result = await analyticsApi.getDaily({
+          year,
+          month,
+          accountId: activeAccountId,
+          isLive: isLiveParam,
+          signal,
+        });
+        if (signal.aborted) return;
+        setData(result);
+        onDataChangeRef.current?.(result, false);
+      } catch (e) {
+        if (signal.aborted) return;
+        const msg = e instanceof Error ? e.message : "Failed to load data";
+        setError(msg);
+        onDataChangeRef.current?.(null, false);
+      } finally {
+        if (!signal.aborted) setLoading(false);
+      }
+    },
+    [year, month, activeAccountId, isLiveParam],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -90,21 +134,58 @@ export function PnlCalendar({ selectedDate, onDaySelect, onDataChange }: PnlCale
   return (
     <div>
       {/* Navigation bar */}
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={prevMonth} aria-label="Previous month">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={prevMonth}
+            aria-label="Previous month"
+          >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <h2 className="w-44 text-center text-sm font-semibold">
             {MONTH_NAMES[month - 1]} {year}
           </h2>
-          <Button variant="outline" size="icon" onClick={nextMonth} aria-label="Next month">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={nextMonth}
+            aria-label="Next month"
+          >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        <Button variant="ghost" size="sm" onClick={goToday}>
-          Today
-        </Button>
+
+        <div className="flex items-center gap-2">
+          {/* Demo / Live filter — only when "All accounts" is selected */}
+          {activeAccountId === null && (
+            <div className="flex rounded-md border overflow-hidden text-xs">
+              {ACCOUNT_TYPE_FILTERS.map(({ label, value }) => (
+                <button
+                  key={value}
+                  onClick={() => setAccountTypeFilter(value)}
+                  className={[
+                    "px-3 py-1 transition-colors",
+                    accountTypeFilter === value
+                      ? "bg-primary text-primary-foreground font-semibold"
+                      : "bg-background text-muted-foreground hover:bg-muted",
+                    // dividers between buttons
+                    value !== "all" ? "border-l" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <Button variant="ghost" size="sm" onClick={goToday}>
+            Today
+          </Button>
+        </div>
       </div>
 
       {/* States */}

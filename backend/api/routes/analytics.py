@@ -35,6 +35,7 @@ router = APIRouter()
 @router.get("/summary")
 async def get_summary(
     account_id: int | None = Query(None),
+    is_live: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Return institutional-grade trading metrics for closed trades.
@@ -60,6 +61,8 @@ async def get_summary(
             .join(Account, Trade.account_id == Account.id)
             .where(Trade.closed_at != None)  # noqa: E711
         )
+        if is_live is not None:
+            query = query.where(Account.is_live == is_live)
         result = await db.execute(query)
         rows = result.all()
 
@@ -116,6 +119,7 @@ async def get_daily_pnl(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
     account_id: int | None = Query(None),
+    is_live: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Return per-day aggregated PnL for a given month.
@@ -142,9 +146,10 @@ async def get_daily_pnl(
             .where(Trade.closed_at != None)  # noqa: E711
             .where(extract("year", Trade.closed_at) == year)
             .where(extract("month", Trade.closed_at) == month)
-            .group_by(date_col)
-            .order_by(date_col)
         )
+        if is_live is not None:
+            query = query.where(Account.is_live == is_live)
+        query = query.group_by(date_col).order_by(date_col)
         currency = "USD"
     else:
         # Single account: no conversion, keep native currency.
