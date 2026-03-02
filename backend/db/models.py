@@ -22,6 +22,7 @@ class Account(Base):
     # Trading config per account
     allowed_symbols: Mapped[str] = mapped_column(Text, default="")  # JSON list
     max_lot_size: Mapped[float] = mapped_column(Float, default=0.1)
+    risk_pct: Mapped[float] = mapped_column(Float, default=0.01)  # fraction of balance per trade (1% default)
     auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     paper_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     mt5_path: Mapped[str] = mapped_column(String(500), default="")

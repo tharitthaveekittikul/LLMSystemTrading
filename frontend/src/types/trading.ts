@@ -10,6 +10,7 @@ export interface Account {
   is_active: boolean;
   allowed_symbols: string[];
   max_lot_size: number;
+  risk_pct: number;
   auto_trade_enabled: boolean;
   created_at: string;
   mt5_path: string;
@@ -25,6 +26,7 @@ export interface AccountCreatePayload {
   is_live: boolean;
   allowed_symbols: string[];
   max_lot_size: number;
+  risk_pct?: number;
   mt5_path?: string;
   account_type?: string;
 }
@@ -35,6 +37,7 @@ export interface AccountUpdatePayload {
   server?: string;
   is_live?: boolean;
   max_lot_size?: number;
+  risk_pct?: number;
   auto_trade_enabled?: boolean;
   password?: string;
   mt5_path?: string;
@@ -221,59 +224,59 @@ export interface EquityPoint {
 // ── Strategies ────────────────────────────────────────────────────────────────
 
 export interface Strategy {
-  id: number
-  name: string
-  description: string | null
-  strategy_type: "config" | "prompt" | "code"
-  trigger_type: "interval" | "candle_close"
-  interval_minutes: number | null
-  symbols: string[]
-  timeframe: string
-  lot_size: number | null
-  sl_pips: number | null
-  tp_pips: number | null
-  news_filter: boolean
-  custom_prompt: string | null
-  module_path: string | null
-  class_name: string | null
-  is_active: boolean
-  binding_count: number
+  id: number;
+  name: string;
+  description: string | null;
+  strategy_type: "config" | "prompt" | "code";
+  trigger_type: "interval" | "candle_close";
+  interval_minutes: number | null;
+  symbols: string[];
+  timeframe: string;
+  lot_size: number | null;
+  sl_pips: number | null;
+  tp_pips: number | null;
+  news_filter: boolean;
+  custom_prompt: string | null;
+  module_path: string | null;
+  class_name: string | null;
+  is_active: boolean;
+  binding_count: number;
 }
 
 export interface StrategyBinding {
-  id: number
-  account_id: number
-  strategy_id: number
-  is_active: boolean
-  account_name: string
+  id: number;
+  account_id: number;
+  strategy_id: number;
+  is_active: boolean;
+  account_name: string;
 }
 
 export interface CreateStrategyPayload {
-  name: string
-  description?: string
-  strategy_type: "config" | "prompt" | "code"
-  trigger_type: "interval" | "candle_close"
-  interval_minutes?: number
-  symbols: string[]
-  timeframe: string
-  lot_size?: number
-  sl_pips?: number
-  tp_pips?: number
-  news_filter?: boolean
-  custom_prompt?: string
-  module_path?: string
-  class_name?: string
+  name: string;
+  description?: string;
+  strategy_type: "config" | "prompt" | "code";
+  trigger_type: "interval" | "candle_close";
+  interval_minutes?: number;
+  symbols: string[];
+  timeframe: string;
+  lot_size?: number;
+  sl_pips?: number;
+  tp_pips?: number;
+  news_filter?: boolean;
+  custom_prompt?: string;
+  module_path?: string;
+  class_name?: string;
 }
 
 export interface StrategyRun {
-  id: number
-  account_id: number
-  symbol: string
-  timeframe: string
-  action: "BUY" | "SELL" | "HOLD"
-  confidence: number
-  reasoning: string
-  created_at: string
+  id: number;
+  account_id: number;
+  symbol: string;
+  timeframe: string;
+  action: "BUY" | "SELL" | "HOLD";
+  confidence: number;
+  reasoning: string;
+  created_at: string;
 }
 
 // ── History ───────────────────────────────────────────────────────────────────

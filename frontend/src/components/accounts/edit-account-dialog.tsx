@@ -43,6 +43,7 @@ export function EditAccountDialog({
     is_live: String(account.is_live),
     account_type: account.account_type,
     max_lot_size: String(account.max_lot_size),
+    risk_pct: String(((account.risk_pct ?? 0.01) * 100).toFixed(1)),
     password: "",
   });
   const [loading, setLoading] = useState(false);
@@ -57,6 +58,7 @@ export function EditAccountDialog({
       is_live: String(account.is_live),
       account_type: account.account_type,
       max_lot_size: String(account.max_lot_size),
+      risk_pct: String(((account.risk_pct ?? 0.01) * 100).toFixed(1)),
       password: "",
     });
   }, [account, open]);
@@ -78,6 +80,7 @@ export function EditAccountDialog({
         is_live: form.is_live === "true",
         account_type: form.account_type,
         max_lot_size: parseFloat(form.max_lot_size),
+        risk_pct: parseFloat(form.risk_pct) / 100,
         ...(form.password ? { password: form.password } : {}),
       });
       toast.success(`Account "${updated.name}" updated`);
@@ -191,6 +194,22 @@ export function EditAccountDialog({
                 onChange={field("max_lot_size")}
                 required
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-risk-pct">Risk % / Trade</Label>
+              <Input
+                id="edit-risk-pct"
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="100"
+                value={form.risk_pct}
+                onChange={field("risk_pct")}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                % of balance per trade
+              </p>
             </div>
           </div>
 

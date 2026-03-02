@@ -128,3 +128,57 @@ def test_orchestrator_accepts_system_prompt_override():
     from ai.orchestrator import analyze_market
     sig = inspect.signature(analyze_market)
     assert "system_prompt_override" in sig.parameters
+
+
+# ── _calculate_lot_size unit tests ──────────────────────────────────────────
+
+def test_calculate_lot_size_normal():
+    """Standard EURUSD example: $10k account, 1% risk, 50-pip SL, $10 pip value → 0.20 lots."""
+    from services.ai_trading import _calculate_lot_size
+    result = _calculate_lot_size(
+        balance=10_000.0,
+        risk_pct=0.01,
+        sl_pips=50.0,
+        pip_value_per_lot=10.0,
+        max_lot=1.0,
+    )
+    assert result == 0.20
+
+
+def test_calculate_lot_size_clamps_to_min():
+    """Very small balance should still return minimum 0.01."""
+    from services.ai_trading import _calculate_lot_size
+    result = _calculate_lot_size(
+        balance=10.0,
+        risk_pct=0.01,
+        sl_pips=50.0,
+        pip_value_per_lot=10.0,
+        max_lot=1.0,
+    )
+    assert result == 0.01
+
+
+def test_calculate_lot_size_clamps_to_max():
+    """Very large calculated size must not exceed max_lot."""
+    from services.ai_trading import _calculate_lot_size
+    result = _calculate_lot_size(
+        balance=1_000_000.0,
+        risk_pct=0.05,
+        sl_pips=5.0,
+        pip_value_per_lot=10.0,
+        max_lot=0.5,
+    )
+    assert result == 0.5
+
+
+def test_calculate_lot_size_zero_sl_returns_min():
+    """sl_pips=0 must safely return min_lot instead of division-by-zero."""
+    from services.ai_trading import _calculate_lot_size
+    result = _calculate_lot_size(
+        balance=10_000.0,
+        risk_pct=0.01,
+        sl_pips=0.0,
+        pip_value_per_lot=10.0,
+        max_lot=1.0,
+    )
+    assert result == 0.01

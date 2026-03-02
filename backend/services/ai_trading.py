@@ -59,6 +59,37 @@ _REGIME_SIGNAL_FILTER: dict[str, set[str]] = {
     "unknown":           {"BUY", "SELL"},
 }
 
+# Minimum lot step for MT5 (universal across brokers)
+_MT5_MIN_LOT = 0.01
+
+
+def _calculate_lot_size(
+    balance: float,
+    risk_pct: float,
+    sl_pips: float,
+    pip_value_per_lot: float,
+    max_lot: float,
+    min_lot: float = _MT5_MIN_LOT,
+) -> float:
+    """Compute risk-proportional lot size, clamped to [min_lot, max_lot].
+
+    Args:
+        balance: Current account balance in account currency.
+        risk_pct: Fraction of balance to risk (e.g. 0.01 = 1%).
+        sl_pips: Stop-loss distance in pips.
+        pip_value_per_lot: Value of 1 pip for a 1.0-lot position in account currency.
+        max_lot: Maximum allowed lot size (safety cap from account config).
+        min_lot: Minimum MT5 lot step (default 0.01).
+
+    Returns:
+        Calculated lot size rounded to nearest min_lot step, between [min_lot, max_lot].
+    """
+    if balance <= 0 or sl_pips <= 0 or pip_value_per_lot <= 0:
+        return min_lot
+    raw = (balance * risk_pct) / (sl_pips * pip_value_per_lot)
+    raw = round(raw / min_lot) * min_lot  # round to lot step
+    return max(min_lot, min(raw, max_lot))
+
 
 def _apply_regime_filter(signal: TradingSignal, regime: str) -> TradingSignal:
     """Return a new TradingSignal with action=HOLD if regime blocks the direction."""
@@ -596,11 +627,59 @@ class AITradingService:
                 signal=signal, order_placed=False, ticket=None, journal_id=journal.id
             )
 
-        # ── 14. Build order request ──────────────────────────────────────────
-        effective_lot_size = (
-            strategy_overrides.lot_size
-            if strategy_overrides and strategy_overrides.lot_size is not None
-            else account.max_lot_size
+        # ── 14. Build credentials (needed for lot-size fetch + order execution) ─
+        password = decrypt(account.password_encrypted)
+        creds = AccountCredentials(
+            login=account.login, password=password,
+            server=account.server, path=account.mt5_path or settings.mt5_path,
+        )
+
+        # ── 15. Dynamic lot size ──────────────────────────────────────────────
+        # Priority: strategy_overrides.lot_size > risk-based calc > max_lot_size fallback
+        t0 = time.monotonic()
+        if strategy_overrides and strategy_overrides.lot_size is not None:
+            effective_lot_size = strategy_overrides.lot_size
+        else:
+            effective_lot_size = account.max_lot_size  # safe fallback
+            try:
+                async with MT5Bridge(creds) as lot_bridge:
+                    acct_info = await lot_bridge.get_account_info()
+                    sym_info = await lot_bridge.get_symbol_info(mt5_symbol)
+                if acct_info and sym_info:
+                    balance = float(acct_info.get("balance", 0))
+                    tick_value = float(sym_info.get("trade_tick_value", 0))
+                    tick_size = float(sym_info.get("trade_tick_size", 0))
+                    # Normalise SL distance to pips (1 pip = 10 × tick_size for 5-digit brokers)
+                    pip_size = tick_size * 10 if tick_size > 0 else 0.0001
+                    sl_distance = abs((signal.entry or 0) - (signal.stop_loss or 0))
+                    sl_pips = sl_distance / pip_size if pip_size > 0 else 0
+                    # trade_tick_value is already in account currency for 1 pip on 1 lot
+                    pip_value_per_lot = tick_value
+                    effective_lot_size = _calculate_lot_size(
+                        balance=balance,
+                        risk_pct=account.risk_pct,
+                        sl_pips=sl_pips,
+                        pip_value_per_lot=pip_value_per_lot,
+                        max_lot=account.max_lot_size,
+                    )
+                    logger.info(
+                        "Lot size calculated | account_id=%s balance=%.2f risk_pct=%.3f "
+                        "sl_pips=%.1f pip_val=%.4f → lot=%.2f",
+                        account_id, balance, account.risk_pct, sl_pips, pip_value_per_lot, effective_lot_size,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Dynamic lot size failed — using max_lot_size fallback | account_id=%s | %s",
+                    account_id, exc,
+                )
+        await tracer.record(
+            "lot_size_calculated",
+            output_data={
+                "effective_lot_size": effective_lot_size,
+                "max_lot_size": account.max_lot_size,
+                "risk_pct": account.risk_pct,
+            },
+            duration_ms=int((time.monotonic() - t0) * 1000),
         )
         order_req = OrderRequest(
             symbol=mt5_symbol,  # broker-specific name resolved at OHLCV fetch time
@@ -624,13 +703,8 @@ class AITradingService:
             },
         )
 
-        # ── 15. Connect MT5 and execute ──────────────────────────────────────
+        # ── 16. Connect MT5 and execute ──────────────────────────────────────
         t0 = time.monotonic()
-        password = decrypt(account.password_encrypted)
-        creds = AccountCredentials(
-            login=account.login, password=password,
-            server=account.server, path=account.mt5_path or settings.mt5_path,
-        )
         try:
             async with MT5Bridge(creds) as bridge:
                 executor = MT5Executor(bridge)

@@ -38,6 +38,7 @@ const defaultForm = {
   is_live: "false",
   account_type: "USD",
   max_lot_size: "0.1",
+  risk_pct: "1",
 };
 
 export function AddAccountDialog({
@@ -66,6 +67,7 @@ export function AddAccountDialog({
         is_live: form.is_live === "true",
         allowed_symbols: [],
         max_lot_size: parseFloat(form.max_lot_size),
+        risk_pct: parseFloat(form.risk_pct) / 100,
         ...(form.mt5_path ? { mt5_path: form.mt5_path } : {}),
         account_type: form.account_type,
       });
@@ -209,6 +211,22 @@ export function AddAccountDialog({
                 onChange={field("max_lot_size")}
                 required
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="risk_pct">Risk % / Trade</Label>
+              <Input
+                id="risk_pct"
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="100"
+                value={form.risk_pct}
+                onChange={field("risk_pct")}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                % of balance per trade
+              </p>
             </div>
           </div>
 

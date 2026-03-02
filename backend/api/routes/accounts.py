@@ -30,6 +30,7 @@ class AccountCreate(BaseModel):
     is_live: bool = False
     allowed_symbols: list[str] = []
     max_lot_size: float = Field(default=0.1, gt=0.0, le=100.0)
+    risk_pct: float = Field(default=0.01, gt=0.0, le=1.0, description="Fraction of balance to risk per trade (0.01 = 1%)")
     auto_trade_enabled: bool = True
     mt5_path: str = Field(default="", max_length=500)
     account_type: Literal["USD", "USC"] = "USD"
@@ -41,6 +42,7 @@ class AccountUpdate(BaseModel):
     server: str | None = Field(None, min_length=1, max_length=200)
     is_live: bool | None = None
     max_lot_size: float | None = Field(None, gt=0.0, le=100.0)
+    risk_pct: float | None = Field(None, gt=0.0, le=1.0, description="Fraction of balance to risk per trade (0.01 = 1%)")
     auto_trade_enabled: bool | None = None
     password: str | None = Field(None, min_length=1, description="Leave empty to keep existing password")
     mt5_path: str | None = Field(None, max_length=500, description="Path to terminal64.exe for this account. Leave empty to use global MT5_PATH.")
@@ -57,6 +59,7 @@ class AccountResponse(BaseModel):
     is_active: bool
     allowed_symbols: list[str]
     max_lot_size: float
+    risk_pct: float
     auto_trade_enabled: bool = True
     mt5_path: str
     account_type: str
@@ -89,6 +92,7 @@ async def create_account(payload: AccountCreate, db: AsyncSession = Depends(get_
         is_live=payload.is_live,
         allowed_symbols=json.dumps(payload.allowed_symbols),
         max_lot_size=payload.max_lot_size,
+        risk_pct=payload.risk_pct,
         auto_trade_enabled=payload.auto_trade_enabled,
         mt5_path=payload.mt5_path,
         account_type=payload.account_type,
@@ -124,6 +128,8 @@ async def update_account(account_id: int, payload: AccountUpdate, db: AsyncSessi
         account.is_live = payload.is_live
     if payload.max_lot_size is not None:
         account.max_lot_size = payload.max_lot_size
+    if payload.risk_pct is not None:
+        account.risk_pct = payload.risk_pct
     if payload.auto_trade_enabled is not None:
         account.auto_trade_enabled = payload.auto_trade_enabled
     if payload.password is not None:
@@ -426,6 +432,7 @@ def _to_response(a: Account) -> AccountResponse:
         is_active=a.is_active,
         allowed_symbols=_parse_symbols(a.allowed_symbols),
         max_lot_size=a.max_lot_size,
+        risk_pct=a.risk_pct,
         auto_trade_enabled=a.auto_trade_enabled,
         mt5_path=a.mt5_path or "",
         account_type=a.account_type or "USD",

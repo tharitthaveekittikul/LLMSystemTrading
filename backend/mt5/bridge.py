@@ -258,6 +258,13 @@ class MT5Bridge:
         tick = await self._run(mt5.symbol_info_tick, symbol)
         return tick._asdict() if tick else None
 
+    async def get_symbol_info(self, symbol: str) -> dict | None:
+        """Return symbol info dict (trade_tick_value, trade_tick_size, etc.)."""
+        self._require_mt5()
+        await self._run(mt5.symbol_select, symbol, True)
+        info = await self._run(mt5.symbol_info, symbol)
+        return info._asdict() if info else None
+
     # ── Order operations (used by executor.py only) ───────────────────────────
 
     async def get_filling_mode(self, symbol: str) -> int:

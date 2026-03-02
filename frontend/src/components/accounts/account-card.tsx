@@ -128,6 +128,12 @@ export function AccountCard({
             <span className="text-foreground">{account.max_lot_size}</span>
           </div>
           <div className="flex justify-between text-muted-foreground">
+            <span>Risk / Trade</span>
+            <span className="text-foreground">
+              {((account.risk_pct ?? 0.01) * 100).toFixed(1)}%
+            </span>
+          </div>
+          <div className="flex justify-between text-muted-foreground">
             <span>Added</span>
             <span className="text-foreground">{createdAt}</span>
           </div>
