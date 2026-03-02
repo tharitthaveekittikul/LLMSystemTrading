@@ -12,10 +12,6 @@ class HMMRegimeStrategy(BaseStrategy):
     Register in the UI:
         type=Code, module=strategies.hmm_strategy, class=HMMRegimeStrategy
     """
-
-    symbols   = ["EURUSD", "XAUUSD"]
-    timeframe = "D1"
-
     def system_prompt(self) -> str:
         return (
             "You are a regime-aware trading analyst. "
@@ -26,8 +22,8 @@ class HMMRegimeStrategy(BaseStrategy):
 
     def generate_signal(self, market_data: dict) -> dict | None:
         candles = market_data.get("candles", [])
-        symbol  = market_data.get("symbol", "")
-        tf      = market_data.get("timeframe", "D1")
+        symbol  = market_data.get("symbol")
+        tf      = market_data.get("timeframe")
 
         if len(candles) < 50:
             return None

@@ -53,7 +53,7 @@ class Trade(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | manual
     is_paper_trade: Mapped[bool] = mapped_column(Boolean, default=False)
-    strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id"), nullable=True)
+    strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id", ondelete="SET NULL"), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("account_id", "ticket", name="uq_trade_account_ticket"),
@@ -82,7 +82,7 @@ class AIJournal(Base):
     llm_provider: Mapped[str] = mapped_column(String(50))
     model_name: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id"), nullable=True)
+    strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id", ondelete="SET NULL"), nullable=True)
     strategy: Mapped["Strategy | None"] = relationship("Strategy", back_populates="journal_entries_strategy", foreign_keys="AIJournal.strategy_id")
 
     account: Mapped["Account"] = relationship("Account", back_populates="journal_entries")
@@ -236,7 +236,7 @@ class BacktestRun(Base):
     __tablename__ = "backtest_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    strategy_id: Mapped[int] = mapped_column(Integer, ForeignKey("strategies.id"), index=True)
+    strategy_id: Mapped[int] = mapped_column(Integer, ForeignKey("strategies.id", ondelete="CASCADE"), index=True)
     symbol: Mapped[str] = mapped_column(String(20), index=True)
     timeframe: Mapped[str] = mapped_column(String(10))
     start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))

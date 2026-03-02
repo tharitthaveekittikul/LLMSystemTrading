@@ -339,11 +339,12 @@ class AITradingService:
             hmm_svc = AITradingService._hmm_cache[cache_key]
             if len(candles) >= 50:
                 regime_info = hmm_svc.predict(candles)
-                regime_context_str = (
-                    f"Current market regime: **{regime_info['regime']}** "
-                    f"(confidence: {regime_info['confidence']:.0%}). "
-                    "Align your signal with this regime."
-                )
+                if regime_info['regime'] != 'unknown':
+                    regime_context_str = (
+                        f"Current market regime: **{regime_info['regime']}** "
+                        f"(confidence: {regime_info['confidence']:.0%}). "
+                        "Align your signal with this regime."
+                    )
         except Exception as exc:
             logger.warning("HMM predict failed | symbol=%s: %s", symbol, exc)
         await tracer.record(
