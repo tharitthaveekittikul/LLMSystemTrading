@@ -84,6 +84,18 @@ class MT5Executor:
             )
             return OrderResult(success=False, error=reason)
 
+        # ── AutoTrading gate ──────────────────────────────────────────────────
+        if not await self._bridge.is_autotrading_enabled():
+            logger.error(
+                "Order rejected — AutoTrading is disabled in the MT5 terminal. "
+                "Enable it via the toolbar ▶ AutoTrading button or "
+                "Tools → Options → Expert Advisors → Allow automated trading."
+            )
+            return OrderResult(
+                success=False,
+                error="AutoTrading disabled by client — enable it in the MT5 terminal",
+            )
+
         # ── Paper trading / dry-run mode ──────────────────────────────────────
         if dry_run:
             fake_ticket = -int(time.time())  # negative — distinguishable from real tickets
@@ -100,6 +112,8 @@ class MT5Executor:
         )
 
         order_type = _ORDER_TYPE_BUY if request.direction == "BUY" else _ORDER_TYPE_SELL
+        filling_mode = await self._bridge.get_filling_mode(request.symbol)
+        logger.debug("Filling mode for %s: %s", request.symbol, filling_mode)
 
         mt5_request = {
             "action": 1,  # TRADE_ACTION_DEAL
@@ -113,7 +127,7 @@ class MT5Executor:
             "magic": 20250101,  # EA magic number
             "comment": request.comment,
             "type_time": 0,    # ORDER_TIME_GTC
-            "type_filling": _ORDER_FILLING_IOC,
+            "type_filling": filling_mode,
         }
 
         result = await self._bridge.send_order(mt5_request)
@@ -163,6 +177,7 @@ class MT5Executor:
 
         close_type = _ORDER_TYPE_SELL if pos["type"] == 0 else _ORDER_TYPE_BUY
         close_price = tick["bid"] if close_type == _ORDER_TYPE_SELL else tick["ask"]
+        filling_mode = await self._bridge.get_filling_mode(symbol)
 
         mt5_request = {
             "action": 1,
@@ -175,7 +190,7 @@ class MT5Executor:
             "magic": 20250101,
             "comment": "Close",
             "type_time": 0,
-            "type_filling": _ORDER_FILLING_IOC,
+            "type_filling": filling_mode,
         }
 
         result = await self._bridge.send_order(mt5_request)

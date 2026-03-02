@@ -260,14 +260,54 @@ class MT5Bridge:
 
     # ── Order operations (used by executor.py only) ───────────────────────────
 
-    async def send_order(self, request: dict) -> dict | None:
+    async def get_filling_mode(self, symbol: str) -> int:
+        """Return the best ORDER_FILLING_* mode supported by the broker for symbol.
+
+        MT5 brokers expose a bitmask in ``symbol_info().filling_mode``:
+            bit 0  (1)  → ORDER_FILLING_FOK   (Fill-or-Kill)
+            bit 1  (2)  → ORDER_FILLING_IOC   (Immediate-or-Cancel)
+            bit 2  (4)  → ORDER_FILLING_RETURN (partial fills allowed, common on CFD/Forex)
+
+        Picks in priority order: FOK → IOC → RETURN.
+        Falls back to RETURN (2 in MT5 enum) if info is unavailable.
+        """
         self._require_mt5()
-        result = await self._run(mt5.order_send, request)
+        info = await self._run(mt5.symbol_info, symbol)
+        if not info:
+            logger.warning("symbol_info(%s) unavailable — defaulting to RETURN filling", symbol)
+            return mt5.ORDER_FILLING_RETURN
+
+        mask = info.filling_mode
+        if mask & 1:   # FOK supported
+            return mt5.ORDER_FILLING_FOK
+        if mask & 2:   # IOC supported
+            return mt5.ORDER_FILLING_IOC
+        # RETURN (mask & 4) or unknown — RETURN is the safest default for Forex/CFD
+        return mt5.ORDER_FILLING_RETURN
+
+    async def send_order(self, request: dict) -> dict | None:
+
+        self._require_mt5()
+        result = await self._run(partial(mt5.order_send, **request))
         return result._asdict() if result else None
 
     async def get_last_error(self) -> tuple[int, str]:
         self._require_mt5()
         return await self._run(mt5.last_error)
+
+    async def is_autotrading_enabled(self) -> bool:
+        """Return True if the MT5 terminal has AutoTrading switched ON.
+
+        MT5 enforces this at the terminal level — if disabled, every
+        order_send() call fails with 'AutoTrading disabled by client'
+        regardless of broker connection or account permissions.
+
+        Enable it via the toolbar ▶ AutoTrading button (turns green) or
+        Tools → Options → Expert Advisors → Allow automated trading.
+        """
+        self._require_mt5()
+        info = await self._run(mt5.terminal_info)
+        return bool(info and info.trade_allowed)
 
     async def is_broker_connected(self) -> bool:
         """Check terminal→broker connection (mt5.terminal_info().connected).
