@@ -678,6 +678,10 @@ class AITradingService:
                 "effective_lot_size": effective_lot_size,
                 "max_lot_size": account.max_lot_size,
                 "risk_pct": account.risk_pct,
+                "sl_pips": sl_pips,
+                "pip_value_per_lot": pip_value_per_lot,
+                "balance": balance,
+                "formula": f"{balance} * {account.risk_pct} * {sl_pips} * {pip_value_per_lot} / {account.max_lot_size} = {effective_lot_size}",
             },
             duration_ms=int((time.monotonic() - t0) * 1000),
         )

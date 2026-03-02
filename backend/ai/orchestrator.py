@@ -99,7 +99,8 @@ Rules:
   direction unless confluence is extremely strong (confidence > 0.90). Never open opposing
   positions simultaneously.
 
-Return strictly valid JSON matching this schema:
+Return ONLY strictly valid JSON. Use EXACTLY these field names — do NOT use alternatives like
+"signal", "side", "explanation", or "reasoning":
 {{
   "action": "BUY | SELL | HOLD",
   "entry": <float>,
@@ -128,6 +129,55 @@ Provide the trading signal JSON."""
 
 _PROMPT = ChatPromptTemplate.from_messages([("system", _SYSTEM), ("human", _HUMAN)])
 _DEFAULT_CHAIN = _PROMPT | _build_llm() | JsonOutputParser()
+
+
+# ── LLM response normaliser ───────────────────────────────────────────────────
+
+def _normalize_raw(raw: dict, *, timeframe: str, current_price: float) -> dict:
+    """Map alternative LLM field names to the canonical TradingSignal schema.
+
+    Different models return different keys:
+      - Gemini Flash 2.5:  "signal" → "action", "explanation" → "rationale"
+      - Some models omit numeric fields entirely when signalling HOLD.
+
+    After normalisation the dict is guaranteed to contain all required fields
+    so that ``TradingSignal(**raw)`` never raises a missing-field ValidationError.
+    """
+    out = dict(raw)  # shallow copy — don't mutate caller's dict
+
+    # ── Field aliases ─────────────────────────────────────────────────────────
+    # action
+    if "action" not in out:
+        for alias in ("signal", "side", "direction", "trade_action"):
+            if alias in out:
+                out["action"] = out.pop(alias)
+                break
+
+    # rationale
+    if "rationale" not in out:
+        for alias in ("explanation", "reason", "reasoning", "summary", "note"):
+            if alias in out:
+                out["rationale"] = out.pop(alias)
+                break
+
+    # timeframe
+    if "timeframe" not in out:
+        out["timeframe"] = timeframe
+
+    # ── Safe defaults for missing numeric fields ──────────────────────────────
+    out.setdefault("action", "HOLD")
+    out.setdefault("entry", current_price)
+    out.setdefault("stop_loss", 0.0)
+    out.setdefault("take_profit", 0.0)
+    out.setdefault("confidence", 0.0)
+    out.setdefault("rationale", "No rationale provided by model.")
+
+    # Normalise action casing
+    if isinstance(out.get("action"), str):
+        out["action"] = out["action"].upper()
+
+    logger.debug("LLM raw → normalised: %s", out)
+    return out
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -230,6 +280,11 @@ async def analyze_market(
         prompt_text = ""
 
     raw: dict = await chain.ainvoke(prompt_vars)
+
+    # Normalise LLM response — different models use different field names.
+    # e.g. Gemini Flash 2.5 returns {"signal": "HOLD", "explanation": "..."}
+    # instead of the canonical {"action": "HOLD", "rationale": "..."}.
+    raw = _normalize_raw(raw, timeframe=timeframe, current_price=current_price)
 
     signal = TradingSignal(**raw)
 
