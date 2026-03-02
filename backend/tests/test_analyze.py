@@ -4,10 +4,10 @@ from httpx import ASGITransport, AsyncClient
 
 from main import app
 
-pytestmark = pytest.mark.asyncio(loop_scope="module")
+pytestmark = pytest.mark.asyncio
 
 
-@pytest_asyncio.fixture(loop_scope="module")
+@pytest_asyncio.fixture
 async def client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c

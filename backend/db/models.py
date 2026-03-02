@@ -291,3 +291,22 @@ class BacktestTrade(Base):
     equity_after: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="trades")
+
+
+class HMMModelRegistry(Base):
+    __tablename__ = "hmm_model_registry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    timeframe: Mapped[str] = mapped_column(String(10), nullable=False)
+    trained_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    candle_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    n_states: Mapped[int] = mapped_column(Integer, default=4)
+    model_path: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "timeframe", name="uq_hmm_symbol_timeframe"),
+    )

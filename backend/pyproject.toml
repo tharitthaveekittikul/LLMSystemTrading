@@ -35,6 +35,7 @@ dependencies = [
     # HTTP client
     "httpx>=0.28.0",
     "pandas>=3.0.1",
+    "hmmlearn>=0.3.2",
     # Scheduler
     "apscheduler>=3.10,<4",
 ]

@@ -45,7 +45,7 @@ async def test_analyze_market_accepts_position_and_signal_args():
                     recent_signals=recent_signals,
                     news_context="Upcoming: EUR CPI at 14:00",
                 )
-    assert result.action in {"BUY", "SELL", "HOLD"}
+    assert result.signal.action in {"BUY", "SELL", "HOLD"}
 
 
 @pytest.mark.asyncio
@@ -70,4 +70,4 @@ async def test_analyze_market_works_without_optional_args():
                     indicators={},
                     ohlcv=[],
                 )
-    assert result.action in {"BUY", "SELL", "HOLD"}
+    assert result.signal.action in {"BUY", "SELL", "HOLD"}

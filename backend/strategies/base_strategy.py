@@ -50,3 +50,15 @@ class BaseStrategy(ABC):
         The signal is still logged to AIJournal regardless.
         """
         return signal.action != "HOLD"
+
+    def generate_signal(self, market_data: dict) -> dict | None:
+        """
+        Optional rule-based signal override.
+
+        Return a dict with keys matching TradingSignal to bypass LLM analysis,
+        or return None to fall through to the LLM path.
+
+        Required keys if returning a dict:
+            action, entry, stop_loss, take_profit, confidence, rationale, timeframe
+        """
+        return None

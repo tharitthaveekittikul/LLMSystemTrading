@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ai.orchestrator import TradingSignal
+from ai.orchestrator import LLMAnalysisResult, TradingSignal
 
 
 def _make_signal(action: str, confidence: float = 0.85) -> TradingSignal:
@@ -16,6 +16,11 @@ def _make_signal(action: str, confidence: float = 0.85) -> TradingSignal:
     )
 
 
+def _make_llm_result(action: str, confidence: float = 0.85) -> LLMAnalysisResult:
+    signal = _make_signal(action, confidence)
+    return LLMAnalysisResult(signal=signal, prompt_text="", raw_response={})
+
+
 @pytest.mark.asyncio
 async def test_analyze_hold_signal_no_order():
     """HOLD signal must not place an order."""
@@ -24,21 +29,30 @@ async def test_analyze_hold_signal_no_order():
         id=1, login=12345, password_encrypted="enc", server="srv",
         max_lot_size=0.1, is_active=True,
     )
+    # db.execute is AsyncMock; await db.execute(...) returns its return_value.
+    # Set return_value to a plain MagicMock so that sync method calls like
+    # .scalar_one_or_none() and .scalars().all() work correctly (not as coroutines).
+    _exec_result = MagicMock()
+    _exec_result.scalar_one_or_none.return_value = None
+    _exec_result.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = _exec_result
 
     with (
         patch("services.ai_trading.check_llm_rate_limit", return_value=True),
         patch("services.ai_trading.get_candle_cache", return_value=None),
         patch("services.ai_trading.set_candle_cache"),
         patch("services.ai_trading.MT5Bridge") as mock_bridge_cls,
-        patch("services.ai_trading.analyze_market", return_value=_make_signal("HOLD")),
+        # analyze_market is async and returns LLMAnalysisResult
+        patch("services.ai_trading.analyze_market", new=AsyncMock(return_value=_make_llm_result("HOLD"))),
         patch("services.ai_trading.broadcast"),
         patch("services.ai_trading.decrypt", return_value="password"),
     ):
         mock_bridge = AsyncMock()
         mock_bridge.get_rates.return_value = [
             {"time": "t", "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0, "tick_volume": 100}
-        ] * 20
+        ] * 50
         mock_bridge.get_tick.return_value = {"bid": 1.085, "ask": 1.086}
+        mock_bridge.get_positions.return_value = []
         mock_bridge_cls.return_value.__aenter__.return_value = mock_bridge
 
         from services.ai_trading import AITradingService
@@ -57,10 +71,31 @@ async def test_analyze_rate_limited_raises():
     """Rate-limited request raises HTTP 429."""
     from fastapi import HTTPException
 
+    _candles = [
+        {"time": "t", "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0, "tick_volume": 100}
+    ] * 50
+
     mock_db = AsyncMock()
     mock_db.get.return_value = MagicMock(id=1, is_active=True)
+    # db.execute is AsyncMock; await db.execute(...) returns its return_value.
+    # Use plain MagicMock so sync calls on the result work correctly.
+    _exec_result = MagicMock()
+    _exec_result.scalar_one_or_none.return_value = None
+    _exec_result.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = _exec_result
 
-    with patch("services.ai_trading.check_llm_rate_limit", return_value=False):
+    with (
+        patch("services.ai_trading.check_llm_rate_limit", return_value=False),
+        # Return a cache hit so the MT5Bridge path is skipped
+        patch("services.ai_trading.get_candle_cache", return_value=_candles),
+        patch("services.ai_trading.decrypt", return_value="password"),
+        patch("services.ai_trading.MT5Bridge") as mock_bridge_cls,
+        patch("services.ai_trading.broadcast"),
+    ):
+        mock_bridge = AsyncMock()
+        mock_bridge.get_positions.return_value = []
+        mock_bridge_cls.return_value.__aenter__.return_value = mock_bridge
+
         from services.ai_trading import AITradingService
         service = AITradingService()
         with pytest.raises(HTTPException) as exc_info:

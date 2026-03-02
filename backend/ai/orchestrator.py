@@ -116,7 +116,7 @@ Current Price: {current_price}
 
 Indicators:
 {indicators}
-
+{regime_section}
 Last 20 OHLCV candles (oldest → newest):
 {ohlcv}
 {positions_section}
@@ -143,6 +143,7 @@ async def analyze_market(
     recent_signals: list[dict[str, Any]] | None = None,
     news_context: str | None = None,
     trade_history_context: str | None = None,
+    regime_context: str | None = None,
     system_prompt_override: str | None = None,
     llm_override: BaseChatModel | None = None,
 ) -> LLMAnalysisResult:
@@ -217,6 +218,9 @@ async def analyze_market(
         "signals_section": signals_section,
         "news_section": news_section,
         "history_section": history_section,
+        "regime_section": (
+            f"Market Regime (HMM):\n{regime_context}" if regime_context else ""
+        ),
     }
 
     # Render prompt text for audit capture (uses Python str.format on the template)

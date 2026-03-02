@@ -14,7 +14,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { logsApi } from "@/lib/api";
 import { useTradingStore } from "@/hooks/use-trading-store";
-import type { PipelineRunCompleteData, PipelineRunSummary } from "@/types/trading";
+import type {
+  PipelineRunCompleteData,
+  PipelineRunSummary,
+} from "@/types/trading";
 
 const STATUS_STYLES: Record<string, string> = {
   completed: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -29,7 +32,6 @@ const ACTION_DOT: Record<string, string> = {
   SELL: "bg-red-500",
   HOLD: "bg-yellow-500",
 };
-
 
 interface PipelineRunsListProps {
   selectedRunId: number | null;
@@ -54,7 +56,7 @@ export function PipelineRunsList({
     try {
       const data = await logsApi.listRuns({
         account_id: activeAccountId ?? undefined,
-        symbol: symbolFilter.trim().toUpperCase() || undefined,
+        symbol: symbolFilter.trim() || undefined,
         status: statusFilter !== "all" ? statusFilter : undefined,
         limit: 100,
       });

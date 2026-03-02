@@ -74,7 +74,7 @@ async def test_analyze_market_empty_history_section_when_none():
 async def test_analyze_and_trade_calls_get_raw_deals():
     """analyze_and_trade must call HistoryService.get_raw_deals for LLM context."""
     from unittest.mock import AsyncMock, MagicMock, patch
-    from ai.orchestrator import TradingSignal
+    from ai.orchestrator import LLMAnalysisResult, TradingSignal
 
     def _make_signal():
         return TradingSignal(
@@ -83,6 +83,9 @@ async def test_analyze_and_trade_calls_get_raw_deals():
             rationale="test", timeframe="M15",
         )
 
+    def _make_llm_result():
+        return LLMAnalysisResult(signal=_make_signal(), prompt_text="", raw_response={})
+
     mock_db = AsyncMock()
     mock_account = MagicMock(
         id=1, login=12345, password_encrypted="enc", server="srv",
@@ -90,6 +93,12 @@ async def test_analyze_and_trade_calls_get_raw_deals():
         auto_trade_enabled=True, paper_trade_enabled=False,
     )
     mock_db.get.return_value = mock_account
+    # db.execute is AsyncMock; await db.execute(...) returns its return_value.
+    # Use plain MagicMock so sync calls on the result work correctly.
+    _exec_result = MagicMock()
+    _exec_result.scalar_one_or_none.return_value = None
+    _exec_result.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = _exec_result
 
     mock_hist_svc = MagicMock()
     mock_hist_svc.get_raw_deals = AsyncMock(return_value=[])
@@ -99,7 +108,8 @@ async def test_analyze_and_trade_calls_get_raw_deals():
         patch("services.ai_trading.get_candle_cache", return_value=None),
         patch("services.ai_trading.set_candle_cache"),
         patch("services.ai_trading.MT5Bridge") as mock_bridge_cls,
-        patch("services.ai_trading.analyze_market", return_value=_make_signal()),
+        # analyze_market is async and returns LLMAnalysisResult
+        patch("services.ai_trading.analyze_market", new=AsyncMock(return_value=_make_llm_result())),
         patch("services.ai_trading.broadcast"),
         patch("services.ai_trading.decrypt", return_value="password"),
         patch("services.ai_trading.HistoryService", return_value=mock_hist_svc),
@@ -107,7 +117,7 @@ async def test_analyze_and_trade_calls_get_raw_deals():
         mock_bridge = AsyncMock()
         mock_bridge.get_rates.return_value = [
             {"time": "t", "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0, "tick_volume": 100}
-        ] * 20
+        ] * 50
         mock_bridge.get_tick.return_value = {"bid": 1.085, "ask": 1.086}
         mock_bridge.get_positions.return_value = []
         mock_bridge_cls.return_value.__aenter__.return_value = mock_bridge
