@@ -207,6 +207,9 @@ class AITradingService:
         candles = await get_candle_cache(account_id, symbol, tf_upper)
         current_price: float | None = None
         ohlcv_source = "cache"
+        # mt5_symbol is the broker-specific name (e.g. 'EURUSD.s') resolved at
+        # fetch time. Start with the bare strategy symbol; updated on cache miss.
+        mt5_symbol: str = symbol
 
         if candles is None:
             ohlcv_source = "mt5"
@@ -218,12 +221,16 @@ class AITradingService:
             )
             try:
                 async with MT5Bridge(creds) as bridge:
-                    candles = await bridge.get_rates(symbol, tf_int, 50)
-                    tick = await bridge.get_tick(symbol)
+                    # Resolve broker-specific symbol name (e.g. EURUSD → EURUSD.s)
+                    # so that symbol_select and copy_rates_from_pos receive the
+                    # exact name the broker exposes after login.
+                    mt5_symbol = await bridge.get_broker_symbol(symbol)
+                    candles = await bridge.get_rates(mt5_symbol, tf_int, 50)
+                    tick = await bridge.get_tick(mt5_symbol)
             except RuntimeError as exc:
                 await tracer.record(
                     "ohlcv_fetch", status="error",
-                    input_data={"symbol": symbol, "timeframe": tf_upper},
+                    input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframe": tf_upper},
                     error=str(exc),
                     duration_ms=int((time.monotonic() - t0) * 1000),
                 )
@@ -232,7 +239,7 @@ class AITradingService:
             except ConnectionError as exc:
                 await tracer.record(
                     "ohlcv_fetch", status="error",
-                    input_data={"symbol": symbol, "timeframe": tf_upper},
+                    input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframe": tf_upper},
                     error=str(exc),
                     duration_ms=int((time.monotonic() - t0) * 1000),
                 )
@@ -242,14 +249,14 @@ class AITradingService:
             if not candles:
                 await tracer.record(
                     "ohlcv_fetch", status="error",
-                    input_data={"symbol": symbol, "timeframe": tf_upper},
+                    input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframe": tf_upper},
                     error="MT5 returned no candles",
                     duration_ms=int((time.monotonic() - t0) * 1000),
                 )
                 tracer.finalize(status="failed")
                 raise HTTPException(
                     status_code=502,
-                    detail=f"MT5 returned no candles for {symbol} {timeframe}",
+                    detail=f"MT5 returned no candles for {mt5_symbol} {timeframe}",
                 )
 
             ttl = _CACHE_TTL.get(tf_upper, 60)
@@ -263,7 +270,7 @@ class AITradingService:
 
         await tracer.record(
             "ohlcv_fetch",
-            input_data={"symbol": symbol, "timeframe": tf_upper},
+            input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframe": tf_upper},
             output_data={
                 "source": ohlcv_source,
                 "candle_count": len(candles or []),
@@ -596,7 +603,7 @@ class AITradingService:
             else account.max_lot_size
         )
         order_req = OrderRequest(
-            symbol=symbol,
+            symbol=mt5_symbol,  # broker-specific name resolved at OHLCV fetch time
             direction=signal.action,
             volume=effective_lot_size,
             entry_price=signal.entry,
@@ -608,6 +615,7 @@ class AITradingService:
             "order_built",
             input_data={
                 "symbol": symbol,
+                "mt5_symbol": mt5_symbol,
                 "direction": signal.action,
                 "volume": effective_lot_size,
                 "entry": signal.entry,

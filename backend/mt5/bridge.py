@@ -135,6 +135,67 @@ class MT5Bridge:
             return [s.name for s in raw if s.visible]
         return [s.name for s in raw]
 
+    @staticmethod
+    def resolve_broker_symbol(base: str, broker_symbols: list[str]) -> str:
+        """Find the broker's actual symbol name for a bare name like 'EURUSD'.
+
+        Brokers commonly add suffixes or prefixes to instrument names
+        (e.g. 'EURUSD.s', 'EURUSDm', 'GOLD.raw'). This method resolves the
+        bare strategy symbol to the name the connected broker actually exposes.
+
+        Matching priority (first match wins):
+            1. Exact match          — 'EURUSD'  in broker_symbols
+            2. Shortest prefix      — broker symbol starts with base name
+            3. Shortest substring   — base name appears anywhere in broker symbol
+            4. Return base unchanged (caller should log a warning)
+
+        Args:
+            base: The bare symbol name stored in the strategy config.
+            broker_symbols: Full list of symbols returned by the broker.
+
+        Returns:
+            The resolved broker symbol, or *base* if no match is found.
+        """
+        if base in broker_symbols:
+            return base
+
+        # Priority 2: prefix match (e.g. EURUSD.s, EURUSDm)
+        prefix_matches = [s for s in broker_symbols if s.startswith(base)]
+        if prefix_matches:
+            return min(prefix_matches, key=len)
+
+        # Priority 3: substring / suffix match (e.g. XAU → XAUUSD.s)
+        sub_matches = [s for s in broker_symbols if base in s]
+        if sub_matches:
+            return min(sub_matches, key=len)
+
+        return base
+
+    async def get_broker_symbol(self, base: str) -> str:
+        """Return the broker-specific symbol name for a bare base name.
+
+        Fetches all available symbols (including those not in Market Watch)
+        and delegates to :meth:`resolve_broker_symbol`.  Logs an INFO message
+        when a suffix is found and a WARNING when no match exists.
+
+        Args:
+            base: The bare symbol name (e.g. 'EURUSD').
+
+        Returns:
+            Resolved broker symbol (e.g. 'EURUSD.s'), or *base* if unresolved.
+        """
+        all_symbols = await self.get_symbols(market_watch_only=False)
+        resolved = self.resolve_broker_symbol(base, all_symbols)
+        if resolved != base:
+            logger.info("Symbol resolved | %s → %s", base, resolved)
+        else:
+            logger.warning(
+                "No broker match found for '%s' — using as-is. "
+                "Available symbols sample (first 20): %s",
+                base, all_symbols[:20],
+            )
+        return resolved
+
     # ── OHLCV ─────────────────────────────────────────────────────────────────
 
     async def get_rates(self, symbol: str, timeframe: int, count: int) -> list[dict]:
