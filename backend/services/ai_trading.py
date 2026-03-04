@@ -256,7 +256,7 @@ class AITradingService:
                     # so that symbol_select and copy_rates_from_pos receive the
                     # exact name the broker exposes after login.
                     mt5_symbol = await bridge.get_broker_symbol(symbol)
-                    candles = await bridge.get_rates(mt5_symbol, tf_int, 50)
+                    candles = await bridge.get_rates(mt5_symbol, tf_int, 250)
                     tick = await bridge.get_tick(mt5_symbol)
             except RuntimeError as exc:
                 await tracer.record(
