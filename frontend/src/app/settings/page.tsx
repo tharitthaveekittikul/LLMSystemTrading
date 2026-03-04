@@ -210,10 +210,12 @@ function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
             </Badge>
           )}
         </div>
-        {status?.key_hint && (
+        {status?.key_hint ? (
           <p className="text-xs text-muted-foreground font-mono">
             {status.key_hint}
           </p>
+        ) : (
+          <p className="text-xs text-muted-foreground font-mono">—</p>
         )}
       </CardHeader>
       <CardContent className="space-y-2">

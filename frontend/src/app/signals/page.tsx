@@ -7,7 +7,6 @@ import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -144,7 +143,7 @@ export default function SignalsPage() {
                   value={selectedAccountId}
                   onValueChange={setSelectedAccountId}
                 >
-                  <SelectTrigger className="w-44">
+                  <SelectTrigger className="w-64">
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>
@@ -158,32 +157,26 @@ export default function SignalsPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <Label className="text-xs">Symbol</Label>
-                {symbols.length > 0 ? (
-                  <select
-                    className="flex h-9 w-28 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                    value={symbol}
-                    onChange={(e) => setSymbol(e.target.value)}
-                  >
-                    <option value="">Select symbol…</option>
+                <Select
+                  value={symbol}
+                  onValueChange={setSymbol}
+                  disabled={symbolsLoading || symbols.length === 0}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue
+                      placeholder={
+                        symbolsLoading ? "Loading…" : "Select symbols"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
                     {symbols.map((s) => (
-                      <option key={s} value={s}>
+                      <SelectItem key={s} value={s}>
                         {s}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </select>
-                ) : (
-                  <Input
-                    className="w-28 text-sm"
-                    placeholder={
-                      symbolsLoading
-                        ? "Loading symbols…"
-                        : "e.g. EURUSD (select account first)"
-                    }
-                    value={symbol}
-                    onChange={(e) => setSymbol(e.target.value)}
-                    disabled={symbolsLoading}
-                  />
-                )}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex flex-col gap-1">
                 <Label className="text-xs">Timeframe</Label>
