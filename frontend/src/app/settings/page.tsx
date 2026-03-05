@@ -351,14 +351,14 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
           return (
             <div
               key={key}
-              className="rounded-md border sm:border-0 p-3 sm:p-0 bg-muted/30 sm:bg-transparent grid grid-cols-1 sm:grid-cols-[160px_1fr_1fr] gap-2 sm:gap-3 sm:items-center"
+              className="rounded-md border sm:border-0 p-3 sm:p-0 bg-muted/30 sm:bg-transparent grid grid-cols-1 sm:grid-cols-[160px_1fr_1fr] gap-2 sm:gap-3 sm:items-center overflow-hidden"
             >
               <Label className="text-sm font-medium">{label}</Label>
               <Select
                 value={a.provider || "none"}
                 onValueChange={(v) => handleProviderChange(key, v)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Provider" />
                 </SelectTrigger>
                 <SelectContent>
@@ -377,8 +377,11 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
                     update(key, "model_name", v === "none" ? "" : v)
                   }
                 >
-                  <SelectTrigger className="font-mono text-sm">
-                    <SelectValue placeholder="Select model" />
+                  <SelectTrigger className="font-mono text-sm w-full min-w-0 overflow-hidden">
+                    <SelectValue
+                      placeholder="Select model"
+                      className="truncate"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">— Select model —</SelectItem>
