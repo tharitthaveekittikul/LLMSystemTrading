@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, RefreshCw, Inbox } from "lucide-react";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
@@ -78,7 +78,7 @@ function Scorecard({ trades }: { trades: Trade[] }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {stats.map((s) => (
-        <Card key={s.label}>
+        <Card key={s.label} className="border-l-2 border-l-primary shadow-sm">
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">{s.label}</p>
             <p className={`text-lg font-semibold font-mono ${s.color ?? ""}`}>
@@ -91,12 +91,31 @@ function Scorecard({ trades }: { trades: Trade[] }) {
   );
 }
 
+// ── Skeleton rows ─────────────────────────────────────────────────────────────
+
+function SkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <TableRow key={i}>
+          {Array.from({ length: 9 }).map((_, j) => (
+            <TableCell key={j}>
+              <div className="h-4 rounded bg-muted animate-pulse w-16" />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function TradesContent() {
   const activeAccountId = useTradingStore((s) => s.activeAccountId);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -130,6 +149,7 @@ function TradesContent() {
       setError(e instanceof Error ? e.message : "Failed to load trades");
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   }, [activeAccountId, openOnly, dateFrom, dateTo]);
 
@@ -142,7 +162,7 @@ function TradesContent() {
       <AppHeader title="Trades" />
       <div className="flex flex-1 flex-col gap-4 p-4">
         {/* Filters */}
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <Checkbox
               id="open-only"
@@ -170,7 +190,7 @@ function TradesContent() {
                     id="date-range"
                     variant="outline"
                     className={cn(
-                      "w-64 justify-start text-left text-sm font-normal",
+                      "w-full sm:w-64 justify-start text-left text-sm font-normal",
                       !dateFrom && !dateTo && "text-muted-foreground",
                     )}
                   >
@@ -225,7 +245,16 @@ function TradesContent() {
               </Popover>
             </div>
           )}
-          <Button size="sm" onClick={load} disabled={loading}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-1.5"
+          >
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", loading && "animate-spin")}
+            />
             {loading ? "Loading…" : "Refresh"}
           </Button>
           <span className="text-xs text-muted-foreground">
@@ -240,9 +269,19 @@ function TradesContent() {
         {/* Scorecard */}
         {trades.length > 0 && <Scorecard trades={trades} />}
 
+        {/* Scroll hint — only on mobile */}
+        {trades.length > 0 && (
+          <p className="text-xs text-muted-foreground sm:hidden">
+            ← Swipe to see all columns
+          </p>
+        )}
+
         {/* Table */}
         <div
-          className={`rounded-md border overflow-x-auto${loading ? " opacity-60" : ""}`}
+          className={cn(
+            "rounded-md border overflow-x-auto",
+            !initialLoad && loading && "opacity-60",
+          )}
         >
           <Table>
             <TableHeader>
@@ -255,71 +294,78 @@ function TradesContent() {
                 <TableHead>Dir</TableHead>
                 <TableHead className="text-right">Volume</TableHead>
                 <TableHead className="text-right">Entry</TableHead>
-                {/* <TableHead className="text-right">SL</TableHead>
-                <TableHead className="text-right">TP</TableHead> */}
                 <TableHead className="text-right">Close</TableHead>
-                <TableHead className="text-right">P&L</TableHead>
+                <TableHead className="text-right">P&amp;L</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {trades.length === 0 && !loading && (
+              {initialLoad && loading ? (
+                <SkeletonRows />
+              ) : trades.length === 0 && !loading ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={12}
-                    className="text-center text-muted-foreground py-8"
-                  >
-                    No trades found
+                  <TableCell colSpan={10} className="text-center py-16">
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <Inbox className="h-8 w-8 opacity-40" />
+                      <span className="text-sm">No trades found</span>
+                    </div>
                   </TableCell>
                 </TableRow>
-              )}
-              {trades.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-mono text-sm">
-                    {t.ticket}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDateTime(t.opened_at)}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                    {t.closed_at ? formatDateTime(t.closed_at) : "Open"}
-                  </TableCell>
-                  <TableCell className="font-medium">{t.symbol}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs">
-                      {t.source}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        t.direction === "BUY" ? "default" : "destructive"
-                      }
+              ) : (
+                trades.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="font-mono text-sm">
+                      {t.ticket}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDateTime(t.opened_at)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {t.closed_at ? (
+                        formatDateTime(t.closed_at)
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-xs border-green-500 text-green-600 dark:text-green-400"
+                        >
+                          Open
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium">{t.symbol}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">
+                        {t.source}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={cn(
+                          "text-xs font-medium border-0",
+                          t.direction === "BUY"
+                            ? "bg-green-500 hover:bg-green-600 text-white"
+                            : "bg-red-500 hover:bg-red-600 text-white",
+                        )}
+                      >
+                        {t.direction}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{t.volume}</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {fmt(t.entry_price)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {fmt(t.close_price)}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right font-mono font-medium ${pnlColor(t.profit)}`}
                     >
-                      {t.direction}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{t.volume}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {fmt(t.entry_price)}
-                  </TableCell>
-                  {/* <TableCell className="text-right font-mono text-muted-foreground">
-                    {fmt(t.stop_loss)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-muted-foreground">
-                    {fmt(t.take_profit)}
-                  </TableCell> */}
-                  <TableCell className="text-right font-mono">
-                    {fmt(t.close_price)}
-                  </TableCell>
-                  <TableCell
-                    className={`text-right font-mono font-medium ${pnlColor(t.profit)}`}
-                  >
-                    {t.profit != null
-                      ? (t.profit >= 0 ? "+" : "") + t.profit.toFixed(2)
-                      : "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
+                      {t.profit != null
+                        ? (t.profit >= 0 ? "+" : "") + t.profit.toFixed(2)
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Inbox } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -17,14 +18,22 @@ export function LivePositions() {
   const positions = useTradingStore((s) => s.openPositions);
 
   return (
-    <Card>
+    <Card className="shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="text-sm font-medium">Live Positions</CardTitle>
-        <Badge variant="outline">{positions.length}</Badge>
+        <Badge
+          variant={positions.length > 0 ? "default" : "outline"}
+          className="tabular-nums"
+        >
+          {positions.length}
+        </Badge>
       </CardHeader>
       <CardContent>
         {positions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No open positions</p>
+          <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+            <Inbox className="h-8 w-8 opacity-40" />
+            <span className="text-sm">No open positions</span>
+          </div>
         ) : (
           <Table>
             <TableHeader>
@@ -40,15 +49,24 @@ export function LivePositions() {
                 <TableRow key={pos.ticket}>
                   <TableCell className="font-medium">{pos.symbol}</TableCell>
                   <TableCell>
-                    <Badge variant={pos.type === "buy" ? "default" : "secondary"}>
+                    <Badge
+                      className={cn(
+                        "text-xs font-medium border-0",
+                        pos.type === "buy"
+                          ? "bg-green-500 hover:bg-green-600 text-white"
+                          : "bg-red-500 hover:bg-red-600 text-white",
+                      )}
+                    >
                       {pos.type.toUpperCase()}
                     </Badge>
                   </TableCell>
                   <TableCell>{pos.volume}</TableCell>
                   <TableCell
                     className={cn(
-                      "text-right font-medium",
-                      pos.profit >= 0 ? "text-green-600" : "text-red-500",
+                      "text-right font-medium tabular-nums",
+                      pos.profit >= 0
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-500",
                     )}
                   >
                     {pos.profit >= 0 ? "+" : ""}

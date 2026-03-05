@@ -351,7 +351,7 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
           return (
             <div
               key={key}
-              className="grid grid-cols-[160px_1fr_1fr] gap-3 items-center"
+              className="rounded-md border sm:border-0 p-3 sm:p-0 bg-muted/30 sm:bg-transparent grid grid-cols-1 sm:grid-cols-[160px_1fr_1fr] gap-2 sm:gap-3 sm:items-center"
             >
               <Label className="text-sm font-medium">{label}</Label>
               <Select

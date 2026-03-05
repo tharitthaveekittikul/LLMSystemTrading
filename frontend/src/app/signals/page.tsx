@@ -6,7 +6,13 @@ import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -33,13 +39,15 @@ function ConfidenceBar({ value }: { value: number }) {
     pct >= 80 ? "bg-green-500" : pct >= 60 ? "bg-yellow-500" : "bg-red-500";
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
+      <div className="h-2 flex-1 max-w-48 rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full rounded-full ${color}`}
+          className={`h-full rounded-full transition-all duration-300 ${color}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-xs text-muted-foreground">{pct}%</span>
+      <span className="text-xs tabular-nums text-muted-foreground w-8 text-right">
+        {pct}%
+      </span>
     </div>
   );
 }
@@ -132,18 +140,22 @@ export default function SignalsPage() {
       <div className="flex flex-1 flex-col gap-4 p-4">
         {/* Trigger form */}
         <Card>
-          <CardHeader className="pb-2 text-sm font-medium">
-            Run Analysis
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Run Analysis</CardTitle>
+            <CardDescription>
+              Select an account and symbol to trigger a live LLM market
+              analysis.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-3 items-end">
               <div className="flex flex-col gap-1">
                 <Label className="text-xs">Account</Label>
                 <Select
                   value={selectedAccountId}
                   onValueChange={setSelectedAccountId}
                 >
-                  <SelectTrigger className="w-64">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>
@@ -162,10 +174,10 @@ export default function SignalsPage() {
                   onValueChange={setSymbol}
                   disabled={symbolsLoading || symbols.length === 0}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger>
                     <SelectValue
                       placeholder={
-                        symbolsLoading ? "Loading…" : "Select symbols"
+                        symbolsLoading ? "Loading…" : "Select symbol"
                       }
                     />
                   </SelectTrigger>
@@ -181,7 +193,7 @@ export default function SignalsPage() {
               <div className="flex flex-col gap-1">
                 <Label className="text-xs">Timeframe</Label>
                 <Select value={timeframe} onValueChange={setTimeframe}>
-                  <SelectTrigger className="w-24">
+                  <SelectTrigger className="w-full sm:w-28">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -196,14 +208,15 @@ export default function SignalsPage() {
               <Button
                 onClick={handleAnalyze}
                 disabled={analyzing || !selectedAccountId}
+                className="w-full sm:w-auto"
               >
                 {analyzing ? "Analyzing…" : "Analyze"}
               </Button>
             </div>
 
             {analyzeResult && (
-              <div className="mt-3 p-3 rounded-md bg-muted text-sm space-y-1">
-                <div className="flex items-center gap-2">
+              <div className="mt-4 p-4 rounded-lg bg-muted/60 border text-sm space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant={actionVariant(analyzeResult.action)}>
                     {analyzeResult.action}
                   </Badge>
@@ -211,12 +224,15 @@ export default function SignalsPage() {
                     confidence {Math.round(analyzeResult.confidence * 100)}%
                   </span>
                   {analyzeResult.order_placed && (
-                    <Badge variant="outline" className="text-green-600">
-                      Order placed #{analyzeResult.ticket}
+                    <Badge
+                      variant="outline"
+                      className="text-green-600 border-green-500"
+                    >
+                      ✓ Order placed #{analyzeResult.ticket}
                     </Badge>
                   )}
                 </div>
-                <p className="text-muted-foreground">
+                <p className="text-muted-foreground leading-relaxed">
                   {analyzeResult.rationale}
                 </p>
               </div>
@@ -246,7 +262,7 @@ export default function SignalsPage() {
                     {s.trade_id && (
                       <Badge
                         variant="outline"
-                        className="text-xs text-green-600"
+                        className="text-xs text-green-600 border-green-500"
                       >
                         Executed
                       </Badge>
@@ -256,13 +272,13 @@ export default function SignalsPage() {
                     {formatDateTime(s.created_at)}
                   </span>
                 </div>
-                <div className="mt-2">
+                <div className="mt-3">
                   <ConfidenceBar value={s.confidence} />
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
                   {s.rationale}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground/70">
                   {s.llm_provider} / {s.model_name || "default"}
                 </p>
               </CardContent>
