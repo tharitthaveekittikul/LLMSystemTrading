@@ -51,10 +51,12 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b">
         <div className="flex h-12 items-center justify-between px-2">
-          <div className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden">
-            <TrendingUp className="h-5 w-5 shrink-0 text-primary" />
-            <span className="text-sm font-semibold">LLM Trading</span>
-          </div>
+          <Link href="/">
+            <div className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden">
+              <TrendingUp className="h-5 w-5 shrink-0 text-primary" />
+              <span className="text-sm font-semibold">LLM Trading</span>
+            </div>
+          </Link>
           <SidebarTrigger />
         </div>
       </SidebarHeader>
