@@ -148,14 +148,16 @@ export default function SignalsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-3 items-end">
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs">Account</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_120px_auto] gap-4 items-end">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">
+                  Account
+                </Label>
                 <Select
                   value={selectedAccountId}
                   onValueChange={setSelectedAccountId}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>
@@ -167,14 +169,16 @@ export default function SignalsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs">Symbol</Label>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">
+                  Symbol
+                </Label>
                 <Select
                   value={symbol}
                   onValueChange={setSymbol}
                   disabled={symbolsLoading || symbols.length === 0}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue
                       placeholder={
                         symbolsLoading ? "Loading…" : "Select symbol"
@@ -190,10 +194,12 @@ export default function SignalsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs">Timeframe</Label>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">
+                  Timeframe
+                </Label>
                 <Select value={timeframe} onValueChange={setTimeframe}>
-                  <SelectTrigger className="w-full sm:w-28">
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
