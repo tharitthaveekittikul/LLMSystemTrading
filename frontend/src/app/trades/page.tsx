@@ -2,13 +2,22 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { format, parseISO } from "date-fns";
+import type { DateRange } from "react-day-picker";
+import { CalendarIcon } from "lucide-react";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -21,6 +30,7 @@ import { tradesApi } from "@/lib/api";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import { formatDateTime } from "@/lib/date";
 import type { Trade } from "@/types/trading";
+import { cn } from "@/lib/utils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -134,54 +144,94 @@ function TradesContent() {
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
+            <Checkbox
               id="open-only"
               checked={openOnly}
-              onChange={(e) =>
+              onCheckedChange={(checked) =>
                 updateParams(
-                  e.target.checked
-                    ? { open_only: "true", date_from: undefined, date_to: undefined }
-                    : { open_only: undefined }
+                  checked
+                    ? {
+                        open_only: "true",
+                        date_from: undefined,
+                        date_to: undefined,
+                      }
+                    : { open_only: undefined },
                 )
               }
-              className="h-4 w-4"
             />
             <Label htmlFor="open-only">Open only</Label>
           </div>
           {!openOnly && (
-            <>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="date-from" className="text-xs">
-                  From
-                </Label>
-                <Input
-                  id="date-from"
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => updateParams({ date_from: e.target.value || undefined })}
-                  className="w-36 text-sm"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="date-to" className="text-xs">
-                  To
-                </Label>
-                <Input
-                  id="date-to"
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => updateParams({ date_to: e.target.value || undefined })}
-                  className="w-36 text-sm"
-                />
-              </div>
-            </>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs">Date Range</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="date-range"
+                    variant="outline"
+                    className={cn(
+                      "w-64 justify-start text-left text-sm font-normal",
+                      !dateFrom && !dateTo && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateFrom && dateTo
+                      ? `${format(parseISO(dateFrom), "MMM d, yyyy")} – ${format(parseISO(dateTo), "MMM d, yyyy")}`
+                      : dateFrom
+                        ? `From ${format(parseISO(dateFrom), "MMM d, yyyy")}`
+                        : "Pick a date range"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    captionLayout="dropdown"
+                    defaultMonth={dateFrom ? parseISO(dateFrom) : new Date()}
+                    selected={
+                      {
+                        from: dateFrom ? parseISO(dateFrom) : undefined,
+                        to: dateTo ? parseISO(dateTo) : undefined,
+                      } as DateRange
+                    }
+                    onSelect={(range) => {
+                      updateParams({
+                        date_from: range?.from
+                          ? format(range.from, "yyyy-MM-dd")
+                          : undefined,
+                        date_to: range?.to
+                          ? format(range.to, "yyyy-MM-dd")
+                          : undefined,
+                      });
+                    }}
+                    numberOfMonths={2}
+                  />
+                  {(dateFrom || dateTo) && (
+                    <div className="border-t p-3 flex justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          updateParams({
+                            date_from: undefined,
+                            date_to: undefined,
+                          })
+                        }
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
           )}
           <Button size="sm" onClick={load} disabled={loading}>
             {loading ? "Loading…" : "Refresh"}
           </Button>
           <span className="text-xs text-muted-foreground">
-            {activeAccountId == null ? "Showing all accounts" : `Account ${activeAccountId}`}
+            {activeAccountId == null
+              ? "Showing all accounts"
+              : `Account ${activeAccountId}`}
           </span>
         </div>
 
