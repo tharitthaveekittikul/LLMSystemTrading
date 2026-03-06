@@ -13,6 +13,7 @@ from api.routes import strategies
 from api.routes import pipeline as pipeline_routes
 from api.routes import settings as settings_routes
 from api.routes import backtest as backtest_routes
+from api.routes import storage as storage_routes
 from core.config import settings
 from core.logging import setup_logging
 from db.postgres import init_db
@@ -83,6 +84,7 @@ app.include_router(strategies.router,    prefix="/api/v1/strategies",  tags=["st
 app.include_router(pipeline_routes.router, prefix="/api/v1/pipeline", tags=["pipeline"])
 app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(backtest_routes.router, prefix="/api/v1/backtest", tags=["backtest"])
+app.include_router(storage_routes.router, prefix="/api/v1/storage", tags=["storage"])
 
 
 @app.get("/health", tags=["system"])

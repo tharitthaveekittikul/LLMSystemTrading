@@ -182,3 +182,55 @@ export const backtestApi = {
     return res.json();
   },
 };
+
+// ── Storage Admin ─────────────────────────────────────────────────────────────
+
+export const storageApi = {
+  // PostgreSQL
+  pgOverview: () =>
+    apiRequest<import("@/types/storage").PostgresOverview>("/storage/postgres/overview"),
+
+  pgTables: () =>
+    apiRequest<import("@/types/storage").TableStat[]>("/storage/postgres/tables"),
+
+  pgTableRows: (tableName: string, page = 1, limit = 50) =>
+    apiRequest<import("@/types/storage").RowsPage>(
+      `/storage/postgres/tables/${tableName}/rows?page=${page}&limit=${limit}`
+    ),
+
+  pgPurge: (tableName: string, olderThanDays: number) =>
+    apiRequest<import("@/types/storage").PurgeResult>(
+      `/storage/postgres/tables/${tableName}/purge?older_than_days=${olderThanDays}`,
+      { method: "DELETE" }
+    ),
+
+  pgTruncate: (tableName: string) =>
+    apiRequest<import("@/types/storage").TruncateResult>(
+      `/storage/postgres/tables/${tableName}/truncate`,
+      { method: "DELETE" }
+    ),
+
+  // QuestDB
+  qdbTables: () =>
+    apiRequest<import("@/types/storage").QuestDBTableStat[]>("/storage/questdb/tables"),
+
+  qdbTableRows: (tableName: string, page = 1, limit = 50) =>
+    apiRequest<import("@/types/storage").QuestDBRowsPage>(
+      `/storage/questdb/tables/${tableName}/rows?page=${page}&limit=${limit}`
+    ),
+
+  qdbDropTable: (tableName: string) =>
+    apiRequest<import("@/types/storage").DropResult>(
+      `/storage/questdb/tables/${tableName}`,
+      { method: "DELETE" }
+    ),
+
+  // Redis
+  redisInfo: () =>
+    apiRequest<import("@/types/storage").RedisInfo>("/storage/redis/info"),
+
+  redisFlush: () =>
+    apiRequest<import("@/types/storage").FlushResult>("/storage/redis/flush", {
+      method: "DELETE",
+    }),
+};

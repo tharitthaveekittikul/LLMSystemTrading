@@ -151,3 +151,8 @@ async def get_ohlcv(
 def fire_and_forget(coro) -> None:
     """Schedule a coroutine as a background task (for non-blocking DB writes)."""
     asyncio.create_task(coro)
+
+
+async def get_conn() -> asyncpg.Connection:
+    """Public connection factory for use outside db/questdb.py (e.g. storage routes)."""
+    return await _get_conn()
