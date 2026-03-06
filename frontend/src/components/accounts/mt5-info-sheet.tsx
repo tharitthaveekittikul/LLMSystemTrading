@@ -5,10 +5,21 @@ import {
   Sheet,
   SheetContent,
   SheetHeader,
+  SheetBody,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from "@/components/ui/drawer";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { TrendingDown, TrendingUp, Minus } from "lucide-react";
 
 interface MT5InfoSheetProps {
   info: MT5AccountInfo | null;
@@ -17,6 +28,8 @@ interface MT5InfoSheetProps {
 }
 
 export function MT5InfoSheet({ info, open, onOpenChange }: MT5InfoSheetProps) {
+  const isMobile = useIsMobile();
+
   if (!info) return null;
 
   const tradeModeBadge =
@@ -26,82 +39,197 @@ export function MT5InfoSheet({ info, open, onOpenChange }: MT5InfoSheetProps) {
         ? { label: "Contest", variant: "secondary" as const }
         : { label: "Demo", variant: "outline" as const };
 
-  const profitColor =
-    info.profit > 0
-      ? "text-green-600"
-      : info.profit < 0
-        ? "text-red-600"
-        : "text-muted-foreground";
+  const profit = info.profit ?? 0;
+  const profitPositive = profit > 0;
+  const profitNegative = profit < 0;
+  const ProfitIcon = profitPositive
+    ? TrendingUp
+    : profitNegative
+      ? TrendingDown
+      : Minus;
+  const profitColor = profitPositive
+    ? "text-emerald-500"
+    : profitNegative
+      ? "text-red-500"
+      : "text-muted-foreground";
+
+  const body = (
+    <MT5InfoBody
+      info={info}
+      tradeModeBadge={tradeModeBadge}
+      profit={profit}
+      profitColor={profitColor}
+      ProfitIcon={ProfitIcon}
+    />
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange} direction="bottom">
+        <DrawerContent className="max-h-[90vh]">
+          <DrawerHeader className="border-b pb-4 text-left">
+            <DrawerTitle className="flex items-center gap-2">
+              MT5 Account Info
+              <Badge variant={tradeModeBadge.variant}>
+                {tradeModeBadge.label}
+              </Badge>
+            </DrawerTitle>
+            <DrawerDescription>
+              #{info.login} · {info.server}
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="flex-1 overflow-y-auto px-4 py-4">{body}</div>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[400px] sm:w-[480px]">
+      <SheetContent side="right" className="w-full sm:max-w-lg">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             MT5 Account Info
-            <Badge variant={tradeModeBadge.variant}>{tradeModeBadge.label}</Badge>
+            <Badge variant={tradeModeBadge.variant}>
+              {tradeModeBadge.label}
+            </Badge>
           </SheetTitle>
+          <SheetDescription>
+            #{info.login} · {info.server}
+          </SheetDescription>
         </SheetHeader>
-
-        <div className="mt-4 space-y-4">
-          {/* Identity */}
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Login</span>
-              <span className="font-mono">{info.login}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Name</span>
-              <span>{info.name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Server</span>
-              <span>{info.server}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Company</span>
-              <span>{info.company}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Currency</span>
-              <span>{info.currency}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Leverage</span>
-              <span>1:{info.leverage}</span>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Balance stats */}
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Balance" value={info.balance} currency={info.currency} />
-            <StatCard label="Equity" value={info.equity} currency={info.currency} />
-            <StatCard label="Margin" value={info.margin} currency={info.currency} />
-            <StatCard label="Free Margin" value={info.margin_free} currency={info.currency} />
-          </div>
-
-          <Separator />
-
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Margin Level</span>
-              <span>
-                {info.margin_level != null ? `${info.margin_level.toFixed(2)}%` : "—"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Floating P&L</span>
-              <span className={`font-semibold ${profitColor}`}>
-                {info.profit >= 0 ? "+" : ""}
-                {info.profit.toFixed(2)} {info.currency}
-              </span>
-            </div>
-          </div>
-        </div>
+        <SheetBody>{body}</SheetBody>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/* ─── Shared body content ─────────────────────────────────────────────── */
+
+function MT5InfoBody({
+  info,
+  tradeModeBadge,
+  profit,
+  profitColor,
+  ProfitIcon,
+}: {
+  info: MT5AccountInfo;
+  tradeModeBadge: { label: string; variant: "destructive" | "secondary" | "outline" };
+  profit: number;
+  profitColor: string;
+  ProfitIcon: React.ElementType;
+}) {
+  return (
+    <div className="space-y-6">
+      {/* ── Hero: Balance / Equity / P&L ── */}
+      <div className="rounded-xl border bg-muted/30 p-4 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+              Balance
+            </p>
+            <p className="text-2xl font-bold tabular-nums">
+              {info.balance.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </p>
+            <p className="text-xs text-muted-foreground">{info.currency}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+              Equity
+            </p>
+            <p className="text-2xl font-bold tabular-nums">
+              {info.equity.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </p>
+            <p className="text-xs text-muted-foreground">{info.currency}</p>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Floating P&L */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Floating P&amp;L
+            </p>
+            <p className={`text-xl font-bold tabular-nums ${profitColor}`}>
+              {profit >= 0 ? "+" : ""}
+              {profit.toFixed(2)} {info.currency}
+            </p>
+          </div>
+          <div
+            className={`rounded-full p-3 ${
+              profit > 0
+                ? "bg-emerald-500/10"
+                : profit < 0
+                  ? "bg-red-500/10"
+                  : "bg-muted"
+            }`}
+          >
+            <ProfitIcon
+              className={`h-5 w-5 ${profitColor}`}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Risk / Margin ── */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Margin
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard
+            label="Used"
+            value={info.margin}
+            currency={info.currency}
+          />
+          <StatCard
+            label="Free"
+            value={info.margin_free}
+            currency={info.currency}
+          />
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground mb-1">Level</p>
+            <p className="text-base font-semibold tabular-nums">
+              {info.margin_level != null
+                ? `${info.margin_level.toFixed(1)}%`
+                : "—"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Account details ── */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Account
+        </p>
+        <div className="rounded-xl border divide-y text-sm">
+          {[
+            { label: "Name", value: info.name },
+            { label: "Company", value: info.company },
+            { label: "Currency", value: info.currency },
+            {
+              label: "Leverage",
+              value: `1:${info.leverage}`,
+              mono: false,
+            },
+          ].map(({ label, value, mono }) => (
+            <div key={label} className="flex justify-between px-4 py-2.5">
+              <span className="text-muted-foreground">{label}</span>
+              <span className={mono === false ? "" : "font-mono"}>{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -115,10 +243,13 @@ function StatCard({
   currency: string;
 }) {
   return (
-    <div className="rounded-lg border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold">
-        {value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    <div className="rounded-lg border bg-card p-3">
+      <p className="text-xs text-muted-foreground mb-1">{label}</p>
+      <p className="text-base font-semibold tabular-nums">
+        {value.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}
       </p>
       <p className="text-xs text-muted-foreground">{currency}</p>
     </div>
