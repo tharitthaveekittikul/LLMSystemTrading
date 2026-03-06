@@ -36,6 +36,9 @@ async def test_create_strategy_valid_body_accepted(client):
     }
     resp = await client.post("/api/v1/strategies", json=body)
     assert resp.status_code in (201, 409, 500)
+    if resp.status_code == 201:
+        strategy_id = resp.json()["id"]
+        await client.delete(f"/api/v1/strategies/{strategy_id}")
 
 
 async def test_get_nonexistent_strategy(client):

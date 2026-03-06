@@ -80,8 +80,12 @@ export default function KillSwitchPage() {
 
   return (
     <SidebarInset>
-      <AppHeader title="Kill Switch" showAccountSelector={false} showConnectionStatus={false} />
-      <div className="flex flex-1 flex-col gap-4 p-4 max-w-2xl">
+      <AppHeader
+        title="Kill Switch"
+        showAccountSelector={false}
+        showConnectionStatus={false}
+      />
+      <div className="flex flex-1 flex-col gap-4 p-4 max-w-5xl">
         {/* Status card */}
         <Card className={isActive ? "border-destructive" : "border-green-500"}>
           <CardHeader className="pb-2">
