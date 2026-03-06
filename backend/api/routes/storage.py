@@ -22,13 +22,13 @@ PROTECTED_TABLES: frozenset[str] = frozenset({
     "ai_journal", "llm_provider_configs", "task_llm_assignments",
     "hmm_model_registry", "alembic_version",
     "pipeline_steps", "backtest_trades",  # child tables — cascade-only, no direct management
-    "llm_calls",
 })
 
 PURGEABLE_TABLES: dict[str, str] = {
     "pipeline_runs": "created_at",
     "backtest_runs": "created_at",
     "kill_switch_log": "created_at",
+    "llm_calls": "created_at",
 }
 
 ALL_KNOWN_TABLES: frozenset[str] = PROTECTED_TABLES | frozenset(PURGEABLE_TABLES)

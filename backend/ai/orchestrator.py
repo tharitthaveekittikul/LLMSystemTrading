@@ -114,8 +114,24 @@ def _model_name_from_llm(llm: BaseChatModel) -> str:
 
 
 def _extract_tokens(ai_msg: Any, provider: str) -> tuple[int | None, int | None, int | None]:
-    """Extract (input_tokens, output_tokens, total_tokens) from LangChain AIMessage."""
+    """Extract (input_tokens, output_tokens, total_tokens) from LangChain AIMessage.
+
+    Tries the standardized LangChain v0.2+ usage_metadata dict first (works across all
+    providers), then falls back to provider-specific response_metadata fields.
+    """
     try:
+        # ── Standard LangChain v0.2+ path ─────────────────────────────────────
+        # AIMessage.usage_metadata is a dict: {input_tokens, output_tokens, total_tokens}
+        meta = getattr(ai_msg, "usage_metadata", None)
+        if isinstance(meta, dict) and "input_tokens" in meta:
+            inp = meta.get("input_tokens")
+            out = meta.get("output_tokens")
+            total = meta.get("total_tokens") or (
+                (inp or 0) + (out or 0) if inp is not None and out is not None else None
+            )
+            return inp, out, total
+
+        # ── Provider-specific fallbacks ────────────────────────────────────────
         if provider == "openai":
             usage = ai_msg.response_metadata.get("token_usage", {})
             inp = usage.get("prompt_tokens")
@@ -131,13 +147,14 @@ def _extract_tokens(ai_msg: Any, provider: str) -> tuple[int | None, int | None,
             return inp, out, total
 
         if provider == "google":
-            meta = getattr(ai_msg, "usage_metadata", None)
-            if meta is None:
-                return None, None, None
-            inp = getattr(meta, "prompt_token_count", None)
-            out = getattr(meta, "candidates_token_count", None)
-            total = getattr(meta, "total_token_count", None)
-            return inp, out, total
+            # Older langchain-google-genai: usage data nested in response_metadata
+            rm = getattr(ai_msg, "response_metadata", {}) or {}
+            usage = rm.get("usage_metadata") or rm.get("usageMetadata") or {}
+            if isinstance(usage, dict):
+                inp = usage.get("prompt_token_count") or usage.get("promptTokenCount")
+                out = usage.get("candidates_token_count") or usage.get("candidatesTokenCount")
+                total = usage.get("total_token_count") or usage.get("totalTokenCount")
+                return inp, out, total
 
     except Exception as exc:
         logger.debug("Could not extract token usage: %s", exc)
