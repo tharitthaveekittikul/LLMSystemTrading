@@ -12,20 +12,59 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const STEP_LABELS: Record<string, string> = {
-  account_loaded: "Account Loaded",
-  rate_limit_check: "Rate Limit Check",
-  ohlcv_fetch: "OHLCV Fetch",
-  indicators_computed: "Indicators Computed",
-  positions_fetched: "Positions Fetched",
-  signals_fetched: "Recent Signals Fetched",
-  llm_analyzed: "LLM Analysis",
-  confidence_gate: "Confidence Gate",
-  journal_saved: "Journal Saved",
-  kill_switch_check: "Kill Switch Check",
-  order_built: "Order Built",
-  mt5_executed: "MT5 Order Executed",
-  telegram_sent: "Telegram Alert Sent",
-};
+  account_loaded:          "Account Loaded",
+  rate_limit_check:        "Rate Limit Check",
+  ohlcv_fetch:             "OHLCV Fetch",
+  indicators_computed:     "Indicators Computed",
+  hmm_regime:              "HMM Regime Detection",
+  positions_fetched:       "Positions Fetched",
+  signals_fetched:         "Recent Signals Fetched",
+  rule_signal:             "Rule-Based Signal",
+  market_analysis_llm:     "Market Analysis (LLM)",
+  chart_vision_llm:        "Chart Vision (LLM)",
+  execution_decision_llm:  "Execution Decision (LLM)",
+  llm_analyzed:            "LLM Analysis (legacy)",
+  confidence_gate:         "Confidence Gate",
+  regime_gate:             "Regime Gate",
+  lot_size_calculated:     "Lot Size Calculated",
+  journal_saved:           "Journal Saved",
+  kill_switch_check:       "Kill Switch Check",
+  order_built:             "Order Built",
+  mt5_executed:            "MT5 Order Executed",
+  telegram_sent:           "Telegram Alert Sent",
+}
+
+const LLM_STEP_NAMES = new Set([
+  "market_analysis_llm",
+  "chart_vision_llm",
+  "execution_decision_llm",
+  "llm_analyzed",
+])
+
+interface TokenInfo {
+  model: string
+  provider: string
+  input_tokens: number | null
+  output_tokens: number | null
+  total_tokens: number | null
+}
+
+function extractTokenInfo(step: PipelineStep): TokenInfo | null {
+  if (!LLM_STEP_NAMES.has(step.step_name) || !step.output_json) return null
+  try {
+    const out = JSON.parse(step.output_json)
+    if (!out.model && out.input_tokens == null) return null
+    return {
+      model:         out.model         ?? "unknown",
+      provider:      out.provider      ?? "unknown",
+      input_tokens:  out.input_tokens  ?? null,
+      output_tokens: out.output_tokens ?? null,
+      total_tokens:  out.total_tokens  ?? null,
+    }
+  } catch {
+    return null
+  }
+}
 
 interface PipelineStepCardProps {
   step: PipelineStep;
@@ -46,9 +85,10 @@ function JsonViewer({ raw }: { raw: string | null }) {
 }
 
 export function PipelineStepCard({ step }: PipelineStepCardProps) {
-  const [expanded, setExpanded] = useState(false);
-  const hasDetail = step.input_json || step.output_json || step.error;
-  const label = STEP_LABELS[step.step_name] ?? step.step_name;
+  const [expanded, setExpanded] = useState(false)
+  const hasDetail = step.input_json || step.output_json || step.error
+  const label = STEP_LABELS[step.step_name] ?? step.step_name
+  const tokenInfo = extractTokenInfo(step)
 
   return (
     <div className="border-l-2 border-muted pl-4 py-1">
@@ -81,6 +121,21 @@ export function PipelineStepCard({ step }: PipelineStepCardProps) {
         )}
       </button>
 
+      {tokenInfo && (
+        <div className="mt-1 ml-6 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="font-mono bg-muted/60 px-1.5 py-0.5 rounded">
+            {tokenInfo.provider}/{tokenInfo.model}
+          </span>
+          {tokenInfo.input_tokens != null && (
+            <>
+              <span>↑ {tokenInfo.input_tokens.toLocaleString()} in</span>
+              <span>↓ {(tokenInfo.output_tokens ?? 0).toLocaleString()} out</span>
+              <span className="font-medium">∑ {(tokenInfo.total_tokens ?? 0).toLocaleString()} total</span>
+            </>
+          )}
+        </div>
+      )}
+
       {expanded && hasDetail && (
         <div className="mt-2 space-y-2">
           {step.error && (
@@ -106,5 +161,5 @@ export function PipelineStepCard({ step }: PipelineStepCardProps) {
         </div>
       )}
     </div>
-  );
+  )
 }

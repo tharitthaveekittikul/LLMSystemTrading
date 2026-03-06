@@ -234,3 +234,30 @@ export const storageApi = {
       method: "DELETE",
     }),
 };
+
+// ── LLM Usage ─────────────────────────────────────────────────────────────────
+
+export const llmUsageApi = {
+  getSummary: (period: "day" | "week" | "month" = "month") =>
+    apiRequest<import("@/types/trading").LLMUsageSummary>(
+      `/llm-usage/summary?period=${period}`
+    ),
+
+  getTimeseries: (params?: { granularity?: "daily" | "hourly"; days?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.granularity) query.set("granularity", params.granularity)
+    if (params?.days != null) query.set("days", String(params.days))
+    const qs = query.toString()
+    return apiRequest<import("@/types/trading").LLMTimeseriesPoint[]>(
+      `/llm-usage/timeseries${qs ? `?${qs}` : ""}`
+    )
+  },
+
+  getByModel: (period: "day" | "week" | "month" = "month") =>
+    apiRequest<import("@/types/trading").LLMModelUsage[]>(
+      `/llm-usage/by-model?period=${period}`
+    ),
+
+  getPricing: () =>
+    apiRequest<import("@/types/trading").LLMPricingEntry[]>("/llm-usage/pricing"),
+};

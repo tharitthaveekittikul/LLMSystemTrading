@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, event
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.postgres import Base
@@ -197,6 +197,29 @@ class PipelineStep(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
 
     run: Mapped["PipelineRun"] = relationship("PipelineRun", back_populates="steps")
+
+
+class LLMCall(Base):
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pipeline_step_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("pipeline_steps.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), nullable=False)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(10, 8), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
 
 
 class LLMProviderConfig(Base):

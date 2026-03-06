@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ai.orchestrator import LLMAnalysisResult, TradingSignal
+from ai.orchestrator import LLMAnalysisResult, LLMRoleResult, TradingSignal
 
 
 def _make_signal(action: str, confidence: float = 0.85) -> TradingSignal:
@@ -16,9 +16,28 @@ def _make_signal(action: str, confidence: float = 0.85) -> TradingSignal:
     )
 
 
+def _make_role_result() -> LLMRoleResult:
+    return LLMRoleResult(
+        content="analysis",
+        input_tokens=100,
+        output_tokens=50,
+        total_tokens=150,
+        model="gemini-2.5-flash",
+        provider="google",
+        duration_ms=500,
+        raw_text="analysis",
+    )
+
+
 def _make_llm_result(action: str, confidence: float = 0.85) -> LLMAnalysisResult:
     signal = _make_signal(action, confidence)
-    return LLMAnalysisResult(signal=signal, prompt_text="", raw_response={})
+    role = _make_role_result()
+    return LLMAnalysisResult(
+        signal=signal,
+        market_analysis=role,
+        chart_vision=None,
+        execution_decision=role,
+    )
 
 
 @pytest.mark.asyncio

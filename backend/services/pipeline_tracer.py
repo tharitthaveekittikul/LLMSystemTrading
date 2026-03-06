@@ -19,7 +19,7 @@ import logging
 import time
 from typing import Any
 
-from db.models import PipelineRun, PipelineStep
+from db.models import LLMCall, PipelineRun, PipelineStep
 from db.postgres import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -68,10 +68,10 @@ class PipelineTracer:
         output_data: dict[str, Any] | None = None,
         error: str | None = None,
         duration_ms: int = 0,
-    ) -> None:
-        """Persist a single pipeline step immediately."""
+    ) -> int | None:
+        """Persist a single pipeline step immediately. Returns the step's database ID."""
         if not self._run or not self._db:
-            return
+            return None
         self._seq += 1
         step = PipelineStep(
             run_id=self._run.id,
@@ -85,6 +85,41 @@ class PipelineTracer:
         )
         self._db.add(step)
         await self._db.commit()
+        await self._db.refresh(step)
+        return step.id
+
+    async def record_llm_call(
+        self,
+        *,
+        role: str,
+        provider: str,
+        model: str,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        total_tokens: int | None,
+        cost_usd: float | None,
+        duration_ms: int,
+        pipeline_step_id: int | None = None,
+    ) -> int | None:
+        """Persist an llm_calls row. Returns the new row id."""
+        if not self._db:
+            return None
+        call = LLMCall(
+            pipeline_step_id=pipeline_step_id,
+            account_id=self._account_id,
+            provider=provider,
+            model=model,
+            role=role,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            cost_usd=cost_usd,
+            duration_ms=duration_ms,
+        )
+        self._db.add(call)
+        await self._db.commit()
+        await self._db.refresh(call)
+        return call.id
 
     def finalize(
         self,

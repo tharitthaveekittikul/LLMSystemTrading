@@ -24,7 +24,8 @@ from pydantic import BaseModel as PydanticBase
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.orchestrator import LLMAnalysisResult, TradingSignal, analyze_market
+from ai.orchestrator import LLMAnalysisResult, LLMRoleResult, TradingSignal, analyze_market
+from core.llm_pricing import compute_cost
 from api.routes.ws import broadcast
 from core.config import settings
 from core.security import decrypt
@@ -451,7 +452,7 @@ class AITradingService:
                 signal = TradingSignal(**rule_result)
 
         # ── 8. LLM analysis (skipped for rule-based strategies) ───────────────
-        market_analysis_llm = None
+        llm_result: LLMAnalysisResult | None = None
         if not rule_based:
             # Rate limit applies only to LLM calls.
             t0 = time.monotonic()
@@ -492,9 +493,13 @@ class AITradingService:
                     "Could not fetch trade history for LLM context | account_id=%s: %s", account_id, exc
                 )
 
-            market_analysis_llm = await _get_task_llm("market_analysis", db)
+            # ── Fetch per-role LLM assignments from DB ───────────────────
+            ma_llm  = await _get_task_llm("market_analysis", db)
+            cv_llm  = await _get_task_llm("chart_vision", db)
+            ed_llm  = await _get_task_llm("execution_decision", db)
+
             t0 = time.monotonic()
-            llm_result: LLMAnalysisResult = await analyze_market(
+            llm_result = await analyze_market(
                 symbol=symbol,
                 timeframe=tf_upper,
                 current_price=current_price or 0,
@@ -506,19 +511,78 @@ class AITradingService:
                 trade_history_context=trade_history_context,
                 regime_context=regime_context_str,
                 system_prompt_override=strategy_overrides.custom_prompt if strategy_overrides else None,
-                llm_override=market_analysis_llm,
+                market_analysis_llm=ma_llm,
+                chart_vision_llm=cv_llm,
+                execution_decision_llm=ed_llm,
             )
             signal = llm_result.signal
-            await tracer.record(
-                "llm_analyzed",
-                input_data={"prompt": llm_result.prompt_text[:4000]},
-                output_data={
-                    "raw_response": llm_result.raw_response,
-                    "provider":     settings.llm_provider,
-                    "action":       signal.action,
-                    "confidence":   signal.confidence,
+
+            # ── Record 3 LLM pipeline steps + llm_calls rows ─────────────
+            async def _record_llm_role(
+                role_result: LLMRoleResult,
+                step_name: str,
+                role: str,
+                input_summary: dict,
+            ) -> None:
+                step_id = await tracer.record(
+                    step_name,
+                    input_data=input_summary,
+                    output_data={
+                        "model":         role_result.model,
+                        "provider":      role_result.provider,
+                        "input_tokens":  role_result.input_tokens,
+                        "output_tokens": role_result.output_tokens,
+                        "total_tokens":  role_result.total_tokens,
+                        "content": (
+                            role_result.content
+                            if isinstance(role_result.content, dict)
+                            else str(role_result.content)[:500]
+                        ),
+                    },
+                    duration_ms=role_result.duration_ms,
+                )
+                cost = (
+                    compute_cost(
+                        role_result.model,
+                        role_result.input_tokens or 0,
+                        role_result.output_tokens or 0,
+                    )
+                    if role_result.input_tokens is not None
+                    else None
+                )
+                await tracer.record_llm_call(
+                    role=role,
+                    provider=role_result.provider,
+                    model=role_result.model,
+                    input_tokens=role_result.input_tokens,
+                    output_tokens=role_result.output_tokens,
+                    total_tokens=role_result.total_tokens,
+                    cost_usd=cost,
+                    duration_ms=role_result.duration_ms,
+                    pipeline_step_id=step_id,
+                )
+
+            await _record_llm_role(
+                llm_result.market_analysis,
+                "market_analysis_llm",
+                "market_analysis",
+                {"symbol": symbol, "timeframe": tf_upper},
+            )
+            if llm_result.chart_vision is not None:
+                await _record_llm_role(
+                    llm_result.chart_vision,
+                    "chart_vision_llm",
+                    "chart_vision",
+                    {"symbol": symbol, "has_image": True},
+                )
+            await _record_llm_role(
+                llm_result.execution_decision,
+                "execution_decision_llm",
+                "execution_decision",
+                {
+                    "action":     signal.action,
+                    "confidence": signal.confidence,
                 },
-                duration_ms=int((time.monotonic() - t0) * 1000),
             )
 
         # ── 9. Confidence gate ───────────────────────────────────────────────
@@ -565,9 +629,12 @@ class AITradingService:
             rationale=signal.rationale,
             indicators_snapshot=json.dumps(indicators),
             llm_provider="rule_based" if rule_based else (
-                _provider_name(market_analysis_llm) if market_analysis_llm else settings.llm_provider
+                llm_result.execution_decision.provider if llm_result is not None else settings.llm_provider
             ),
-            model_name=type(strategy_instance).__name__ if rule_based else "",
+            model_name=(
+                type(strategy_instance).__name__ if rule_based
+                else (llm_result.execution_decision.model if llm_result is not None else "")
+            ),
             strategy_id=strategy_id,
         )
         db.add(journal)
@@ -638,6 +705,9 @@ class AITradingService:
         # ── 15. Dynamic lot size ──────────────────────────────────────────────
         # Priority: strategy_overrides.lot_size > risk-based calc > max_lot_size fallback
         t0 = time.monotonic()
+        sl_pips: float | None = None
+        pip_value_per_lot: float | None = None
+        balance: float | None = None
         if strategy_overrides and strategy_overrides.lot_size is not None:
             effective_lot_size = strategy_overrides.lot_size
         else:

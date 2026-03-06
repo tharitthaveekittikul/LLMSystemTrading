@@ -24,7 +24,7 @@ def test_account_response_includes_mt5_path():
     r = AccountResponse(
         id=1, name="Test", broker="ICM", login=12345,
         server="srv", is_live=False, is_active=True,
-        allowed_symbols=[], max_lot_size=0.1,
+        allowed_symbols=[], max_lot_size=0.1, risk_pct=0.01,
         auto_trade_enabled=True, mt5_path="C:/MT5_Account1",
         account_type="USD",
         created_at=datetime.datetime.now(datetime.timezone.utc),

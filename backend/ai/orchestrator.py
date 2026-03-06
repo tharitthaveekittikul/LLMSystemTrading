@@ -1,16 +1,16 @@
 """LangChain Orchestrator — all LLM interactions go through here.
 
 Never call OpenAI / Gemini / Anthropic APIs directly from routes or services.
-The signal pipeline: market data → prompt → LLM → TradingSignal (validated).
+The signal pipeline: market data → market_analysis_llm → chart_vision_llm → execution_decision_llm → TradingSignal.
 """
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, field_validator
 
 from core.config import settings
@@ -38,10 +38,25 @@ class TradingSignal(BaseModel):
 
 
 @dataclass
+class LLMRoleResult:
+    """Result from a single LLM role call, including token usage."""
+    content: Any                          # parsed dict or str output
+    input_tokens: int | None
+    output_tokens: int | None
+    total_tokens: int | None
+    model: str
+    provider: str
+    duration_ms: int
+    raw_text: str = ""                    # raw text response before parsing
+
+
+@dataclass
 class LLMAnalysisResult:
+    """Combined result from all 3 LLM role calls."""
     signal: TradingSignal
-    prompt_text: str        # rendered human message sent to the LLM
-    raw_response: dict      # raw dict from LLM before Pydantic parsing
+    market_analysis: LLMRoleResult
+    chart_vision: LLMRoleResult | None    # None if no chart image provided
+    execution_decision: LLMRoleResult
 
 
 # ── LLM factory ───────────────────────────────────────────────────────────────
@@ -51,11 +66,7 @@ def _build_llm(
     api_key: str | None = None,
     model: str | None = None,
 ) -> BaseChatModel:
-    """Build a LangChain chat model.
-
-    If provider/api_key/model are given, use them directly (DB-sourced task assignment).
-    Otherwise fall back to env-var settings.
-    """
+    """Build a LangChain chat model from provider config or env-var settings."""
     resolved_provider = provider or settings.llm_provider
 
     if resolved_provider == "openai":
@@ -85,22 +96,150 @@ def _build_llm(
     raise ValueError(f"Unknown llm_provider: {resolved_provider!r}")
 
 
-# ── Prompt template ───────────────────────────────────────────────────────────
+def _provider_from_llm(llm: BaseChatModel) -> str:
+    """Derive short provider name from LangChain model class."""
+    mod = type(llm).__module__
+    if "openai" in mod:
+        return "openai"
+    if "google" in mod or "gemini" in mod:
+        return "google"
+    if "anthropic" in mod:
+        return "anthropic"
+    return "unknown"
 
-_SYSTEM = """You are a professional forex and commodity trading analyst.
-Analyze the provided market data and return ONLY a JSON trading signal.
 
-Rules:
-- Signal BUY or SELL only when multiple indicators confirm the same direction.
-- Signal HOLD when uncertain or when risk/reward is unfavorable.
-- Stop loss and take profit must be logical relative to current price and ATR.
-- Confidence reflects your conviction based on indicator confluence (0.0 = none, 1.0 = certain).
-- CRITICAL: Check your currently open positions before signaling. Avoid doubling into the same
-  direction unless confluence is extremely strong (confidence > 0.90). Never open opposing
-  positions simultaneously.
+def _model_name_from_llm(llm: BaseChatModel) -> str:
+    """Extract model name string from LangChain model instance."""
+    return getattr(llm, "model_name", None) or getattr(llm, "model", None) or "unknown"
 
-Return ONLY strictly valid JSON. Use EXACTLY these field names — do NOT use alternatives like
-"signal", "side", "explanation", or "reasoning":
+
+def _extract_tokens(ai_msg: Any, provider: str) -> tuple[int | None, int | None, int | None]:
+    """Extract (input_tokens, output_tokens, total_tokens) from LangChain AIMessage."""
+    try:
+        if provider == "openai":
+            usage = ai_msg.response_metadata.get("token_usage", {})
+            inp = usage.get("prompt_tokens")
+            out = usage.get("completion_tokens")
+            total = usage.get("total_tokens")
+            return inp, out, total
+
+        if provider == "anthropic":
+            usage = ai_msg.response_metadata.get("usage", {})
+            inp = usage.get("input_tokens")
+            out = usage.get("output_tokens")
+            total = (inp or 0) + (out or 0) if inp is not None and out is not None else None
+            return inp, out, total
+
+        if provider == "google":
+            meta = getattr(ai_msg, "usage_metadata", None)
+            if meta is None:
+                return None, None, None
+            inp = getattr(meta, "prompt_token_count", None)
+            out = getattr(meta, "candidates_token_count", None)
+            total = getattr(meta, "total_token_count", None)
+            return inp, out, total
+
+    except Exception as exc:
+        logger.debug("Could not extract token usage: %s", exc)
+    return None, None, None
+
+
+# ── Per-role LLM caller ────────────────────────────────────────────────────────
+
+async def _call_llm_for_role(
+    llm: BaseChatModel,
+    messages: list[BaseMessage],
+    role: str,
+) -> LLMRoleResult:
+    """Invoke an LLM directly (not via chain) and return result with token usage."""
+    provider = _provider_from_llm(llm)
+    model = _model_name_from_llm(llm)
+    t0 = time.monotonic()
+
+    ai_msg = await llm.ainvoke(messages)
+    duration_ms = int((time.monotonic() - t0) * 1000)
+
+    raw_text = ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
+    inp, out, total = _extract_tokens(ai_msg, provider)
+
+    # Parse JSON from the text response
+    try:
+        # Strip markdown code fences if present
+        text = raw_text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        content = json.loads(text)
+    except Exception:
+        content = raw_text
+
+    logger.info(
+        "LLM role=%s provider=%s model=%s input=%s output=%s total=%s duration=%dms",
+        role, provider, model, inp, out, total, duration_ms,
+    )
+    return LLMRoleResult(
+        content=content,
+        input_tokens=inp,
+        output_tokens=out,
+        total_tokens=total,
+        model=model,
+        provider=provider,
+        duration_ms=duration_ms,
+        raw_text=raw_text,
+    )
+
+
+# ── Normaliser (shared) ────────────────────────────────────────────────────────
+
+def _normalize_raw(raw: dict, *, timeframe: str, current_price: float) -> dict:
+    """Map alternative LLM field names to the canonical TradingSignal schema."""
+    out = dict(raw)
+
+    if "action" not in out:
+        for alias in ("signal", "side", "direction", "trade_action"):
+            if alias in out:
+                out["action"] = out.pop(alias)
+                break
+
+    if "rationale" not in out:
+        for alias in ("explanation", "reason", "reasoning", "summary", "note"):
+            if alias in out:
+                out["rationale"] = out.pop(alias)
+                break
+
+    if "timeframe" not in out:
+        out["timeframe"] = timeframe
+
+    out.setdefault("action", "HOLD")
+    out.setdefault("entry", current_price)
+    out.setdefault("stop_loss", 0.0)
+    out.setdefault("take_profit", 0.0)
+    out.setdefault("confidence", 0.0)
+    out.setdefault("rationale", "No rationale provided by model.")
+
+    if isinstance(out.get("action"), str):
+        out["action"] = out["action"].upper()
+
+    logger.debug("LLM raw → normalised: %s", out)
+    return out
+
+
+# ── System prompts ─────────────────────────────────────────────────────────────
+
+_MARKET_ANALYSIS_SYSTEM = """You are a professional forex market analyst.
+Analyze the market data and return ONLY strictly valid JSON:
+{{
+  "trend": "bullish | bearish | ranging",
+  "trend_strength": <float 0.0-1.0>,
+  "key_support": <float>,
+  "key_resistance": <float>,
+  "volatility": "low | medium | high",
+  "context_notes": "<2-3 sentence analysis of current market conditions>"
+}}"""
+
+_EXECUTION_SYSTEM = """You are a professional forex trader making execution decisions.
+Based on the market analysis and position context provided, return ONLY strictly valid JSON.
+Use EXACTLY these field names:
 {{
   "action": "BUY | SELL | HOLD",
   "entry": <float>,
@@ -109,75 +248,137 @@ Return ONLY strictly valid JSON. Use EXACTLY these field names — do NOT use al
   "confidence": <float 0.0-1.0>,
   "rationale": "<brief 1-2 sentence explanation>",
   "timeframe": "<e.g. M15>"
-}}"""
+}}
 
-_HUMAN = """Symbol: {symbol}
-Timeframe: {timeframe}
-Current Price: {current_price}
-
-Indicators:
-{indicators}
-{regime_section}
-Last 20 OHLCV candles (oldest → newest):
-{ohlcv}
-{positions_section}
-{signals_section}
-{chart_section}
-{news_section}
-{history_section}
-Provide the trading signal JSON."""
-
-_PROMPT = ChatPromptTemplate.from_messages([("system", _SYSTEM), ("human", _HUMAN)])
-_DEFAULT_CHAIN = _PROMPT | _build_llm() | JsonOutputParser()
+Rules:
+- Signal BUY or SELL only when multiple indicators confirm the same direction.
+- Signal HOLD when uncertain or risk/reward is unfavorable.
+- Check open positions before signaling. Avoid doubling same direction unless confidence > 0.90.
+- Never open opposing positions simultaneously."""
 
 
-# ── LLM response normaliser ───────────────────────────────────────────────────
+# ── Role: Market Analysis ──────────────────────────────────────────────────────
 
-def _normalize_raw(raw: dict, *, timeframe: str, current_price: float) -> dict:
-    """Map alternative LLM field names to the canonical TradingSignal schema.
+async def _run_market_analysis(
+    llm: BaseChatModel,
+    symbol: str,
+    timeframe: str,
+    current_price: float,
+    indicators: dict,
+    ohlcv: list[dict],
+    open_positions: list[dict],
+    recent_signals: list[dict],
+    news_context: str | None,
+    trade_history_context: str | None,
+    regime_context: str | None,
+) -> LLMRoleResult:
+    """LLM Role 1: Analyze market conditions and produce a context summary."""
+    pos_lines = [
+        f"  - {p.get('symbol', symbol)} {p.get('direction','?')} vol={p.get('volume','?')} profit={p.get('profit','?')}"
+        for p in (open_positions or [])
+    ] or ["  None"]
+    sig_lines = [
+        f"  - {s.get('symbol',symbol)} {s.get('signal','?')} conf={s.get('confidence','?')} | {s.get('rationale','')[:80]}"
+        for s in (recent_signals or [])
+    ]
 
-    Different models return different keys:
-      - Gemini Flash 2.5:  "signal" → "action", "explanation" → "rationale"
-      - Some models omit numeric fields entirely when signalling HOLD.
+    human_parts = [
+        f"Symbol: {symbol}\nTimeframe: {timeframe}\nCurrent Price: {current_price}",
+        f"\nIndicators:\n{json.dumps(indicators, indent=2)}",
+    ]
+    if regime_context:
+        human_parts.append(f"\nMarket Regime (HMM):\n{regime_context}")
+    human_parts.append(f"\nLast 20 OHLCV candles (oldest → newest):\n{json.dumps(ohlcv[-20:], indent=2, default=str)}")
+    human_parts.append("\nCurrently Open Positions:\n" + "\n".join(pos_lines))
+    if sig_lines:
+        human_parts.append("\nRecent Signal History (newest first):\n" + "\n".join(sig_lines))
+    if news_context:
+        human_parts.append(f"\n{news_context}")
+    if trade_history_context:
+        human_parts.append(f"\n{trade_history_context}")
+    human_parts.append("\nProvide the market context JSON.")
 
-    After normalisation the dict is guaranteed to contain all required fields
-    so that ``TradingSignal(**raw)`` never raises a missing-field ValidationError.
-    """
-    out = dict(raw)  # shallow copy — don't mutate caller's dict
+    messages = [
+        SystemMessage(content=_MARKET_ANALYSIS_SYSTEM),
+        HumanMessage(content="\n".join(human_parts)),
+    ]
+    return await _call_llm_for_role(llm, messages, "market_analysis")
 
-    # ── Field aliases ─────────────────────────────────────────────────────────
-    # action
-    if "action" not in out:
-        for alias in ("signal", "side", "direction", "trade_action"):
-            if alias in out:
-                out["action"] = out.pop(alias)
-                break
 
-    # rationale
-    if "rationale" not in out:
-        for alias in ("explanation", "reason", "reasoning", "summary", "note"):
-            if alias in out:
-                out["rationale"] = out.pop(alias)
-                break
+# ── Role: Chart Vision ─────────────────────────────────────────────────────────
 
-    # timeframe
-    if "timeframe" not in out:
-        out["timeframe"] = timeframe
+async def _run_chart_vision(
+    llm: BaseChatModel,
+    symbol: str,
+    timeframe: str,
+    chart_image_b64: str,
+    market_context: dict,
+) -> LLMRoleResult:
+    """LLM Role 2: Analyze chart image and identify visual patterns."""
+    system = """You are a technical chart analyst. Identify visual price patterns from the chart image.
+Return ONLY strictly valid JSON:
+{
+  "chart_pattern": "<pattern name, e.g. double_top | head_shoulders | channel | none>",
+  "pattern_direction": "bullish | bearish | neutral",
+  "chart_notes": "<2-3 sentence description of what you see in the chart>"
+}"""
 
-    # ── Safe defaults for missing numeric fields ──────────────────────────────
-    out.setdefault("action", "HOLD")
-    out.setdefault("entry", current_price)
-    out.setdefault("stop_loss", 0.0)
-    out.setdefault("take_profit", 0.0)
-    out.setdefault("confidence", 0.0)
-    out.setdefault("rationale", "No rationale provided by model.")
+    human_text = (
+        f"Symbol: {symbol} | Timeframe: {timeframe}\n"
+        f"Market Context: {json.dumps(market_context, indent=2)}\n"
+        "Analyze this chart and return the visual pattern JSON."
+    )
+    messages = [
+        SystemMessage(content=system),
+        HumanMessage(content=[
+            {"type": "text", "text": human_text},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{chart_image_b64}"}},
+        ]),
+    ]
+    return await _call_llm_for_role(llm, messages, "chart_vision")
 
-    # Normalise action casing
-    if isinstance(out.get("action"), str):
-        out["action"] = out["action"].upper()
 
-    logger.debug("LLM raw → normalised: %s", out)
-    return out
+# ── Role: Execution Decision ───────────────────────────────────────────────────
+
+async def _run_execution_decision(
+    llm: BaseChatModel,
+    symbol: str,
+    timeframe: str,
+    current_price: float,
+    market_context: dict,
+    visual_pattern: dict | None,
+    open_positions: list[dict],
+    recent_signals: list[dict],
+    system_prompt_override: str | None,
+) -> LLMRoleResult:
+    """LLM Role 3: Make final trade execution decision given all context."""
+    system = system_prompt_override or _EXECUTION_SYSTEM
+
+    pos_lines = [
+        f"  - {p.get('symbol', symbol)} {p.get('direction','?')} vol={p.get('volume','?')} profit={p.get('profit','?')}"
+        for p in (open_positions or [])
+    ] or ["  None"]
+
+    human_parts = [
+        f"Symbol: {symbol}\nTimeframe: {timeframe}\nCurrent Price: {current_price}",
+        f"\nMarket Analysis:\n{json.dumps(market_context, indent=2)}",
+    ]
+    if visual_pattern:
+        human_parts.append(f"\nChart Pattern Analysis:\n{json.dumps(visual_pattern, indent=2)}")
+    human_parts.append("\nCurrently Open Positions:\n" + "\n".join(pos_lines))
+    if recent_signals:
+        sig_lines = [
+            f"  - {s.get('symbol',symbol)} {s.get('signal','?')} conf={s.get('confidence','?')} | {s.get('rationale','')[:80]}"
+            for s in recent_signals
+        ]
+        human_parts.append("\nRecent Signal History:\n" + "\n".join(sig_lines))
+    human_parts.append("\nProvide the trading signal JSON.")
+
+    messages = [
+        SystemMessage(content=system),
+        HumanMessage(content="\n".join(human_parts)),
+    ]
+    return await _call_llm_for_role(llm, messages, "execution_decision")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -196,99 +397,62 @@ async def analyze_market(
     regime_context: str | None = None,
     system_prompt_override: str | None = None,
     llm_override: BaseChatModel | None = None,
+    # Per-role LLM overrides
+    market_analysis_llm: BaseChatModel | None = None,
+    chart_vision_llm: BaseChatModel | None = None,
+    execution_decision_llm: BaseChatModel | None = None,
 ) -> LLMAnalysisResult:
-    """Run the full LLM analysis pipeline and return a validated TradingSignal.
+    """Run 3-role LLM analysis pipeline: market_analysis → chart_vision → execution_decision.
 
-    Optional context parameters for LLM memory and awareness:
-    - open_positions: current MT5 positions so the LLM knows what trades are open
-    - recent_signals: last N AIJournal entries so the LLM remembers recent decisions
-    - news_context: formatted upcoming economic events string
-
-    If confidence is below the configured threshold the action is forced to HOLD.
+    Each role makes an independent LLM call and records token usage.
+    llm_override applies to ALL roles if role-specific overrides are not set (legacy compat).
     """
-    active_llm = llm_override or _build_llm()
-
-    _mod = type(active_llm).__module__
-    if "openai" in _mod:
-        effective_provider = "openai"
-    elif "google" in _mod or "gemini" in _mod:
-        effective_provider = "gemini"
-    elif "anthropic" in _mod:
-        effective_provider = "anthropic"
-    else:
-        effective_provider = settings.llm_provider
+    default_llm = llm_override or _build_llm()
+    ma_llm  = market_analysis_llm    or default_llm
+    cv_llm  = chart_vision_llm       or default_llm
+    ed_llm  = execution_decision_llm or default_llm
 
     logger.info(
-        "Analyzing market | provider=%s symbol=%s timeframe=%s price=%s",
-        effective_provider, symbol, timeframe, current_price,
-    )
-    if system_prompt_override:
-        prompt = ChatPromptTemplate.from_messages([("system", system_prompt_override), ("human", _HUMAN)])
-        chain = prompt | active_llm | JsonOutputParser()
-    elif llm_override:
-        chain = _PROMPT | active_llm | JsonOutputParser()
-    else:
-        chain = _DEFAULT_CHAIN
-
-    chart_section = (
-        f"\nChart Pattern Analysis:\n{chart_analysis}" if chart_analysis else ""
+        "Analyzing market | symbol=%s timeframe=%s price=%s | providers: ma=%s cv=%s ed=%s",
+        symbol, timeframe, current_price,
+        _provider_from_llm(ma_llm), _provider_from_llm(cv_llm), _provider_from_llm(ed_llm),
     )
 
-    if open_positions:
-        pos_lines = [
-            f"  - {p.get('symbol', symbol)} {p.get('direction', '?')} "
-            f"vol={p.get('volume', '?')} profit={p.get('profit', '?')}"
-            for p in open_positions
-        ]
-        positions_section = "\nCurrently Open Positions:\n" + "\n".join(pos_lines)
-    else:
-        positions_section = "\nCurrently Open Positions: None"
+    # ── Role 1: Market Analysis ───────────────────────────────────────────────
+    ma_result = await _run_market_analysis(
+        ma_llm, symbol, timeframe, current_price,
+        indicators, ohlcv, open_positions or [], recent_signals or [],
+        news_context, trade_history_context, regime_context,
+    )
+    market_context = ma_result.content if isinstance(ma_result.content, dict) else {}
 
-    if recent_signals:
-        sig_lines = [
-            f"  - {s.get('symbol', symbol)} {s.get('signal', '?')} "
-            f"conf={s.get('confidence', '?')} | {s.get('rationale', '')[:80]}"
-            for s in recent_signals
-        ]
-        signals_section = "\nRecent Signal History (newest first):\n" + "\n".join(sig_lines)
-    else:
-        signals_section = ""
+    # ── Role 2: Chart Vision (optional) ──────────────────────────────────────
+    cv_result: LLMRoleResult | None = None
+    visual_pattern: dict | None = None
+    if chart_analysis:
+        # chart_analysis is treated as base64 image if it's long and doesn't start with newline.
+        # Otherwise treat as pre-analyzed text for backward compatibility.
+        if len(chart_analysis) > 200 and not chart_analysis.startswith("\n"):
+            cv_result = await _run_chart_vision(
+                cv_llm, symbol, timeframe, chart_analysis, market_context
+            )
+            visual_pattern = cv_result.content if isinstance(cv_result.content, dict) else None
+        else:
+            market_context["chart_analysis_text"] = chart_analysis
 
-    news_section = f"\n{news_context}" if news_context else ""
-    history_section = f"\n{trade_history_context}" if trade_history_context else ""
+    # ── Role 3: Execution Decision ────────────────────────────────────────────
+    ed_result = await _run_execution_decision(
+        ed_llm, symbol, timeframe, current_price,
+        market_context, visual_pattern,
+        open_positions or [], recent_signals or [],
+        system_prompt_override,
+    )
 
-    prompt_vars = {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "current_price": current_price,
-        "indicators": json.dumps(indicators, indent=2),
-        "ohlcv": json.dumps(ohlcv[-20:], indent=2, default=str),
-        "chart_section": chart_section,
-        "positions_section": positions_section,
-        "signals_section": signals_section,
-        "news_section": news_section,
-        "history_section": history_section,
-        "regime_section": (
-            f"Market Regime (HMM):\n{regime_context}" if regime_context else ""
-        ),
-    }
-
-    # Render prompt text for audit capture (uses Python str.format on the template)
-    try:
-        prompt_text = _HUMAN.format(**prompt_vars)
-    except Exception:
-        prompt_text = ""
-
-    raw: dict = await chain.ainvoke(prompt_vars)
-
-    # Normalise LLM response — different models use different field names.
-    # e.g. Gemini Flash 2.5 returns {"signal": "HOLD", "explanation": "..."}
-    # instead of the canonical {"action": "HOLD", "rationale": "..."}.
+    raw = ed_result.content if isinstance(ed_result.content, dict) else {}
     raw = _normalize_raw(raw, timeframe=timeframe, current_price=current_price)
-
     signal = TradingSignal(**raw)
 
-    # Confidence gate — downgrade low-confidence signals to HOLD
+    # Confidence gate
     if signal.confidence < settings.llm_confidence_threshold:
         logger.info(
             "Signal downgraded to HOLD — confidence %.2f below threshold %.2f | symbol=%s",
@@ -300,4 +464,9 @@ async def analyze_market(
         "Signal result | symbol=%s action=%s confidence=%.2f timeframe=%s",
         symbol, signal.action, signal.confidence, signal.timeframe,
     )
-    return LLMAnalysisResult(signal=signal, prompt_text=prompt_text, raw_response=raw)
+    return LLMAnalysisResult(
+        signal=signal,
+        market_analysis=ma_result,
+        chart_vision=cv_result,
+        execution_decision=ed_result,
+    )

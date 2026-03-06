@@ -418,3 +418,43 @@ export interface BacktestRunRequest {
   volume?: number;
   csv_upload_id?: string;
 }
+
+// ── LLM Usage ─────────────────────────────────────────────────────────────────
+
+export interface LLMProviderStats {
+  cost_usd: number
+  tokens: number
+  calls: number
+}
+
+export interface LLMUsageSummary {
+  total_cost_usd: number
+  total_tokens: number
+  total_calls: number
+  active_models: string[]
+  by_provider: Record<string, LLMProviderStats>
+}
+
+export interface LLMTimeseriesPoint {
+  date: string
+  google: number
+  anthropic: number
+  openai: number
+}
+
+export interface LLMModelUsage {
+  model: string
+  provider: string
+  calls: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost_usd: number
+}
+
+export interface LLMPricingEntry {
+  model: string
+  provider: string
+  input_per_1m_usd: number | null
+  output_per_1m_usd: number | null
+}
