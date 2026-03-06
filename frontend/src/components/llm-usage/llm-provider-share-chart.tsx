@@ -1,17 +1,53 @@
 "use client"
 
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
+} from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { LLMUsageSummary } from "@/types/trading"
 
+// Minimal, harmonious muted palette — one distinct hue per provider
 const COLORS: Record<string, string> = {
-  google:    "#3b82f6",
-  anthropic: "#f97316",
-  openai:    "#22c55e",
+  google:    "#6366f1", // indigo
+  anthropic: "#f59e0b", // amber
+  openai:    "#10b981", // emerald
 }
+
+const DEFAULT_COLOR = "#94a3b8" // slate-400 for unknown providers
 
 interface ProviderShareProps {
   summary: LLMUsageSummary
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CustomTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null
+  const { name, value } = payload[0]
+  return (
+    <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
+      <p className="font-semibold capitalize">{name}</p>
+      <p className="text-muted-foreground">${(value as number).toFixed(6)} USD</p>
+    </div>
+  )
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CustomLegend({ payload }: any) {
+  if (!payload?.length) return null
+  return (
+    <div className="flex flex-col gap-1 mt-2">
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      {payload.map((entry: any) => (
+        <div key={entry.value} className="flex items-center gap-2 text-xs">
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: entry.color }}
+          />
+          <span className="capitalize text-muted-foreground">{entry.value}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function LLMProviderShareChart({ summary }: ProviderShareProps) {
@@ -21,7 +57,7 @@ export function LLMProviderShareChart({ summary }: ProviderShareProps) {
 
   if (data.length === 0) {
     return (
-      <Card>
+      <Card className="h-full">
         <CardHeader>
           <CardTitle className="text-sm font-medium">Provider Share</CardTitle>
         </CardHeader>
@@ -33,12 +69,13 @@ export function LLMProviderShareChart({ summary }: ProviderShareProps) {
   }
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
-        <CardTitle className="text-sm font-medium">Provider Share (by cost)</CardTitle>
+        <CardTitle className="text-sm font-medium">Provider Share</CardTitle>
+        <p className="text-xs text-muted-foreground">by cost (USD)</p>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={220}>
           <PieChart>
             <Pie
               data={data}
@@ -46,20 +83,19 @@ export function LLMProviderShareChart({ summary }: ProviderShareProps) {
               nameKey="name"
               cx="50%"
               cy="50%"
-              outerRadius={70}
-              innerRadius={40}
+              outerRadius={80}
+              innerRadius={50}
+              strokeWidth={2}
             >
               {data.map(entry => (
                 <Cell
                   key={entry.name}
-                  fill={COLORS[entry.name] ?? "#888"}
+                  fill={COLORS[entry.name] ?? DEFAULT_COLOR}
                 />
               ))}
             </Pie>
-            <Tooltip
-              formatter={(v: number) => [`$${v.toFixed(6)}`, "Cost"]}
-            />
-            <Legend />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend content={<CustomLegend />} />
           </PieChart>
         </ResponsiveContainer>
       </CardContent>
