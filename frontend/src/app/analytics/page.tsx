@@ -29,7 +29,7 @@ export default function AnalyticsPage() {
   return (
     <SidebarInset>
       <AppHeader title="Analytics" />
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
         <MonthlyStats data={calData} loading={calLoading} />
         <PnlCalendar
           selectedDate={selectedDate}

@@ -35,7 +35,7 @@ export function MonthlyStats({ data, loading }: MonthlyStatsProps) {
   const totalActiveDays = winningDays + losingDays;
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm text-muted-foreground">
@@ -59,14 +59,17 @@ export function MonthlyStats({ data, loading }: MonthlyStatsProps) {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-muted-foreground">Winning Days</CardTitle>
+          <CardTitle className="text-sm text-muted-foreground">
+            Winning Days
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-2xl font-bold">
             <span className="text-green-400">{winningDays}</span>
             {totalActiveDays > 0 && (
               <span className="text-sm text-muted-foreground">
-                {" "}/ {totalActiveDays}
+                {" "}
+                / {totalActiveDays}
               </span>
             )}
           </p>
@@ -75,12 +78,12 @@ export function MonthlyStats({ data, loading }: MonthlyStatsProps) {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-muted-foreground">Total Trades</CardTitle>
+          <CardTitle className="text-sm text-muted-foreground">
+            Total Trades
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-2xl font-bold">
-            {data?.monthly_trade_count ?? 0}
-          </p>
+          <p className="text-2xl font-bold">{data?.monthly_trade_count ?? 0}</p>
         </CardContent>
       </Card>
     </div>
