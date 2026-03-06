@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CalendarGrid } from "./calendar-grid";
 import { analyticsApi } from "@/lib/api/analytics";
+import { accountsApi } from "@/lib/api/accounts";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import type { DailyEntry, DailyPnLResponse } from "@/types/trading";
 
@@ -48,6 +50,7 @@ export function PnlCalendar({
   const [month, setMonth] = useState(now.getUTCMonth() + 1); // 1-12
   const [data, setData] = useState<DailyPnLResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accountTypeFilter, setAccountTypeFilter] =
     useState<AccountTypeFilter>("all");
@@ -131,6 +134,30 @@ export function PnlCalendar({
     setMonth(n.getUTCMonth() + 1);
   }
 
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      // Always sync ALL accounts so analytics data is complete regardless of the
+      // display filter (activeAccountId only controls which account to show, not sync).
+      const r = await accountsApi.syncAll(90);
+      if (r.errors.length > 0) {
+        toast.warning(`Sync partial: ${r.errors.length} account(s) failed`);
+      }
+      const parts: string[] = [];
+      if (r.imported > 0) parts.push(`${r.imported} new`);
+      if (r.updated > 0) parts.push(`${r.updated} closed`);
+      const summary = parts.length > 0 ? parts.join(", ") : "0 new";
+      toast.success(`Synced: ${summary} trade${r.imported + r.updated !== 1 ? "s" : ""} from ${r.accounts_synced} account${r.accounts_synced !== 1 ? "s" : ""}`);
+      // Re-fetch calendar data with fresh DB content
+      const controller = new AbortController();
+      await fetchData(controller.signal);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "MT5 sync failed — is the terminal running?");
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetchData]);
+
   return (
     <div>
       {/* Navigation bar */}
@@ -184,6 +211,15 @@ export function PnlCalendar({
 
           <Button variant="ghost" size="sm" onClick={goToday}>
             Today
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSync}
+            disabled={syncing || loading}
+          >
+            <RefreshCw className={`mr-2 h-3.5 w-3.5${syncing ? " animate-spin" : ""}`} />
+            {syncing ? "Syncing…" : "Sync MT5"}
           </Button>
         </div>
       </div>

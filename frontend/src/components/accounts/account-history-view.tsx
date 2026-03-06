@@ -111,6 +111,7 @@ export function AccountHistoryView({ accountId }: Props) {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [days, setDays] = useState(90);
 
   const loadDeals = useCallback(async () => {
@@ -132,12 +133,20 @@ export function AccountHistoryView({ accountId }: Props) {
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
+    setSyncError(null);
     try {
       const result = await accountsApi.syncHistory(accountId, days);
-      toast.success(`Synced: ${result.imported} imported, ${result.total_fetched} fetched`);
+      const parts: string[] = [];
+      if (result.imported > 0) parts.push(`${result.imported} new`);
+      if (result.updated > 0) parts.push(`${result.updated} closed`);
+      const summary = parts.length > 0 ? parts.join(", ") : "0 new";
+      toast.success(`Synced: ${summary} trade${result.imported + result.updated !== 1 ? "s" : ""} (${result.total_fetched} fetched)`);
+
       await loadDeals();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sync failed");
+      const msg = e instanceof Error ? e.message : "Sync failed";
+      setSyncError(msg);
+      toast.error(msg);
     } finally {
       setSyncing(false);
     }
@@ -179,6 +188,11 @@ export function AccountHistoryView({ accountId }: Props) {
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {syncError && (
+        <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          MT5 sync failed: {syncError}
+        </p>
+      )}
 
       <div className={`rounded-md border overflow-x-auto${loading ? " opacity-60" : ""}`}>
         <Table>

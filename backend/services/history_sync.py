@@ -57,19 +57,32 @@ class HistoryService:
     async def sync_to_db(
         self, account: Account, days: int, db: AsyncSession
     ) -> dict[str, int]:
-        """Fetch MT5 deals and upsert new closed positions into the trades table.
+        """Fetch MT5 deals and upsert closed positions into the trades table.
 
-        Returns {"imported": N, "total_fetched": M}.
-        Skips trades already present (upsert guard by ticket=position_id).
-        Sets source="manual" on imported rows.
+        Three cases per closed MT5 position:
+        - No matching ticket → INSERT new row (source="manual").
+        - Matching ticket with closed_at IS NULL → UPDATE close data.
+          This handles AI trades placed by the system that were never marked closed.
+        - Matching ticket already closed → skip (idempotent).
+
+        Returns {"imported": N, "updated": U, "total_fetched": M}.
         """
         deals = await self.get_raw_deals(account, days)
         out_deals, in_by_pos = self._pair_deals(deals)
 
         imported = 0
+        updated = 0
         try:
             for out_deal in out_deals:
                 position_id: int = out_deal["position_id"]
+
+                close_price = float(out_deal.get("price", 0.0))
+                profit = (
+                    float(out_deal.get("profit", 0.0))
+                    + float(out_deal.get("commission", 0.0))
+                    + float(out_deal.get("swap", 0.0))
+                )
+                closed_at = datetime.fromtimestamp(out_deal["time"], tz=UTC)
 
                 existing = (
                     await db.execute(
@@ -79,7 +92,19 @@ class HistoryService:
                         )
                     )
                 ).scalar_one_or_none()
+
                 if existing:
+                    if existing.closed_at is not None:
+                        continue  # already closed — skip
+                    # Open AI/system trade: fill in the close data from MT5
+                    existing.close_price = close_price
+                    existing.profit = profit
+                    existing.closed_at = closed_at
+                    updated += 1
+                    logger.debug(
+                        "Closing open trade | account_id=%s ticket=%s profit=%s",
+                        account.id, position_id, profit,
+                    )
                     continue
 
                 in_deal = in_by_pos.get(position_id)
@@ -99,13 +124,6 @@ class HistoryService:
                     if in_deal
                     else datetime.now(UTC)
                 )
-                close_price = float(out_deal.get("price", 0.0))
-                profit = (
-                    float(out_deal.get("profit", 0.0))
-                    + float(out_deal.get("commission", 0.0))
-                    + float(out_deal.get("swap", 0.0))
-                )
-                closed_at = datetime.fromtimestamp(out_deal["time"], tz=UTC)
 
                 trade = Trade(
                     account_id=account.id,
@@ -126,18 +144,18 @@ class HistoryService:
                 db.add(trade)
                 imported += 1
 
-            if imported:
+            if imported or updated:
                 await db.commit()
                 logger.info(
-                    "Synced %d new trades from MT5 history | account_id=%s",
-                    imported, account.id,
+                    "History sync complete | account_id=%s imported=%s updated=%s",
+                    account.id, imported, updated,
                 )
         except Exception:
             await db.rollback()
             logger.error("sync_to_db failed — rolled back | account_id=%s", account.id, exc_info=True)
             raise
 
-        return {"imported": imported, "total_fetched": len(deals)}
+        return {"imported": imported, "updated": updated, "total_fetched": len(deals)}
 
     # ── Pure helper methods (no I/O) ──────────────────────────────────────
 

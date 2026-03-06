@@ -12,7 +12,7 @@ interface MonthlyStatsProps {
 export function MonthlyStats({ data, loading }: MonthlyStatsProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {[0, 1, 2].map((i) => (
           <Card key={i} className="animate-pulse">
             <CardHeader className="pb-2">

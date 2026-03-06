@@ -21,7 +21,7 @@ export function DayCell({
   onClick,
 }: DayCellProps) {
   if (day === 0) {
-    return <div className="min-h-[80px] rounded-md bg-muted/10 opacity-20" />;
+    return <div className="min-h-[60px] rounded-md bg-muted/10 opacity-20 sm:min-h-[80px]" />;
   }
 
   const hasTrades = !!entry;
@@ -33,7 +33,7 @@ export function DayCell({
     <div
       onClick={hasTrades && isCurrentMonth ? onClick : undefined}
       className={cn(
-        "min-h-[80px] rounded-md border p-2 transition-colors",
+        "min-h-[60px] rounded-md border p-1.5 transition-colors sm:min-h-[80px] sm:p-2",
         isCurrentMonth ? "opacity-100" : "opacity-30",
         hasTrades && isProfit && "border-green-700/50 bg-green-700/10",
         hasTrades && isLoss && "border-red-700/50 bg-red-700/10",
@@ -44,7 +44,7 @@ export function DayCell({
       )}
     >
       <div className="flex items-start justify-between">
-        <span className={cn("text-sm font-medium", isToday && "text-primary")}>
+        <span className={cn("text-xs font-medium sm:text-sm", isToday && "text-primary")}>
           {day}
         </span>
       </div>
@@ -52,7 +52,7 @@ export function DayCell({
         <div className="mt-1">
           <p
             className={cn(
-              "text-sm font-semibold",
+              "text-xs font-semibold sm:text-sm",
               isProfit && "text-green-600",
               isLoss && "text-red-400",
             )}
@@ -60,8 +60,8 @@ export function DayCell({
             {pnl > 0 ? "+" : ""}
             {pnl.toFixed(2)}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {entry!.trade_count} trade{entry!.trade_count !== 1 ? "s" : ""}
+          <p className="hidden text-xs text-muted-foreground sm:block">
+            {entry!.trade_count}t
           </p>
         </div>
       )}

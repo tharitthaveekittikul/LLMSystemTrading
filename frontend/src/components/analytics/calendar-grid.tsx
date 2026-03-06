@@ -50,62 +50,64 @@ export function CalendarGrid({
   }
 
   return (
-    <div>
-      {/* Column headers */}
-      <div className="mb-1 grid grid-cols-[repeat(7,1fr)_100px] gap-1">
-        {DAY_HEADERS.map((h) => (
-          <div
-            key={h}
-            className="py-1 text-center text-xs font-medium text-muted-foreground"
-          >
-            {h}
+    <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <div className="min-w-[480px]">
+        {/* Column headers */}
+        <div className="mb-1 grid grid-cols-[repeat(7,1fr)_72px] gap-1 sm:grid-cols-[repeat(7,1fr)_100px]">
+          {DAY_HEADERS.map((h) => (
+            <div
+              key={h}
+              className="py-1 text-center text-xs font-medium text-muted-foreground"
+            >
+              {h}
+            </div>
+          ))}
+          <div className="py-1 text-center text-xs font-medium text-muted-foreground">
+            Week
           </div>
-        ))}
-        <div className="py-1 text-center text-xs font-medium text-muted-foreground">
-          Week
         </div>
+
+        {/* Week rows */}
+        {weeks.map((week, wi) => {
+          const weekEntries = week
+            .filter((d) => d > 0)
+            .map((d) => dayMap.get(`${year}-${pad(month)}-${pad(d)}`))
+            .filter((e): e is DailyEntry => e !== undefined);
+
+          const weekPnl = Math.round(
+            weekEntries.reduce((sum, e) => sum + e.net_pnl, 0) * 100,
+          ) / 100;
+          const weekTrades = weekEntries.reduce((sum, e) => sum + e.trade_count, 0);
+
+          return (
+            <div
+              key={wi}
+              className="mb-1 grid grid-cols-[repeat(7,1fr)_72px] gap-1 sm:grid-cols-[repeat(7,1fr)_100px]"
+            >
+              {week.map((day, di) => {
+                const dateStr =
+                  day > 0 ? `${year}-${pad(month)}-${pad(day)}` : "";
+                return (
+                  <DayCell
+                    key={di}
+                    day={day}
+                    entry={day > 0 ? dayMap.get(dateStr) : undefined}
+                    isCurrentMonth={day > 0}
+                    isSelected={dateStr === selectedDate}
+                    isToday={dateStr === todayStr}
+                    onClick={day > 0 ? () => onDaySelect(dateStr) : undefined}
+                  />
+                );
+              })}
+              <WeekSummaryCell
+                weekNumber={wi + 1}
+                netPnl={weekPnl}
+                tradeCount={weekTrades}
+              />
+            </div>
+          );
+        })}
       </div>
-
-      {/* Week rows */}
-      {weeks.map((week, wi) => {
-        const weekEntries = week
-          .filter((d) => d > 0)
-          .map((d) => dayMap.get(`${year}-${pad(month)}-${pad(d)}`))
-          .filter((e): e is DailyEntry => e !== undefined);
-
-        const weekPnl = Math.round(
-          weekEntries.reduce((sum, e) => sum + e.net_pnl, 0) * 100,
-        ) / 100;
-        const weekTrades = weekEntries.reduce((sum, e) => sum + e.trade_count, 0);
-
-        return (
-          <div
-            key={wi}
-            className="mb-1 grid grid-cols-[repeat(7,1fr)_100px] gap-1"
-          >
-            {week.map((day, di) => {
-              const dateStr =
-                day > 0 ? `${year}-${pad(month)}-${pad(day)}` : "";
-              return (
-                <DayCell
-                  key={di}
-                  day={day}
-                  entry={day > 0 ? dayMap.get(dateStr) : undefined}
-                  isCurrentMonth={day > 0}
-                  isSelected={dateStr === selectedDate}
-                  isToday={dateStr === todayStr}
-                  onClick={day > 0 ? () => onDaySelect(dateStr) : undefined}
-                />
-              );
-            })}
-            <WeekSummaryCell
-              weekNumber={wi + 1}
-              netPnl={weekPnl}
-              tradeCount={weekTrades}
-            />
-          </div>
-        );
-      })}
     </div>
   );
 }

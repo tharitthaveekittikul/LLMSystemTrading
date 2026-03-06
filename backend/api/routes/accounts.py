@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.security import decrypt, encrypt
 from db.models import Account
-from db.postgres import get_db
+from db.postgres import AsyncSessionLocal, get_db
 from mt5.bridge import AccountCredentials, MT5Bridge
 from services.history_sync import HistoryService
 
@@ -67,7 +67,8 @@ class AccountResponse(BaseModel):
 
 
 class HistorySyncResponse(BaseModel):
-    imported: int = Field(..., description="Number of new trades written to the database")
+    imported: int = Field(..., description="Number of new trades inserted into the database")
+    updated: int = Field(0, description="Number of existing open trades closed by this sync")
     total_fetched: int = Field(..., description="Total deals returned by MT5 before deduplication")
 
 
@@ -388,6 +389,65 @@ async def sync_account_history(
         account_id, result["imported"], result["total_fetched"],
     )
     return result
+
+
+class SyncAllResponse(BaseModel):
+    imported: int
+    updated: int = 0
+    total_fetched: int
+    accounts_synced: int
+    errors: list[str]
+
+
+@router.post("/sync-all", response_model=SyncAllResponse)
+async def sync_all_accounts(
+    days: int = Query(90, ge=1, le=3650, description="Number of days to sync per account"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sync MT5 history for all active accounts into the local trades table.
+
+    Each account gets its own DB session so a single MT5 failure cannot roll
+    back another account's already-committed trades.
+    Returns aggregate counts and a list of per-account error strings.
+    """
+    result = await db.execute(select(Account).where(Account.is_active == True))  # noqa: E712
+    accounts = result.scalars().all()
+
+    total_imported = 0
+    total_updated = 0
+    total_fetched = 0
+    errors: list[str] = []
+    svc = HistoryService()
+
+    for account in accounts:
+        async with AsyncSessionLocal() as session:
+            try:
+                r = await svc.sync_to_db(account, days, session)
+                total_imported += r["imported"]
+                total_updated += r["updated"]
+                total_fetched += r["total_fetched"]
+            except (RuntimeError, ConnectionError) as exc:
+                errors.append(f"Account {account.id} ({account.name}): {exc}")
+                logger.warning(
+                    "sync-all: skipped account_id=%s | %s", account.id, exc
+                )
+            except Exception as exc:
+                errors.append(f"Account {account.id} ({account.name}): {exc}")
+                logger.error(
+                    "sync-all: unexpected error account_id=%s", account.id, exc_info=True
+                )
+
+    logger.info(
+        "sync-all complete | accounts=%s imported=%s updated=%s total=%s errors=%s",
+        len(accounts), total_imported, total_updated, total_fetched, len(errors),
+    )
+    return SyncAllResponse(
+        imported=total_imported,
+        updated=total_updated,
+        total_fetched=total_fetched,
+        accounts_synced=len(accounts) - len(errors),
+        errors=errors,
+    )
 
 
 class EquityPoint(BaseModel):

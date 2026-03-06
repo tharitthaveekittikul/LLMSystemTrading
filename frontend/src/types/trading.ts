@@ -300,7 +300,16 @@ export interface HistoryDeal {
 
 export interface HistorySyncResult {
   imported: number;
+  updated: number;
   total_fetched: number;
+}
+
+export interface SyncAllResult {
+  imported: number;
+  updated: number;
+  total_fetched: number;
+  accounts_synced: number;
+  errors: string[];
 }
 
 // ── Pipeline Logs ─────────────────────────────────────────────────────────────
