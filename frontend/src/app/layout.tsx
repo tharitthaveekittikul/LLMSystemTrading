@@ -34,9 +34,7 @@ export default function RootLayout({
         <ThemeProvider>
           <SidebarProvider>
             <AppSidebar />
-            <main className="flex-1 min-w-0 overflow-y-auto">
-              {children}
-            </main>
+            {children}
           </SidebarProvider>
           <Toaster />
         </ThemeProvider>

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+import { SidebarInset } from "@/components/ui/sidebar";
+import { AppHeader } from "@/components/app-header";
 import { storageApi } from "@/lib/api";
 import type {
   PostgresOverview,
@@ -86,60 +88,61 @@ export default function StoragePage() {
   }, [refreshAll]);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Storage</h1>
-          <p className="text-sm text-muted-foreground">
-            Monitor and manage PostgreSQL, QuestDB, and Redis
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={refreshAll}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
-      </div>
-
-      <StorageOverviewCards
-        pgOverview={pgOverview}
-        pgLoading={pgLoading}
-        qdbTables={qdbTables.length > 0 || !qdbLoading ? qdbTables : null}
-        qdbLoading={qdbLoading}
-        redisInfo={redisInfo}
-        redisLoading={redisLoading}
+    <SidebarInset>
+      <AppHeader
+        title="Storage"
+        subtitle="Monitor PostgreSQL, QuestDB, and Redis"
+        showAccountSelector={false}
+        showConnectionStatus={false}
+        actions={
+          <Button variant="outline" size="sm" onClick={refreshAll}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        }
       />
+      <div className="flex flex-col gap-6 p-4 md:p-6">
+        <StorageOverviewCards
+          pgOverview={pgOverview}
+          pgLoading={pgLoading}
+          qdbTables={qdbTables.length > 0 || !qdbLoading ? qdbTables : null}
+          qdbLoading={qdbLoading}
+          redisInfo={redisInfo}
+          redisLoading={redisLoading}
+        />
 
-      <Tabs defaultValue="postgres">
-        <TabsList>
-          <TabsTrigger value="postgres">PostgreSQL</TabsTrigger>
-          <TabsTrigger value="questdb">QuestDB</TabsTrigger>
-          <TabsTrigger value="redis">Redis</TabsTrigger>
-        </TabsList>
+        <Tabs defaultValue="postgres">
+          <TabsList>
+            <TabsTrigger value="postgres">PostgreSQL</TabsTrigger>
+            <TabsTrigger value="questdb">QuestDB</TabsTrigger>
+            <TabsTrigger value="redis">Redis</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="postgres" className="mt-4">
-          {pgLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <PostgresPanel tables={pgTables} onRefresh={fetchPostgres} />
-          )}
-        </TabsContent>
+          <TabsContent value="postgres" className="mt-4">
+            {pgLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <PostgresPanel tables={pgTables} onRefresh={fetchPostgres} />
+            )}
+          </TabsContent>
 
-        <TabsContent value="questdb" className="mt-4">
-          {qdbLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <QuestDBPanel tables={qdbTables} onRefresh={fetchQuestDB} />
-          )}
-        </TabsContent>
+          <TabsContent value="questdb" className="mt-4">
+            {qdbLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <QuestDBPanel tables={qdbTables} onRefresh={fetchQuestDB} />
+            )}
+          </TabsContent>
 
-        <TabsContent value="redis" className="mt-4">
-          {redisLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <RedisPanel info={redisInfo} onRefresh={fetchRedis} />
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
+          <TabsContent value="redis" className="mt-4">
+            {redisLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <RedisPanel info={redisInfo} onRefresh={fetchRedis} />
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+    </SidebarInset>
   );
 }

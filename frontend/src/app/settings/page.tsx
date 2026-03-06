@@ -435,7 +435,7 @@ export default function SettingsPage() {
 
   return (
     <SidebarInset>
-      <AppHeader title="Settings" />
+      <AppHeader title="Settings" showAccountSelector={false} showConnectionStatus={false} />
       <div className="flex flex-1 flex-col gap-6 p-6 max-w-3xl">
         <ThemeSection />
         <DisplaySection />

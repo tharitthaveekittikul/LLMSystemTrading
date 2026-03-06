@@ -136,7 +136,7 @@ export default function SignalsPage() {
 
   return (
     <SidebarInset>
-      <AppHeader title="AI Signals" />
+      <AppHeader title="AI Signals" showAccountSelector={false} showConnectionStatus={false} />
       <div className="flex flex-1 flex-col gap-4 p-4">
         {/* Trigger form */}
         <Card>
