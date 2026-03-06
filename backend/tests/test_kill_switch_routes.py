@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock, patch
 from httpx import ASGITransport, AsyncClient
 from main import app
 
@@ -23,7 +24,8 @@ async def test_activate_requires_reason():
 
 @pytest.mark.asyncio
 async def test_deactivate_returns_200():
-    """POST /api/v1/kill-switch/deactivate always succeeds."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post("/api/v1/kill-switch/deactivate")
+    """POST /api/v1/kill-switch/deactivate always succeeds (DB write is mocked)."""
+    with patch("services.kill_switch._persist", new=AsyncMock()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/v1/kill-switch/deactivate")
     assert response.status_code == 200
