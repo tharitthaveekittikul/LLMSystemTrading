@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import { tradesApi } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import type { Trade } from "@/types/trading";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface RecentTradesProps {
   accountId: number | null;
@@ -52,20 +60,24 @@ export function RecentTrades({ accountId }: RecentTradesProps) {
             No closed trades yet.
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-xs text-muted-foreground">
-                <th className="text-left p-2">Symbol</th>
-                <th className="text-left p-2">Dir</th>
-                <th className="text-right p-2">Profit</th>
-                <th className="text-right p-2 hidden sm:table-cell">Closed</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="text-xs text-muted-foreground">
+                <TableHead>Symbol</TableHead>
+                <TableHead>Dir</TableHead>
+                <TableHead className="text-right">Profit</TableHead>
+                <TableHead className="text-right hidden sm:table-cell">
+                  Closed
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {trades.map((t) => (
-                <tr key={t.id} className="border-b last:border-0">
-                  <td className="p-2 font-mono text-xs">{t.symbol}</td>
-                  <td className="p-2">
+                <TableRow key={t.id}>
+                  <TableCell className="font-mono text-xs">
+                    {t.symbol}
+                  </TableCell>
+                  <TableCell>
                     <span
                       className={`text-xs font-semibold ${
                         t.direction === "BUY" ? "text-blue-500" : "text-red-500"
@@ -73,22 +85,22 @@ export function RecentTrades({ accountId }: RecentTradesProps) {
                     >
                       {t.direction}
                     </span>
-                  </td>
-                  <td
-                    className={`p-2 text-right tabular-nums text-xs ${
+                  </TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums text-xs ${
                       (t.profit ?? 0) >= 0 ? "text-green-500" : "text-red-500"
                     }`}
                   >
                     {(t.profit ?? 0) >= 0 ? "+" : ""}
                     {fmt(t.profit)}
-                  </td>
-                  <td className="p-2 text-right text-xs text-muted-foreground hidden sm:table-cell">
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground hidden sm:table-cell">
                     {t.closed_at ? formatDateTime(t.closed_at) : "—"}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </div>
     </div>

@@ -7,6 +7,14 @@ import { storageApi } from "@/lib/api";
 import type { QuestDBTableStat } from "@/types/storage";
 import { ConfirmDestructiveDialog } from "./confirm-destructive-dialog";
 import { TableBrowserSheet } from "./table-browser-sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface Props {
   tables: QuestDBTableStat[];
@@ -27,35 +35,37 @@ export function QuestDBPanel({ tables, onRefresh }: Props) {
   return (
     <div className="space-y-4">
       <div className="rounded-md border">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40">
-              <th className="px-4 py-2 text-left font-medium">Table</th>
-              <th className="px-4 py-2 text-right font-medium">Rows</th>
-              <th className="px-4 py-2 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40">
+              <TableHead>Table</TableHead>
+              <TableHead className="text-right">Rows</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {tables.length === 0 && (
-              <tr>
-                <td
+              <TableRow>
+                <TableCell
                   colSpan={3}
-                  className="px-4 py-6 text-center text-sm text-muted-foreground"
+                  className="px-4 py-6 text-center text-muted-foreground"
                 >
                   No QuestDB tables found.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
             {tables.map((t) => (
-              <tr key={t.name} className="border-b last:border-0 hover:bg-muted/20">
-                <td
-                  className="cursor-pointer px-4 py-2 font-mono text-xs hover:underline"
+              <TableRow key={t.name}>
+                <TableCell
+                  className="cursor-pointer font-mono text-xs hover:underline"
                   onClick={() => setBrowserTable(t.name)}
                 >
                   {t.name}
-                </td>
-                <td className="px-4 py-2 text-right">{t.row_count.toLocaleString()}</td>
-                <td className="px-4 py-2 text-right">
+                </TableCell>
+                <TableCell className="text-right">
+                  {t.row_count.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right">
                   <Button
                     variant="destructive"
                     size="sm"
@@ -63,17 +73,19 @@ export function QuestDBPanel({ tables, onRefresh }: Props) {
                   >
                     Drop
                   </Button>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {dropTarget && (
         <ConfirmDestructiveDialog
           open={true}
-          onOpenChange={(v) => { if (!v) setDropTarget(null); }}
+          onOpenChange={(v) => {
+            if (!v) setDropTarget(null);
+          }}
           title={`Drop "${dropTarget}"?`}
           description={`Permanently drop QuestDB table "${dropTarget}" and all its data. Core tables are recreated on next app startup.`}
           confirmText={dropTarget}
@@ -84,7 +96,9 @@ export function QuestDBPanel({ tables, onRefresh }: Props) {
 
       <TableBrowserSheet
         open={!!browserTable}
-        onOpenChange={(v) => { if (!v) setBrowserTable(null); }}
+        onOpenChange={(v) => {
+          if (!v) setBrowserTable(null);
+        }}
         tableName={browserTable ?? ""}
         system="questdb"
       />

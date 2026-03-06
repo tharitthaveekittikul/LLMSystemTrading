@@ -9,6 +9,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ChevronDown, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { storageApi } from "@/lib/api";
@@ -26,7 +34,9 @@ type PendingAction =
   | { kind: "purge"; table: string; days: number };
 
 export function PostgresPanel({ tables, onRefresh }: Props) {
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(
+    null,
+  );
   const [browserTable, setBrowserTable] = useState<string | null>(null);
 
   const handleConfirm = async () => {
@@ -35,9 +45,12 @@ export function PostgresPanel({ tables, onRefresh }: Props) {
       const res = await storageApi.pgTruncate(pendingAction.table);
       toast.success(res.message);
     } else {
-      const res = await storageApi.pgPurge(pendingAction.table, pendingAction.days);
+      const res = await storageApi.pgPurge(
+        pendingAction.table,
+        pendingAction.days,
+      );
       toast.success(
-        `Purged ${res.deleted_rows.toLocaleString()} rows from ${res.table}`
+        `Purged ${res.deleted_rows.toLocaleString()} rows from ${res.table}`,
       );
     }
     onRefresh();
@@ -54,36 +67,45 @@ export function PostgresPanel({ tables, onRefresh }: Props) {
           Manageable
         </h3>
         <div className="rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40">
-                <th className="px-4 py-2 text-left font-medium">Table</th>
-                <th className="px-4 py-2 text-right font-medium">Rows</th>
-                <th className="px-4 py-2 text-right font-medium">Size</th>
-                <th className="px-4 py-2 text-right font-medium">Index</th>
-                <th className="px-4 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead>Table</TableHead>
+                <TableHead className="text-right">Rows</TableHead>
+                <TableHead className="text-right">Size</TableHead>
+                <TableHead className="text-right">Index</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {purgeable.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="px-4 py-6 text-center text-muted-foreground"
+                  >
                     No manageable tables.
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
               {purgeable.map((t) => (
-                <tr key={t.name} className="border-b last:border-0 hover:bg-muted/20">
-                  <td
-                    className="cursor-pointer px-4 py-2 font-mono text-xs hover:underline"
+                <TableRow key={t.name}>
+                  <TableCell
+                    className="cursor-pointer font-mono text-xs hover:underline"
                     onClick={() => setBrowserTable(t.name)}
                   >
                     {t.name}
-                  </td>
-                  <td className="px-4 py-2 text-right">{t.row_count.toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right text-muted-foreground">{t.total_size}</td>
-                  <td className="px-4 py-2 text-right text-muted-foreground">{t.index_size}</td>
-                  <td className="px-4 py-2 text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {t.row_count.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {t.total_size}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {t.index_size}
+                  </TableCell>
+                  <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -96,7 +118,11 @@ export function PostgresPanel({ tables, onRefresh }: Props) {
                             <DropdownMenuItem
                               key={days}
                               onClick={() =>
-                                setPendingAction({ kind: "purge", table: t.name, days })
+                                setPendingAction({
+                                  kind: "purge",
+                                  table: t.name,
+                                  days,
+                                })
                               }
                             >
                               Older than {days} days
@@ -114,11 +140,11 @@ export function PostgresPanel({ tables, onRefresh }: Props) {
                         Truncate
                       </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
 
@@ -128,37 +154,43 @@ export function PostgresPanel({ tables, onRefresh }: Props) {
           Protected (read-only)
         </h3>
         <div className="rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40">
-                <th className="px-4 py-2 text-left font-medium">Table</th>
-                <th className="px-4 py-2 text-right font-medium">Rows</th>
-                <th className="px-4 py-2 text-right font-medium">Size</th>
-                <th className="px-4 py-2 text-right font-medium">Index</th>
-                <th className="px-4 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead>Table</TableHead>
+                <TableHead className="text-right">Rows</TableHead>
+                <TableHead className="text-right">Size</TableHead>
+                <TableHead className="text-right">Index</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {protected_.map((t) => (
-                <tr key={t.name} className="border-b last:border-0 hover:bg-muted/20">
-                  <td
-                    className="cursor-pointer px-4 py-2 font-mono text-xs hover:underline"
+                <TableRow key={t.name}>
+                  <TableCell
+                    className="cursor-pointer font-mono text-xs hover:underline"
                     onClick={() => setBrowserTable(t.name)}
                   >
                     {t.name}
-                  </td>
-                  <td className="px-4 py-2 text-right">{t.row_count.toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right text-muted-foreground">{t.total_size}</td>
-                  <td className="px-4 py-2 text-right text-muted-foreground">{t.index_size}</td>
-                  <td className="px-4 py-2 text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {t.row_count.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {t.total_size}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {t.index_size}
+                  </TableCell>
+                  <TableCell className="text-right">
                     <Badge variant="outline" className="gap-1">
                       <Lock className="h-3 w-3" /> Protected
                     </Badge>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
 
@@ -166,7 +198,9 @@ export function PostgresPanel({ tables, onRefresh }: Props) {
       {pendingAction?.kind === "truncate" && (
         <ConfirmDestructiveDialog
           open={true}
-          onOpenChange={(v) => { if (!v) setPendingAction(null); }}
+          onOpenChange={(v) => {
+            if (!v) setPendingAction(null);
+          }}
           title={`Truncate "${pendingAction.table}"?`}
           description={`Permanently delete ALL rows from ${pendingAction.table}. Cannot be undone.`}
           confirmText={pendingAction.table}
@@ -177,7 +211,9 @@ export function PostgresPanel({ tables, onRefresh }: Props) {
       {pendingAction?.kind === "purge" && (
         <ConfirmDestructiveDialog
           open={true}
-          onOpenChange={(v) => { if (!v) setPendingAction(null); }}
+          onOpenChange={(v) => {
+            if (!v) setPendingAction(null);
+          }}
           title={`Purge "${pendingAction.table}"?`}
           description={`Delete rows older than ${pendingAction.days} days from ${pendingAction.table}.`}
           confirmText={pendingAction.table}
@@ -189,7 +225,9 @@ export function PostgresPanel({ tables, onRefresh }: Props) {
       {/* Table browser */}
       <TableBrowserSheet
         open={!!browserTable}
-        onOpenChange={(v) => { if (!v) setBrowserTable(null); }}
+        onOpenChange={(v) => {
+          if (!v) setBrowserTable(null);
+        }}
         tableName={browserTable ?? ""}
         system="postgres"
       />

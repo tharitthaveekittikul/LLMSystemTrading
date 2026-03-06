@@ -9,6 +9,14 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { storageApi } from "@/lib/api";
 import type { RowsPage, QuestDBRowsPage } from "@/types/storage";
 
@@ -21,7 +29,12 @@ interface Props {
 
 type PageData = RowsPage | QuestDBRowsPage;
 
-export function TableBrowserSheet({ open, onOpenChange, tableName, system }: Props) {
+export function TableBrowserSheet({
+  open,
+  onOpenChange,
+  tableName,
+  system,
+}: Props) {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,46 +80,41 @@ export function TableBrowserSheet({ open, onOpenChange, tableName, system }: Pro
 
         {data && data.rows.length > 0 && (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    {data.columns.map((col) => (
-                      <th
-                        key={col}
-                        className="px-2 py-1 text-left font-medium whitespace-nowrap"
-                      >
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((row, i) => (
-                    <tr key={i} className="border-b hover:bg-muted/30">
-                      {row.map((cell, j) => (
-                        <td
-                          key={j}
-                          className="px-2 py-1 max-w-[200px] truncate text-muted-foreground"
-                          title={cell ?? "null"}
-                        >
-                          {cell ?? (
-                            <span className="italic opacity-40">null</span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  {data.columns.map((col) => (
+                    <TableHead key={col} className="whitespace-nowrap text-xs">
+                      {col}
+                    </TableHead>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.rows.map((row, i) => (
+                  <TableRow key={i}>
+                    {row.map((cell, j) => (
+                      <TableCell
+                        key={j}
+                        className="max-w-[200px] truncate text-xs text-muted-foreground"
+                        title={cell ?? "null"}
+                      >
+                        {cell ?? (
+                          <span className="italic opacity-40">null</span>
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
 
             <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
               <span>
                 {totalRows != null
                   ? `Showing ${(page - 1) * 50 + 1}–${Math.min(
                       page * 50,
-                      totalRows
+                      totalRows,
                     )} of ${totalRows.toLocaleString()} rows`
                   : `Page ${page}`}
               </span>
@@ -123,7 +131,9 @@ export function TableBrowserSheet({ open, onOpenChange, tableName, system }: Pro
                   variant="outline"
                   size="sm"
                   disabled={
-                    totalPages != null ? page >= totalPages : data.rows.length < 50
+                    totalPages != null
+                      ? page >= totalPages
+                      : data.rows.length < 50
                   }
                   onClick={() => setPage((p) => p + 1)}
                 >

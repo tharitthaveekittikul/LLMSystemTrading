@@ -9,6 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { strategiesApi } from "@/lib/api/strategies";
 import { accountsApi } from "@/lib/api/accounts";
 import type {
@@ -250,45 +258,45 @@ export default function StrategyDetailPage() {
                 No runs yet — the scheduler will log results here.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-muted-foreground text-left">
-                      <th className="pb-2 pr-4">Signal</th>
-                      <th className="pb-2 pr-4">Symbol</th>
-                      <th className="pb-2 pr-4">TF</th>
-                      <th className="pb-2 pr-4">Confidence</th>
-                      <th className="pb-2 pr-4">Rationale</th>
-                      <th className="pb-2">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="text-muted-foreground">
+                      <TableHead>Signal</TableHead>
+                      <TableHead>Symbol</TableHead>
+                      <TableHead>TF</TableHead>
+                      <TableHead>Confidence</TableHead>
+                      <TableHead>Rationale</TableHead>
+                      <TableHead>Time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {runs.map((r) => (
-                      <tr key={r.id} className="border-b last:border-0">
-                        <td
-                          className={`py-2 pr-4 font-medium ${ACTION_COLOR[r.action] ?? ""}`}
+                      <TableRow key={r.id}>
+                        <TableCell
+                          className={`font-medium ${ACTION_COLOR[r.action] ?? ""}`}
                         >
                           {r.action}
-                        </td>
-                        <td className="py-2 pr-4">{r.symbol}</td>
-                        <td className="py-2 pr-4">
+                        </TableCell>
+                        <TableCell>{r.symbol}</TableCell>
+                        <TableCell>
                           <Badge variant="outline" className="text-xs">
                             {r.timeframe}
                           </Badge>
-                        </td>
-                        <td className="py-2 pr-4">
+                        </TableCell>
+                        <TableCell>
                           {(r.confidence * 100).toFixed(0)}%
-                        </td>
-                        <td className="py-2 pr-4 max-w-xs truncate text-muted-foreground">
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate text-muted-foreground">
                           {r.reasoning}
-                        </td>
-                        <td className="py-2 text-xs text-muted-foreground">
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
                           {new Date(r.created_at).toLocaleString()}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           </div>

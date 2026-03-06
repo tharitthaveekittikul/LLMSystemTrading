@@ -4,6 +4,14 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { BacktestTrade } from "@/types/trading";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface Props {
   trades: BacktestTrade[];
@@ -27,10 +35,10 @@ export function BacktestTradeTable({ trades }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-xs">
-          <thead className="bg-muted/50">
-            <tr>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
               {[
                 "#",
                 "Dir",
@@ -42,64 +50,61 @@ export function BacktestTradeTable({ trades }: Props) {
                 "P&L",
                 "Exit Reason",
               ].map((h) => (
-                <th
+                <TableHead
                   key={h}
-                  className="px-2 py-1.5 text-left font-medium text-muted-foreground whitespace-nowrap"
+                  className="text-xs font-medium text-muted-foreground whitespace-nowrap"
                 >
                   {h}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {slice.map((t, i) => (
-              <tr
-                key={t.id}
-                className={cn("border-t", i % 2 !== 0 && "bg-muted/20")}
-              >
-                <td className="px-2 py-1 text-muted-foreground">
+              <TableRow key={t.id} className={cn(i % 2 !== 0 && "bg-muted/20")}>
+                <TableCell className="text-xs text-muted-foreground">
                   {page * PAGE_SIZE + i + 1}
-                </td>
-                <td
+                </TableCell>
+                <TableCell
                   className={cn(
-                    "px-2 py-1 font-bold",
+                    "text-xs font-bold",
                     t.direction === "BUY" ? "text-green-600" : "text-red-500",
                   )}
                 >
                   {t.direction}
-                </td>
-                <td className="px-2 py-1 text-muted-foreground whitespace-nowrap">
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                   {t.entry_time.slice(0, 16)}
-                </td>
-                <td className="px-2 py-1 tabular-nums">
+                </TableCell>
+                <TableCell className="text-xs tabular-nums">
                   {t.entry_price.toFixed(5)}
-                </td>
-                <td className="px-2 py-1 tabular-nums">
+                </TableCell>
+                <TableCell className="text-xs tabular-nums">
                   {t.exit_price?.toFixed(5) ?? "—"}
-                </td>
-                <td className="px-2 py-1 tabular-nums text-red-500">
+                </TableCell>
+                <TableCell className="text-xs tabular-nums text-red-500">
                   {t.stop_loss.toFixed(5)}
-                </td>
-                <td className="px-2 py-1 tabular-nums text-green-600">
+                </TableCell>
+                <TableCell className="text-xs tabular-nums text-green-600">
                   {t.take_profit.toFixed(5)}
-                </td>
-                <td
+                </TableCell>
+                <TableCell
                   className={cn(
-                    "px-2 py-1 font-medium tabular-nums",
+                    "text-xs font-medium tabular-nums",
                     (t.profit ?? 0) >= 0 ? "text-green-600" : "text-red-500",
                   )}
                 >
                   {t.profit != null
                     ? `${t.profit >= 0 ? "+" : ""}${t.profit.toFixed(2)}`
                     : "—"}
-                </td>
-                <td className="px-2 py-1 text-muted-foreground capitalize">
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground capitalize">
                   {t.exit_reason ?? "open"}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {totalPages > 1 && (
