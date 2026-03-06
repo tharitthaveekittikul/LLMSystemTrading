@@ -22,6 +22,7 @@ PROTECTED_TABLES: frozenset[str] = frozenset({
     "ai_journal", "llm_provider_configs", "task_llm_assignments",
     "hmm_model_registry", "alembic_version",
     "pipeline_steps", "backtest_trades",  # child tables — cascade-only, no direct management
+    "llm_calls",
 })
 
 PURGEABLE_TABLES: dict[str, str] = {
