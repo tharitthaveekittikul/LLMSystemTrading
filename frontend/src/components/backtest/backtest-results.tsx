@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { backtestApi } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import type {
   BacktestEquityPoint,
   BacktestMonthlyPnl,
@@ -93,14 +95,19 @@ export function BacktestResults({ run }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs font-medium text-muted-foreground mb-2">
-          {run.symbol} · {run.timeframe} · {run.start_date.slice(0, 10)} →{" "}
-          {run.end_date.slice(0, 10)}
-          {" · "}
-          {run.execution_mode === "close_price"
-            ? "Close Price"
-            : "Intra-Candle"}
-        </p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            {run.symbol} · {run.timeframe} · {run.start_date.slice(0, 10)} →{" "}
+            {run.end_date.slice(0, 10)}
+            {" · "}
+            {run.execution_mode === "close_price"
+              ? "Close Price"
+              : "Intra-Candle"}
+          </p>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/backtest/${run.id}/analytics`}>View Analytics</Link>
+          </Button>
+        </div>
         <BacktestMetricsGrid run={run} />
       </div>
 

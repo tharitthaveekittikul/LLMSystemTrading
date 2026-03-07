@@ -1,4 +1,4 @@
-from strategies.base_strategy import BaseStrategy
+from strategies.base import BaseStrategy
 
 
 class EURUSDScalp(BaseStrategy):

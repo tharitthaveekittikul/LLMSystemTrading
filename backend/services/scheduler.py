@@ -42,10 +42,14 @@ def _build_overrides(strategy):
     """Return (symbols, StrategyOverrides, strategy_id) for this strategy."""
     from services.ai_trading import StrategyOverrides
     symbols = json.loads(strategy.symbols or "[]")
-    if strategy.strategy_type == "code" and strategy.module_path and strategy.class_name:
+    if strategy.execution_mode != "llm_only" and strategy.module_path and strategy.class_name:
         try:
             mod = importlib.import_module(strategy.module_path)
             instance = getattr(mod, strategy.class_name)()
+            # AbstractStrategy subclasses expose .symbols as a list attribute directly
+            if hasattr(instance, "primary_tf"):
+                instance_symbols = getattr(instance, "symbols", None) or symbols
+                return instance_symbols, StrategyOverrides(), strategy.id
             return (instance.symbols or symbols), StrategyOverrides(
                 lot_size=instance.lot_size(),
                 sl_pips=instance.sl_pips(),
@@ -70,8 +74,8 @@ def _add_binding_jobs(scheduler: AsyncIOScheduler, binding) -> None:
     symbols, overrides, strategy_id = _build_overrides(strategy)
     trigger = _make_trigger(strategy)
     # Pass module_path/class_name so the job can reload the instance fresh each run.
-    module_path = strategy.module_path if strategy.strategy_type == "code" else None
-    class_name  = strategy.class_name  if strategy.strategy_type == "code" else None
+    module_path = strategy.module_path if strategy.execution_mode != "llm_only" else None
+    class_name  = strategy.class_name  if strategy.execution_mode != "llm_only" else None
     for symbol in symbols:
         job_id = _job_id(binding.id, symbol)
         scheduler.add_job(
@@ -105,16 +109,33 @@ async def _run_strategy_job(
             logger.exception("Failed to load code strategy %s.%s — running LLM fallback",
                              module_path, class_name)
 
+    # Detect whether the loaded instance is a new AbstractStrategy subclass
+    # (identified by the presence of the `primary_tf` class attribute).
+    is_abstract = strategy_instance is not None and hasattr(strategy_instance, "primary_tf")
+
     try:
-        async with AsyncSessionLocal() as db:
-            service = AITradingService()
-            result = await service.analyze_and_trade(
-                account_id=account_id, symbol=symbol, timeframe=timeframe,
-                db=db, strategy_id=strategy_id, strategy_overrides=overrides,
-                strategy_instance=strategy_instance,
+        if is_abstract:
+            # New path: AbstractStrategy.run(MTFMarketData) handles its own orchestration.
+            # NOTE: MTFDataFetcher for live market data is a future integration task.
+            # For now, log that the strategy is ready and skip execution.
+            logger.info(
+                "AbstractStrategy scheduled job (live integration pending): "
+                "account=%d symbol=%s strategy=%s.%s",
+                account_id, symbol, module_path, class_name,
             )
-            logger.info("Job done: account=%d symbol=%s action=%s order=%s",
-                        account_id, symbol, result.signal.action, result.order_placed)
+            # TODO: Wire in MTFDataFetcher, call strategy_instance.run(md),
+            #       and persist StrategyResult to AIJournal.
+        else:
+            # Legacy path: use AITradingService (unchanged).
+            async with AsyncSessionLocal() as db:
+                service = AITradingService()
+                result = await service.analyze_and_trade(
+                    account_id=account_id, symbol=symbol, timeframe=timeframe,
+                    db=db, strategy_id=strategy_id, strategy_overrides=overrides,
+                    strategy_instance=strategy_instance,
+                )
+                logger.info("Job done: account=%d symbol=%s action=%s order=%s",
+                            account_id, symbol, result.signal.action, result.order_placed)
     except Exception as exc:
         logger.error(
             "Scheduled job failed | account=%d symbol=%s strategy_id=%s: %s",

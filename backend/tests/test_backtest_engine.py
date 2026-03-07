@@ -178,3 +178,32 @@ async def test_end_of_data_closes_open_position():
     )
     end_trades = [t for t in result["trades"] if t.get("exit_reason") == "end_of_data"]
     assert len(end_trades) == 1
+
+
+async def test_engine_accepts_rule_only_strategy():
+    """BacktestEngine works with an AbstractStrategy subclass using run() interface."""
+    from services.backtest_engine import BacktestEngine
+    from strategies.base_strategy import RuleOnlyStrategy, StrategyResult
+
+    class BuyStrategy(RuleOnlyStrategy):
+        primary_tf = "M15"
+        context_tfs = ["H1"]
+        symbols = ["EURUSD"]
+        def check_rule(self, md):
+            return StrategyResult(
+                action="BUY", entry=md.current_price,
+                stop_loss=md.current_price - 0.002,
+                take_profit=md.current_price + 0.004,
+                confidence=0.9, rationale="test", timeframe="M15",
+            )
+        def analytics_schema(self): return {}
+
+    engine = BacktestEngine()
+    result = await engine.run(
+        _make_candles(60),
+        BuyStrategy(),
+        {"symbol": "EURUSD", "timeframe": "M15", "initial_balance": 10_000.0,
+         "spread_pips": 1.0, "execution_mode": "close_price", "volume": 0.1, "max_llm_calls": 0},
+        progress_cb=None,
+    )
+    assert "trades" in result

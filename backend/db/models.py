@@ -106,6 +106,10 @@ class Strategy(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     strategy_type: Mapped[str] = mapped_column(String(20), default="config")   # config|prompt|code
+    execution_mode: Mapped[str] = mapped_column(String(30), default="llm_only")
+    # llm_only|rule_then_llm|rule_only|hybrid_validator|multi_agent
+    primary_tf: Mapped[str] = mapped_column(String(10), default="M15")
+    context_tfs: Mapped[str] = mapped_column(Text, default="[]")   # JSON list of TF strings
     trigger_type: Mapped[str] = mapped_column(String(20), default="candle_close")  # interval|candle_close
     interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     symbols: Mapped[str] = mapped_column(Text, default="[]")           # JSON list
@@ -131,6 +135,9 @@ class Strategy(Base):
 def _strategy_init_defaults(_target: Strategy, _args: tuple, kwargs: dict) -> None:
     """Apply Python-level defaults for Strategy attributes not passed to __init__."""
     kwargs.setdefault("strategy_type", "config")
+    kwargs.setdefault("execution_mode", "llm_only")
+    kwargs.setdefault("primary_tf", "M15")
+    kwargs.setdefault("context_tfs", "[]")
     kwargs.setdefault("trigger_type", "candle_close")
     kwargs.setdefault("symbols", "[]")
     kwargs.setdefault("timeframe", "M15")
@@ -267,6 +274,8 @@ class BacktestRun(Base):
     initial_balance: Mapped[float] = mapped_column(Float, default=10000.0)
     spread_pips: Mapped[float] = mapped_column(Float, default=1.5)
     execution_mode: Mapped[str] = mapped_column(String(20), default="close_price")
+    primary_tf: Mapped[str] = mapped_column(String(10), default="M15")
+    context_tfs: Mapped[str] = mapped_column(Text, default="[]")   # JSON list
     max_llm_calls: Mapped[int] = mapped_column(Integer, default=100)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     progress_pct: Mapped[int] = mapped_column(Integer, default=0)
@@ -313,6 +322,8 @@ class BacktestTrade(Base):
     profit: Mapped[float | None] = mapped_column(Float, nullable=True)
     exit_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
     equity_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pattern_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    pattern_metadata: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
 
     run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="trades")
 

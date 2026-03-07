@@ -1,6 +1,16 @@
+"""Tests for the legacy BaseStrategy (strategies.base) and the AbstractStrategy alias.
+
+The old concrete BaseStrategy lives in strategies.base and provides the legacy
+lot_size / sl_pips / tp_pips / news_filter / generate_signal interface.
+
+strategies.base_strategy.BaseStrategy is now an alias for AbstractStrategy
+(the new typed hierarchy).  The alias is tested here for import-compatibility
+only; full new-hierarchy tests live in test_strategy_base.py.
+"""
 import pytest
-from types import SimpleNamespace
-from strategies.base_strategy import BaseStrategy
+
+# ── Legacy base (strategies.base) — still the concrete class with old interface ──
+from strategies.base import BaseStrategy
 
 
 class ConcreteStrategy(BaseStrategy):
@@ -21,28 +31,22 @@ def test_defaults():
     assert s.sl_pips() is None
     assert s.tp_pips() is None
     assert s.news_filter() is True
-    assert s.trigger_type == "candle_close"
-    assert s.interval_minutes == 15
 
 
-def test_abstract_requires_system_prompt():
+def test_abstract_requires_run_and_analytics_schema():
+    """AbstractStrategy (new hierarchy) cannot be instantiated without run() + analytics_schema()."""
+    from strategies.base_strategy import AbstractStrategy
+
+    class Incomplete(AbstractStrategy):
+        pass
+
     with pytest.raises(TypeError):
-        BaseStrategy()
+        Incomplete()
 
 
-def test_should_trade_hold_returns_false():
+def test_generate_signal_default_returns_none():
     s = ConcreteStrategy()
-    assert s.should_trade(SimpleNamespace(action="HOLD")) is False
-
-
-def test_should_trade_buy_returns_true():
-    s = ConcreteStrategy()
-    assert s.should_trade(SimpleNamespace(action="BUY")) is True
-
-
-def test_should_trade_sell_returns_true():
-    s = ConcreteStrategy()
-    assert s.should_trade(SimpleNamespace(action="SELL")) is True
+    assert s.generate_signal({}) is None
 
 
 def test_eurusd_scalp_is_valid_strategy():

@@ -50,3 +50,6 @@ backend/screenshots/
 # Alembic — keep versions/ in source control
 backend/alembic/versions/*.py
 !backend/alembic/versions/.gitkeep
+
+# Large data files
+data/backtests/

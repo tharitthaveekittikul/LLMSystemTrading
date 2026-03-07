@@ -169,6 +169,33 @@ export const backtestApi = {
   deleteRun: (runId: number) =>
     apiRequest<void>(`/backtest/runs/${runId}`, { method: "DELETE" }),
 
+  getAnalyticsSummary: (runId: number) =>
+    apiRequest<{
+      run_id: number; panel_type: string; total_trades: number | null;
+      win_rate: number | null; profit_factor: number | null;
+      max_drawdown_pct: number | null; sharpe_ratio: number | null; total_return_pct: number | null;
+    }>(`/backtest/runs/${runId}/analytics`),
+
+  getAnalyticsGroups: (runId: number, groupBy = "pattern_name") =>
+    apiRequest<Array<{
+      name: string; trades: number; win_rate: number; total_pnl: number;
+      avg_win: number; avg_loss: number; profit_factor: number; best_symbol: string;
+    }>>(`/backtest/runs/${runId}/analytics/groups?group_by=${groupBy}`),
+
+  getAnalyticsHeatmap: (
+    runId: number, axis1 = "symbol", axis2 = "pattern_name", metric = "win_rate"
+  ) =>
+    apiRequest<{ labels_x: string[]; labels_y: string[]; values: number[][] }>(
+      `/backtest/runs/${runId}/analytics/heatmap?axis1=${axis1}&axis2=${axis2}&metric=${metric}`
+    ),
+
+  getAnalyticsCombinations: (runId: number, limit = 10) =>
+    apiRequest<{
+      top: Array<{ symbol: string; pattern: string; trades: number; win_rate: number; total_pnl: number; profit_factor: number }>;
+      worst: Array<{ symbol: string; pattern: string; trades: number; win_rate: number; total_pnl: number; profit_factor: number }>;
+      recommendations: string[];
+    }>(`/backtest/runs/${runId}/analytics/combinations?limit=${limit}`),
+
   uploadCsv: async (file: File): Promise<{ upload_id: string; size_bytes: number }> => {
     const form = new FormData();
     form.append("file", file);

@@ -10,6 +10,8 @@ Design:
   - LLM strategies are sampled: LLM called every N-th candle (budget = max_llm_calls).
   - One open position per symbol at a time (matching live behaviour).
   - progress_cb(pct: int) is called every 1_000 candles if provided.
+  - New AbstractStrategy subclasses (with primary_tf attribute) are detected
+    automatically and dispatched via await strategy.run(MTFMarketData).
 """
 from __future__ import annotations
 
@@ -20,6 +22,41 @@ logger = logging.getLogger(__name__)
 
 # Number of candles in the rolling window passed to strategy.generate_signal()
 _WINDOW = 50
+
+
+def _dict_to_ohlcv(d: dict):
+    from services.mtf_data import OHLCV
+    return OHLCV(
+        time=d["time"], open=d["open"], high=d["high"],
+        low=d["low"], close=d["close"], tick_volume=d.get("tick_volume", 0),
+    )
+
+
+def _build_indicators(window: list[dict]) -> dict:
+    closes = [c["close"] for c in window]
+    sma_20 = sum(closes[-20:]) / min(20, len(closes))
+    return {
+        "sma_20": round(sma_20, 5),
+        "recent_high": max(c["high"] for c in window),
+        "recent_low": min(c["low"] for c in window),
+    }
+
+
+def _strategy_result_to_dict(result) -> dict | None:
+    """Convert StrategyResult to the dict format BacktestEngine uses internally."""
+    if result is None or result.action == "HOLD":
+        return None
+    return {
+        "action": result.action,
+        "entry": result.entry,
+        "stop_loss": result.stop_loss,
+        "take_profit": result.take_profit,
+        "confidence": result.confidence,
+        "rationale": result.rationale,
+        "timeframe": result.timeframe,
+        "pattern_name": result.pattern_name,
+        "pattern_metadata": result.pattern_metadata,
+    }
 
 
 class BacktestEngine:
@@ -85,9 +122,26 @@ class BacktestEngine:
                     signal = last_signal
                 else:
                     try:
-                        signal = strategy.generate_signal(market_data)
+                        from strategies.base_strategy import AbstractStrategy as _AbstractStrategy
+                        if isinstance(strategy, _AbstractStrategy):
+                            # New AbstractStrategy — build MTFMarketData and await run()
+                            from services.mtf_data import MTFMarketData, TimeframeData
+                            mtf_md = MTFMarketData(
+                                symbol=symbol,
+                                primary_tf=timeframe,
+                                current_price=candle["close"],
+                                timeframes={timeframe: TimeframeData(tf=timeframe, candles=[
+                                    _dict_to_ohlcv(c) for c in window
+                                ])},
+                                indicators=_build_indicators(window),
+                                trigger_time=candle["time"],
+                            )
+                            strategy_result = await strategy.run(mtf_md)
+                            signal = _strategy_result_to_dict(strategy_result)
+                        else:
+                            signal = strategy.generate_signal(market_data)
                     except Exception as exc:
-                        logger.warning("generate_signal error at candle %d: %s", i, exc)
+                        logger.warning("signal generation error at candle %d: %s", i, exc)
                         signal = None
                     last_signal = signal
 
@@ -108,6 +162,8 @@ class BacktestEngine:
                             "exit_reason": None,
                             "profit": None,
                             "equity_after": None,
+                            "pattern_name": signal.get("pattern_name"),
+                            "pattern_metadata": signal.get("pattern_metadata"),
                         }
 
             # ── 4. Progress callback ───────────────────────────────────────────
@@ -127,6 +183,8 @@ class BacktestEngine:
                 "exit_reason": "end_of_data",
                 "profit": round(profit, 4),
                 "equity_after": round(balance, 4),
+                "pattern_name": open_position.get("pattern_name"),
+                "pattern_metadata": open_position.get("pattern_metadata"),
             }
             trades.append(trade)
             equity_curve.append({"time": last_candle["time"], "equity": round(balance, 4)})
