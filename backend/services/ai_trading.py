@@ -2,14 +2,15 @@
 
 Pipeline per call:
   1. Load account credentials from DB
-  2. Redis rate limit check (10 LLM calls / 60s per account)
-  3. Redis OHLCV cache (TTL by timeframe) — fetch from MT5 on miss
-  4. Fetch open positions + recent signals + trade history for LLM memory context
-  5. orchestrator.analyze_market() -> LLMAnalysisResult (with position/news context)
-  6. Persist to AIJournal (trade_id=None initially)
-  7. Broadcast ai_signal WebSocket event
-  8. If BUY/SELL: check kill switch -> MT5Executor -> persist Trade -> update AIJournal
-  9. Broadcast trade_opened (if order placed)
+  2. Kill switch check (fail-fast — in-memory, zero I/O)
+  3. Redis rate limit check (LLM path only — 10 calls / 60s per account)
+  4. Redis OHLCV cache (TTL by timeframe) — fetch from MT5 on miss
+  5. Fetch open positions + recent signals + trade history for LLM memory context
+  6. orchestrator.analyze_market() -> LLMAnalysisResult (with position/news context)
+  7. Persist to AIJournal (trade_id=None initially)
+  8. Broadcast ai_signal WebSocket event
+  9. If BUY/SELL: kill switch safety re-check -> MT5Executor -> persist Trade -> update AIJournal
+ 10. Broadcast trade_opened (if order placed)
 
 Every step is recorded by PipelineTracer to pipeline_runs / pipeline_steps tables.
 """
@@ -225,7 +226,46 @@ class AITradingService:
             duration_ms=int((time.monotonic() - t0) * 1000),
         )
 
-        # ── 2. Resolve timeframe int ─────────────────────────────────────────
+        # ── 2. Kill switch check (fail-fast — in-memory, zero I/O) ──────────────
+        t0 = time.monotonic()
+        ks_early = kill_switch_active()
+        await tracer.record(
+            "kill_switch_check",
+            output_data={"active": ks_early},
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
+        if ks_early:
+            logger.warning(
+                "Kill switch active — aborting pipeline before analysis | account_id=%s symbol=%s",
+                account_id, symbol,
+            )
+            tracer.finalize(status="failed")
+            raise HTTPException(status_code=503, detail="Kill switch is active — trading halted")
+
+        # ── 3. Rate limit check (LLM path only — Redis read, before any I/O) ─────
+        if strategy_instance is None:
+            t0 = time.monotonic()
+            allowed = await check_llm_rate_limit(account_id)
+            if not allowed:
+                await tracer.record(
+                    "rate_limit_check", status="error",
+                    output_data={"allowed": False},
+                    error="LLM rate limit exceeded",
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                )
+                tracer.finalize(status="failed")
+                logger.warning("LLM rate limit exceeded | account_id=%s", account_id)
+                raise HTTPException(
+                    status_code=429,
+                    detail="LLM rate limit exceeded — max 10 calls per 60 seconds per account",
+                )
+            await tracer.record(
+                "rate_limit_check",
+                output_data={"allowed": True},
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
+
+        # ── 4. Resolve timeframe int ─────────────────────────────────────────
         tf_upper = timeframe.upper()
         tf_int = _TIMEFRAME_MAP.get(tf_upper)
         if tf_int is None:
@@ -455,28 +495,6 @@ class AITradingService:
         # ── 8. LLM analysis (skipped for rule-based strategies) ───────────────
         llm_result: LLMAnalysisResult | None = None
         if not rule_based:
-            # Rate limit applies only to LLM calls.
-            t0 = time.monotonic()
-            allowed = await check_llm_rate_limit(account_id)
-            if not allowed:
-                await tracer.record(
-                    "rate_limit_check", status="error",
-                    output_data={"allowed": False},
-                    error="LLM rate limit exceeded",
-                    duration_ms=int((time.monotonic() - t0) * 1000),
-                )
-                tracer.finalize(status="failed")
-                logger.warning("LLM rate limit exceeded | account_id=%s", account_id)
-                raise HTTPException(
-                    status_code=429,
-                    detail="LLM rate limit exceeded — max 10 calls per 60 seconds per account",
-                )
-            await tracer.record(
-                "rate_limit_check",
-                output_data={"allowed": True},
-                duration_ms=int((time.monotonic() - t0) * 1000),
-            )
-
             news_context_str: str | None = None
             if getattr(settings, "news_enabled", False):
                 from services.market_context import fetch_upcoming_events, format_news_context
@@ -672,7 +690,7 @@ class AITradingService:
                 signal=signal, order_placed=False, ticket=None, journal_id=journal.id
             )
 
-        # ── 12. Kill switch check ────────────────────────────────────────────
+        # ── 12. Kill switch safety re-check (race condition: activated during LLM analysis) ──
         ks_active = kill_switch_active()
         await tracer.record("kill_switch_check", output_data={"active": ks_active})
         if ks_active:
