@@ -49,6 +49,8 @@ export default function EditStrategyPage() {
           interval_minutes: s.interval_minutes ?? undefined,
           symbols: s.symbols,
           timeframe: s.timeframe,
+          primary_tf: s.primary_tf ?? s.timeframe,
+          context_tfs: s.context_tfs ?? [],
           lot_size: s.lot_size ?? undefined,
           sl_pips: s.sl_pips ?? undefined,
           tp_pips: s.tp_pips ?? undefined,
@@ -91,6 +93,8 @@ export default function EditStrategyPage() {
         interval_minutes: form.interval_minutes,
         symbols: form.symbols,
         timeframe: form.timeframe,
+        primary_tf: form.primary_tf,
+        context_tfs: form.context_tfs,
         lot_size: form.lot_size,
         sl_pips: form.sl_pips,
         tp_pips: form.tp_pips,
@@ -221,6 +225,73 @@ export default function EditStrategyPage() {
                 </div>
               </div>
               <div className="space-y-2">
+                <Label>
+                  Primary TF{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (main trading timeframe for MTF strategies)
+                  </span>
+                </Label>
+                <div className="flex gap-2 flex-wrap">
+                  {TIMEFRAMES.map((tf) => (
+                    <button
+                      key={tf}
+                      type="button"
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          primary_tf: tf,
+                          context_tfs: (f.context_tfs ?? []).filter((t) => t !== tf),
+                        }))
+                      }
+                      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                        form.primary_tf === tf
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background hover:bg-muted"
+                      }`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  Context TFs{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (optional — additional timeframes for MTF analysis)
+                  </span>
+                </Label>
+                <div className="flex gap-2 flex-wrap">
+                  {TIMEFRAMES.filter((tf) => tf !== form.primary_tf).map((tf) => {
+                    const selected = (form.context_tfs ?? []).includes(tf);
+                    return (
+                      <button
+                        key={tf}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => {
+                            const cur = f.context_tfs ?? [];
+                            return {
+                              ...f,
+                              context_tfs: selected
+                                ? cur.filter((t) => t !== tf)
+                                : [...cur, tf],
+                            };
+                          })
+                        }
+                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-background hover:bg-muted"
+                        }`}
+                      >
+                        {tf}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label>Trigger</Label>
                 <div className="flex gap-2">
                   {(["candle_close", "interval"] as const).map((t) => (
@@ -277,7 +348,7 @@ export default function EditStrategyPage() {
                     <Input
                       value={form.module_path ?? ""}
                       onChange={(e) => setForm((f) => ({ ...f, module_path: e.target.value || undefined }))}
-                      placeholder="strategies.harmonic_strategy"
+                      placeholder="strategies.harmonic.harmonic_strategy"
                     />
                   </div>
                   <div className="space-y-2">
@@ -348,6 +419,16 @@ export default function EditStrategyPage() {
                   <span className="text-muted-foreground">Timeframe</span>
                   <span className="font-medium">{form.timeframe}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Primary TF</span>
+                  <span className="font-medium">{form.primary_tf}</span>
+                </div>
+                {(form.context_tfs ?? []).length > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Context TFs</span>
+                    <span className="font-medium">{(form.context_tfs ?? []).join(", ")}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Symbols</span>
                   <span className="font-medium">{(form.symbols ?? []).join(", ")}</span>

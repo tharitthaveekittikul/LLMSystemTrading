@@ -19,7 +19,7 @@ from services.mtf_data import OHLCV
 
 logger = logging.getLogger(__name__)
 
-_REQUIRED = {"date", "time", "open", "high", "low", "close", "tickvol"}
+_REQUIRED = {"date", "open", "high", "low", "close", "tickvol"}
 
 
 class MTFCSVError(ValueError):
@@ -45,8 +45,9 @@ def load_mt5_csv(file: io.StringIO | io.BytesIO) -> list[OHLCV]:
         raise MTFCSVError(f"Missing columns in MT5 CSV: {sorted(missing)}. Got: {list(df.columns)}")
 
     try:
+        time_str = df["time"].astype(str) if "time" in df.columns else "00:00:00"
         df["datetime"] = pd.to_datetime(
-            df["date"].astype(str) + " " + df["time"].astype(str),
+            df["date"].astype(str) + " " + time_str,
             format="%Y.%m.%d %H:%M:%S",
             utc=True,
         )

@@ -233,6 +233,11 @@ class MT5Bridge:
         if not selected:
             err = await self.get_last_error()
             logger.warning("symbol_select(%s) failed | error=%s", symbol, err)
+            raise RuntimeError(
+                f"symbol_select({symbol!r}) failed (error={err}). "
+                "In MT5: View → Market Watch → right-click → Show All, "
+                f"find '{symbol}', right-click → Request (download history), then retry."
+            )
         rates = await self._run(mt5.copy_rates_range, symbol, timeframe, date_from, date_to)
         logger.debug(
             "copy_rates_range(%s, tf=%s, %s → %s) -> %s rows",

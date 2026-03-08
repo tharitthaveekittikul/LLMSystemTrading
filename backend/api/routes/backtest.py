@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class BacktestRunRequest(BaseModel):
     strategy_id: int
     symbol: str = Field(..., min_length=1, max_length=20)
-    timeframe: str = Field(default="M15")
+    timeframe: str | None = Field(default=None)  # None → use strategy's primary_tf
     start_date: datetime
     end_date: datetime
     initial_balance: float = Field(default=10_000.0, gt=0)
@@ -37,7 +37,9 @@ class BacktestRunRequest(BaseModel):
     execution_mode: str = Field(default="close_price")
     max_llm_calls: int = Field(default=100, ge=0)
     volume: float = Field(default=0.1, gt=0)
-    csv_upload_id: str | None = None
+    risk_pct: float | None = Field(default=None, ge=0, le=1)  # e.g. 0.01 = 1%; None = fixed lot
+    csv_upload_id: str | None = None          # primary TF CSV (backward compat)
+    csv_uploads: dict[str, str] | None = None  # {tf_name: upload_id} for MTF CSVs
 
 
 class BacktestRunSummary(BaseModel):
@@ -161,7 +163,9 @@ async def submit_run(
             detail="execution_mode must be 'close_price' or 'intra_candle'",
         )
 
-    timeframe = req.timeframe or strategy.timeframe
+    # Use strategy's primary_tf from DB as the canonical timeframe
+    timeframe = req.timeframe or strategy.primary_tf or strategy.timeframe or "M15"
+    context_tfs: list[str] = json.loads(strategy.context_tfs or "[]")
 
     run = BacktestRun(
         strategy_id=req.strategy_id,
@@ -186,6 +190,7 @@ async def submit_run(
         req=req,
         strategy_db=strategy,
         timeframe=timeframe,
+        context_tfs=context_tfs,
     )
     logger.info(
         "Backtest run %d submitted | strategy=%s symbol=%s",
@@ -420,6 +425,7 @@ async def _run_backtest_job(
     req: BacktestRunRequest,
     strategy_db: Strategy,
     timeframe: str,
+    context_tfs: list[str],
 ) -> None:
     """Background task: load OHLCV data, run engine, persist results."""
     async with AsyncSessionLocal() as db:
@@ -435,9 +441,30 @@ async def _run_backtest_job(
             # ── Load OHLCV data ────────────────────────────────────────────────
             data_svc = BacktestDataService()
 
-            if req.csv_upload_id:
-                with open(req.csv_upload_id, "r") as f:
+            if req.csv_upload_id or req.csv_uploads:
+                # ── CSV path (primary TF) ──────────────────────────────────────
+                primary_upload = req.csv_upload_id or (
+                    req.csv_uploads.get(timeframe) if req.csv_uploads else None
+                )
+                if not primary_upload:
+                    raise BacktestDataError(
+                        "No primary-TF CSV provided. Upload a CSV for the primary timeframe."
+                    )
+                with open(primary_upload, "r") as f:
                     candles = await data_svc.load_from_csv(io.StringIO(f.read()))
+
+                # ── Context TF CSVs (optional) ─────────────────────────────────
+                context_candles: dict[str, list[dict]] = {}
+                if req.csv_uploads:
+                    for ctx_tf, upload_path in req.csv_uploads.items():
+                        if ctx_tf == timeframe:
+                            continue  # already loaded as primary
+                        with open(upload_path, "r") as f:
+                            ctx_c = await data_svc.load_from_csv(io.StringIO(f.read()))
+                        context_candles[ctx_tf] = ctx_c
+                        logger.info(
+                            "Loaded context TF %s: %d candles", ctx_tf, len(ctx_c)
+                        )
             else:
                 from mt5.bridge import MT5Bridge, AccountCredentials, MT5_AVAILABLE
                 if not MT5_AVAILABLE:
@@ -456,11 +483,25 @@ async def _run_backtest_job(
                     server=account.server,
                     path=account.mt5_path or "",
                 )
+                # Primary TF
                 tf_int = _timeframe_to_int(timeframe)
                 async with MT5Bridge(creds) as bridge:
                     candles = await data_svc.load_from_mt5(
                         bridge, req.symbol, tf_int, req.start_date, req.end_date
                     )
+                # Context TFs from MT5 (auto-loaded when available)
+                context_candles = {}
+                async with MT5Bridge(creds) as bridge:
+                    for ctx_tf in context_tfs:
+                        try:
+                            ctx_c = await data_svc.load_from_mt5(
+                                bridge, req.symbol, _timeframe_to_int(ctx_tf),
+                                req.start_date, req.end_date,
+                            )
+                            context_candles[ctx_tf] = ctx_c
+                            logger.info("Loaded MT5 context TF %s: %d candles", ctx_tf, len(ctx_c))
+                        except Exception as exc:
+                            logger.warning("Could not load context TF %s: %s", ctx_tf, exc)
 
             # ── Load strategy instance ─────────────────────────────────────────
             strategy_instance = _load_strategy(strategy_db)
@@ -474,6 +515,7 @@ async def _run_backtest_job(
                 "spread_pips": req.spread_pips,
                 "execution_mode": req.execution_mode,
                 "volume": req.volume,
+                "risk_pct": req.risk_pct,
                 "max_llm_calls": req.max_llm_calls,
             }
 
@@ -485,7 +527,11 @@ async def _run_backtest_job(
                         await progress_db.commit()
                 await broadcast_all("backtest_progress", {"run_id": run_id, "progress_pct": pct})
 
-            result = await engine.run(candles, strategy_instance, config, progress_cb=_progress)
+            result = await engine.run(
+                candles, strategy_instance, config,
+                progress_cb=_progress,
+                context_candles=context_candles or None,
+            )
             run.avg_spread = result.get("avg_spread")
 
             # ── Persist trades ────────────────────────────────────────────────
@@ -563,6 +609,12 @@ def _load_strategy(strategy_db: Strategy):
         cls = getattr(mod, strategy_db.class_name)
         instance = cls()
         instance.strategy_type = "code"
+        # Override primary_tf and context_tfs from DB so the instance reflects
+        # how the strategy was configured, not the class-level hardcoded defaults.
+        if strategy_db.primary_tf:
+            instance.primary_tf = strategy_db.primary_tf
+        if strategy_db.context_tfs and strategy_db.context_tfs != "[]":
+            instance.context_tfs = json.loads(strategy_db.context_tfs)
         return instance
 
     class _ConfigStrategy:

@@ -233,6 +233,8 @@ export interface Strategy {
   interval_minutes: number | null;
   symbols: string[];
   timeframe: string;
+  primary_tf: string;
+  context_tfs: string[];
   lot_size: number | null;
   sl_pips: number | null;
   tp_pips: number | null;
@@ -260,6 +262,8 @@ export interface CreateStrategyPayload {
   interval_minutes?: number;
   symbols: string[];
   timeframe: string;
+  primary_tf?: string;
+  context_tfs?: string[];
   lot_size?: number;
   sl_pips?: number;
   tp_pips?: number;
@@ -449,7 +453,9 @@ export interface BacktestRunRequest {
   execution_mode?: "close_price" | "intra_candle";
   max_llm_calls?: number;
   volume?: number;
-  csv_upload_id?: string;
+  risk_pct?: number; // 0.01 = 1% risk per trade; omit or null = fixed lot
+  csv_upload_id?: string;             // primary TF CSV (backward compat)
+  csv_uploads?: Record<string, string>; // {tf_name: upload_id} for MTF CSVs
 }
 
 // ── LLM Usage ─────────────────────────────────────────────────────────────────

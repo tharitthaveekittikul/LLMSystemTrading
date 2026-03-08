@@ -14,6 +14,8 @@ interface StrategyItem {
   name: string;
   timeframe: string;
   strategy_type: string;
+  primary_tf: string;
+  context_tfs: string[]; // parsed from JSON by the fetch below
 }
 
 export default function BacktestPage() {

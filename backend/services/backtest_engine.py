@@ -67,16 +67,18 @@ class BacktestEngine:
         strategy,
         config: dict,
         progress_cb: Callable[[int], Awaitable[None]] | None,
+        context_candles: dict[str, list[dict]] | None = None,
     ) -> dict:
         """Run the backtest simulation.
 
         Args:
-            candles:     Chronological list of OHLCV candle dicts.
-            strategy:    Any object with .generate_signal(market_data) -> dict | None
-                         and .strategy_type (str: "code" | "config" | "prompt").
-            config:      {symbol, timeframe, initial_balance, spread_pips,
-                         execution_mode, volume, max_llm_calls}
-            progress_cb: Optional async callback(pct: int) called every 1_000 candles.
+            candles:         Chronological list of primary-TF OHLCV candle dicts.
+            strategy:        Any object with .generate_signal(market_data) -> dict | None
+                             and .strategy_type (str: "code" | "config" | "prompt").
+            config:          {symbol, timeframe, initial_balance, spread_pips,
+                             execution_mode, volume, max_llm_calls}
+            progress_cb:     Optional async callback(pct: int) called every 1_000 candles.
+            context_candles: Optional dict of {tf_name: candle_list} for MTF strategies.
 
         Returns:
             {trades: list[dict], equity_curve: list[dict]}
@@ -87,6 +89,7 @@ class BacktestEngine:
         default_spread_price = config.get("spread_pips", 1.5) * _pip_value(symbol)
         mode = config.get("execution_mode", "close_price")
         volume = config.get("volume", 0.1)
+        risk_pct = config.get("risk_pct") or 0.0   # 0 = use fixed volume; >0 = risk-based sizing
         max_llm = config.get("max_llm_calls", 100)
         total = len(candles)
 
@@ -99,7 +102,18 @@ class BacktestEngine:
         equity_curve: list[dict] = []
         last_signal: dict | None = None
 
+        # Pointer-based context TF windows: advance each pointer as primary TF time moves
+        # forward. O(n + m) total vs O(n×m) for naive filtering per candle.
+        ctx_ptrs: dict[str, int] = {tf: 0 for tf in (context_candles or {})}
+
         for i, candle in enumerate(candles):
+            # Advance context TF pointers to include all candles with time <= current
+            if context_candles:
+                candle_time = candle["time"]
+                for ctx_tf, ctx_list in context_candles.items():
+                    while (ctx_ptrs[ctx_tf] < len(ctx_list)
+                           and ctx_list[ctx_ptrs[ctx_tf]]["time"] <= candle_time):
+                        ctx_ptrs[ctx_tf] += 1
             # Per-candle spread (from CSV); falls back to config spread_pips
             spread_pts = candle.get("spread", 0)
             candle_spread_price = (
@@ -111,7 +125,7 @@ class BacktestEngine:
             if open_position is not None:
                 closed = _check_exit(open_position, candle, mode)
                 if closed:
-                    profit = _calc_profit(open_position, closed["exit_price"], volume, symbol)
+                    profit = _calc_profit(open_position, closed["exit_price"], open_position["volume"], symbol)
                     balance += profit
                     trade = {**open_position, **closed, "profit": round(profit, 4),
                              "equity_after": round(balance, 4)}
@@ -133,13 +147,32 @@ class BacktestEngine:
                         if isinstance(strategy, _AbstractStrategy):
                             # New AbstractStrategy — build MTFMarketData and await run()
                             from services.mtf_data import MTFMarketData, TimeframeData
+                            _candle_counts = getattr(strategy, "candle_counts", {})
+                            _timeframes = {
+                                timeframe: TimeframeData(tf=timeframe, candles=[
+                                    _dict_to_ohlcv(c) for c in window
+                                ])
+                            }
+                            # Add context TF windows (no-lookahead: ptr = index of first
+                            # candle AFTER current primary TF time, so slice [:ptr])
+                            if context_candles:
+                                for ctx_tf, ctx_list in context_candles.items():
+                                    if ctx_tf == timeframe:
+                                        continue  # same as primary — don't overwrite
+                                    ptr = ctx_ptrs[ctx_tf]
+                                    if ptr == 0:
+                                        continue
+                                    ctx_count = _candle_counts.get(ctx_tf, 20)
+                                    ctx_win = ctx_list[max(0, ptr - ctx_count): ptr]
+                                    _timeframes[ctx_tf] = TimeframeData(
+                                        tf=ctx_tf,
+                                        candles=[_dict_to_ohlcv(c) for c in ctx_win],
+                                    )
                             mtf_md = MTFMarketData(
                                 symbol=symbol,
                                 primary_tf=timeframe,
                                 current_price=candle["close"],
-                                timeframes={timeframe: TimeframeData(tf=timeframe, candles=[
-                                    _dict_to_ohlcv(c) for c in window
-                                ])},
+                                timeframes=_timeframes,
                                 indicators=_build_indicators(window),
                                 trigger_time=candle["time"],
                             )
@@ -156,6 +189,50 @@ class BacktestEngine:
                 if signal and signal.get("action") in ("BUY", "SELL"):
                     fill_price = _fill_price(signal, candle, candles, i, mode, candle_spread_price)
                     if fill_price is not None:
+                        # Guard 1: SL/TP must bracket the fill price on the correct sides.
+                        # Skips signals where strategy entry (D point) diverged too far
+                        # from the actual fill (candle close), flipping SL/TP sides.
+                        _sl = signal.get("stop_loss", 0)
+                        _tp = signal.get("take_profit", 0)
+                        _dir = signal["action"]
+                        _valid = (
+                            (_dir == "BUY" and _sl < fill_price < _tp) or
+                            (_dir == "SELL" and _tp < fill_price < _sl)
+                        )
+                        if not _valid:
+                            logger.debug(
+                                "Skipping %s at %s: fill=%.5f outside sl=%.5f/tp=%.5f",
+                                _dir, candle["time"], fill_price, _sl, _tp,
+                            )
+                            fill_price = None
+
+                    if fill_price is not None:
+                        # Guard 2: Minimum SL distance (0.1 % of fill price).
+                        # Filters out degenerate harmonic patterns with microscopic legs
+                        # that would otherwise produce unrealistic lot sizes or near-zero P&L.
+                        _min_sl_dist = fill_price * 0.001
+                        _sl_dist = abs(fill_price - _sl)
+                        if _sl_dist < _min_sl_dist:
+                            logger.debug(
+                                "Skipping %s at %s: SL too close (dist=%.5f < min=%.5f)",
+                                signal["action"], candle["time"], _sl_dist, _min_sl_dist,
+                            )
+                            fill_price = None
+
+                    if fill_price is not None:
+                        # Lot sizing: risk-based (if risk_pct > 0) or fixed volume.
+                        if risk_pct > 0:
+                            from services.position_sizing import calc_lot_size
+                            trade_volume = calc_lot_size(
+                                balance=balance,
+                                risk_pct=risk_pct,
+                                fill_price=fill_price,
+                                sl_price=_sl,
+                                contract_size=_contract_size(symbol),
+                            )
+                        else:
+                            trade_volume = volume
+
                         open_position = {
                             "symbol": symbol,
                             "direction": signal["action"],
@@ -163,7 +240,7 @@ class BacktestEngine:
                             "entry_price": round(fill_price, 5),
                             "stop_loss": round(signal["stop_loss"], 5),
                             "take_profit": round(signal["take_profit"], 5),
-                            "volume": volume,
+                            "volume": trade_volume,
                             "exit_time": None,
                             "exit_price": None,
                             "exit_reason": None,
@@ -181,7 +258,7 @@ class BacktestEngine:
         # ── Close any open position at end of data ─────────────────────────────
         if open_position is not None:
             last_candle = candles[-1]
-            profit = _calc_profit(open_position, last_candle["close"], volume, symbol)
+            profit = _calc_profit(open_position, last_candle["close"], open_position["volume"], symbol)
             balance += profit
             trade = {
                 **open_position,
@@ -291,13 +368,32 @@ def _fill_price(
     return None  # no next candle, skip
 
 
+def _contract_size(symbol: str) -> float:
+    """Return standard lot contract size for a symbol.
+
+    XAUUSD/XAGUSD: 100 oz per lot (not 100,000 — gold is priced per oz)
+    Indices (US30, NAS, SPX, DAX, FTSE, CAC): 1 unit per lot
+    Crude oil (OIL, BRENT, WTI): 1,000 barrels per lot
+    Forex (all others): 100,000 units per lot
+    """
+    sym = symbol.upper()
+    if any(m in sym for m in ("XAU", "XAG")):
+        return 100        # Gold/Silver: 100 troy oz per standard lot
+    if any(m in sym for m in ("XPT", "XPD")):
+        return 50         # Platinum/Palladium: 50 oz
+    if any(m in sym for m in ("US30", "NAS", "SPX", "DAX", "FTSE", "CAC", "NDX", "UK100", "JP225")):
+        return 1          # Index CFDs: 1 unit (broker-dependent, 1 is safest default)
+    if any(m in sym for m in ("OIL", "BRENT", "WTI", "USOIL", "UKOIL")):
+        return 1_000      # Crude oil: 1,000 barrels per standard lot
+    return 100_000        # Standard forex: 100,000 units per lot
+
+
 def _calc_profit(pos: dict, exit_price: float, volume: float, symbol: str) -> float:
-    """Calculate P&L in account currency (1 lot = 100,000 units)."""
-    contract_size = 100_000
+    """Calculate P&L in account currency."""
     entry = pos["entry_price"]
     direction_sign = 1 if pos["direction"] == "BUY" else -1
     price_diff = (exit_price - entry) * direction_sign
-    return price_diff * volume * contract_size
+    return price_diff * volume * _contract_size(symbol)
 
 
 def _build_market_data(symbol: str, timeframe: str, candle: dict, window: list[dict]) -> dict:

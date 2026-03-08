@@ -23,7 +23,7 @@ const STEP_LABELS = [
   "Configuration",
   "Bind Accounts",
 ];
-const TIMEFRAMES = ["M15", "M30", "H1", "H4", "D1"];
+const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 type ExecMode = "llm_only" | "rule_then_llm" | "rule_only" | "hybrid_validator" | "multi_agent";
 type TrigType = "candle_close" | "interval";
 
@@ -40,6 +40,8 @@ export default function NewStrategyPage() {
     trigger_type: "candle_close",
     symbols: [],
     timeframe: "M15",
+    primary_tf: "M15",
+    context_tfs: [],
     news_filter: true,
   });
 
@@ -199,16 +201,84 @@ export default function NewStrategyPage() {
               </div>
               <div className="space-y-2">
                 <Label>Timeframe</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {TIMEFRAMES.map((tf) => (
                     <button
                       key={tf}
+                      type="button"
                       onClick={() => setForm((f) => ({ ...f, timeframe: tf }))}
-                      className={`flex-1 rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${form.timeframe === tf ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"}`}
+                      className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${form.timeframe === tf ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"}`}
                     >
                       {tf}
                     </button>
                   ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  Primary TF{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (main trading timeframe for MTF strategies)
+                  </span>
+                </Label>
+                <div className="flex gap-2 flex-wrap">
+                  {TIMEFRAMES.map((tf) => (
+                    <button
+                      key={tf}
+                      type="button"
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          primary_tf: tf,
+                          context_tfs: (f.context_tfs ?? []).filter((t) => t !== tf),
+                        }))
+                      }
+                      className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${
+                        form.primary_tf === tf
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background hover:bg-muted"
+                      }`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  Context TFs{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (optional — additional timeframes for MTF analysis)
+                  </span>
+                </Label>
+                <div className="flex gap-2 flex-wrap">
+                  {TIMEFRAMES.filter((tf) => tf !== form.primary_tf).map((tf) => {
+                    const selected = (form.context_tfs ?? []).includes(tf);
+                    return (
+                      <button
+                        key={tf}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => {
+                            const cur = f.context_tfs ?? [];
+                            return {
+                              ...f,
+                              context_tfs: selected
+                                ? cur.filter((t) => t !== tf)
+                                : [...cur, tf],
+                            };
+                          })
+                        }
+                        className={`rounded-lg border-2 px-2 py-2 text-sm font-medium transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-background hover:bg-muted"
+                        }`}
+                      >
+                        {tf}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="space-y-2">
@@ -275,7 +345,7 @@ export default function NewStrategyPage() {
                     <Input
                       value={form.module_path ?? ""}
                       onChange={(e) => setForm((f) => ({ ...f, module_path: e.target.value || undefined }))}
-                      placeholder="strategies.harmonic_strategy"
+                      placeholder="strategies.harmonic.harmonic_strategy"
                     />
                   </div>
                   <div className="space-y-2">

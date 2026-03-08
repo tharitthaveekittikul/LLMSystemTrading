@@ -19,6 +19,8 @@ interface Strategy {
   name: string;
   timeframe: string;
   strategy_type: string;
+  primary_tf: string;
+  context_tfs: string[];
 }
 
 interface Props {
@@ -34,18 +36,27 @@ const sixYearsAgo = () => {
 
 export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
   const [strategyId, setStrategyId] = useState<string>("");
-  const [symbol, setSymbol] = useState("EURUSD");
+  const [symbol, setSymbol] = useState("XAUUSD.s");
   const [startDate, setStartDate] = useState(sixYearsAgo());
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
-  const [balance, setBalance] = useState("10000");
+  const [balance, setBalance] = useState("1000");
   const [spread, setSpread] = useState("1.5");
   const [mode, setMode] = useState<"close_price" | "intra_candle">(
     "close_price",
   );
-  const [maxLlm, setMaxLlm] = useState("100");
-  const [volume, setVolume] = useState("0.1");
+  const [maxLlm, setMaxLlm] = useState("10");
+  const [volume, setVolume] = useState("0.01");
+  const [sizingMode, setSizingMode] = useState<"fixed" | "risk_pct">("fixed");
+  const [riskPct, setRiskPct] = useState("1");
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvAvgSpread, setCsvAvgSpread] = useState<number | null>(null);
+  const [contextCsvFiles, setContextCsvFiles] = useState<Record<string, File | null>>({});
+
+  const selectedStrategy = strategies.find((s) => String(s.id) === strategyId);
+  // Exclude primary TF from context list (it's already the main CSV)
+  const contextTfs = (selectedStrategy?.context_tfs ?? []).filter(
+    (tf) => tf !== selectedStrategy?.primary_tf,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +75,20 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
         csvUploadId = result.upload_id;
         setCsvAvgSpread(result.avg_spread_pts ?? null);
       }
+
+      // Upload context TF CSVs if provided
+      let csvUploads: Record<string, string> | undefined;
+      const ctxEntries = Object.entries(contextCsvFiles).filter(([, f]) => f != null);
+      if (ctxEntries.length > 0) {
+        csvUploads = {};
+        for (const [tf, file] of ctxEntries) {
+          if (file) {
+            const r = await backtestApi.uploadCsv(file);
+            csvUploads[tf] = r.upload_id;
+          }
+        }
+      }
+
       const req: BacktestRunRequest = {
         strategy_id: Number(strategyId),
         symbol,
@@ -74,7 +99,9 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
         execution_mode: mode,
         max_llm_calls: Number(maxLlm),
         volume: Number(volume),
+        risk_pct: sizingMode === "risk_pct" ? Number(riskPct) / 100 : undefined,
         csv_upload_id: csvUploadId,
+        csv_uploads: csvUploads,
       };
       const run = await backtestApi.submitRun(req);
       onRunCreated(run);
@@ -192,6 +219,24 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
           />
         </div>
         <div className="space-y-1">
+          <Label className="text-xs">Lot Sizing</Label>
+          <Select
+            value={sizingMode}
+            onValueChange={(v) => setSizingMode(v as "fixed" | "risk_pct")}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="fixed" className="text-xs">Fixed Lot</SelectItem>
+              <SelectItem value="risk_pct" className="text-xs">% Risk / Trade</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {sizingMode === "fixed" ? (
+        <div className="space-y-1">
           <Label className="text-xs">Volume (lots)</Label>
           <Input
             className="h-8 text-xs"
@@ -201,10 +246,29 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
             onChange={(e) => setVolume(e.target.value)}
           />
         </div>
-      </div>
+      ) : (
+        <div className="space-y-1">
+          <Label className="text-xs">Risk per Trade (%)</Label>
+          <Input
+            className="h-8 text-xs"
+            type="number"
+            step="0.1"
+            min="0.1"
+            max="100"
+            value={riskPct}
+            onChange={(e) => setRiskPct(e.target.value)}
+          />
+          <p className="text-[10px] text-muted-foreground">
+            Lot size auto-calculated to risk this % of current balance per trade
+          </p>
+        </div>
+      )}
 
       <div className="space-y-1">
-        <Label className="text-xs">CSV Data (optional — overrides MT5)</Label>
+        <Label className="text-xs">
+          {selectedStrategy ? `${selectedStrategy.primary_tf} CSV` : "CSV Data"}{" "}
+          <span className="text-muted-foreground">(optional — overrides MT5)</span>
+        </Label>
         <Input
           className="h-8 text-xs cursor-pointer"
           type="file"
@@ -215,9 +279,32 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
           }}
         />
         <p className="text-[10px] text-muted-foreground">
-          MT5 export format: tab-separated with &lt;DATE&gt; &lt;TIME&gt; &lt;OPEN&gt;…&lt;SPREAD&gt; headers
+          MT5 export format: tab-separated with &lt;DATE&gt; &lt;TIME&gt;
+          &lt;OPEN&gt;…&lt;SPREAD&gt; headers
         </p>
       </div>
+
+      {contextTfs.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+            Context TF CSVs (for MTF analysis)
+          </p>
+          {contextTfs.map((tf) => (
+            <div key={tf} className="space-y-1">
+              <Label className="text-xs">{tf} CSV <span className="text-muted-foreground">(optional)</span></Label>
+              <Input
+                className="h-8 text-xs cursor-pointer"
+                type="file"
+                accept=".csv"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setContextCsvFiles((prev) => ({ ...prev, [tf]: file }));
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       {error && <p className="text-xs text-destructive">{error}</p>}
 

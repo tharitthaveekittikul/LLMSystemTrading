@@ -28,6 +28,8 @@ class StrategyCreate(BaseModel):
     interval_minutes: int | None = None
     symbols: list[str] = []
     timeframe: str = "M15"
+    primary_tf: str = "M15"
+    context_tfs: list[str] = []
     lot_size: float | None = None
     sl_pips: float | None = None
     tp_pips: float | None = None
@@ -46,6 +48,8 @@ class StrategyUpdate(BaseModel):
     interval_minutes: int | None = None
     symbols: list[str] | None = None
     timeframe: str | None = None
+    primary_tf: str | None = None
+    context_tfs: list[str] | None = None
     lot_size: float | None = None
     sl_pips: float | None = None
     tp_pips: float | None = None
@@ -66,6 +70,8 @@ class StrategyResponse(BaseModel):
     interval_minutes: int | None
     symbols: list[str]
     timeframe: str
+    primary_tf: str
+    context_tfs: list[str]
     lot_size: float | None
     sl_pips: float | None
     tp_pips: float | None
@@ -105,6 +111,8 @@ def _to_response(strategy: Strategy, binding_count: int = 0) -> StrategyResponse
         interval_minutes=strategy.interval_minutes,
         symbols=json.loads(strategy.symbols or "[]"),
         timeframe=strategy.timeframe,
+        primary_tf=strategy.primary_tf,
+        context_tfs=json.loads(strategy.context_tfs or "[]"),
         lot_size=strategy.lot_size,
         sl_pips=strategy.sl_pips,
         tp_pips=strategy.tp_pips,
@@ -153,6 +161,8 @@ async def create_strategy(body: StrategyCreate, db: AsyncSession = Depends(get_d
         interval_minutes=body.interval_minutes,
         symbols=json.dumps(body.symbols),
         timeframe=body.timeframe,
+        primary_tf=body.primary_tf,
+        context_tfs=json.dumps(body.context_tfs),
         lot_size=body.lot_size,
         sl_pips=body.sl_pips,
         tp_pips=body.tp_pips,
@@ -195,6 +205,8 @@ async def update_strategy(
     data.pop("strategy_type", None)
     if "symbols" in data:
         data["symbols"] = json.dumps(data["symbols"])
+    if "context_tfs" in data:
+        data["context_tfs"] = json.dumps(data["context_tfs"])
     for key, value in data.items():
         setattr(strategy, key, value)
     if body.execution_mode is not None:

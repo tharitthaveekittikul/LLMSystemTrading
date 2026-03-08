@@ -49,9 +49,12 @@ def to_signal(
     entry = d.price
     is_bullish = pattern.direction == "bullish"
 
-    # Stop loss: beyond X point (the origin of the pattern)
+    # Stop loss: 1 ATR beyond the D entry point (always on the losing side of entry).
+    # NOTE: We intentionally do NOT use X as the SL reference.
+    # For bullish Gartley, X is a HIGH above D, so x.price - buffer would still be
+    # above D — placing SL on the wrong (winning) side of a BUY entry.
     sl_buffer = atr_value * atr_multiplier_sl
-    stop_loss = x.price - sl_buffer if is_bullish else x.price + sl_buffer
+    stop_loss = entry - sl_buffer if is_bullish else entry + sl_buffer
 
     # Take profit: 0.382 retracement of the CD leg (conservative target)
     if c_point is not None:
