@@ -1,18 +1,14 @@
 """BacktestDataService — load historical OHLCV from MT5 or CSV.
 
 MT5 path: requires a connected MT5Bridge (caller provides it).
-CSV path: accepts a file-like object (StringIO or UploadFile.file).
+CSV path: accepts MT5 tab-delimited export format (angle-bracket headers).
 """
 from __future__ import annotations
 
 import io
 import logging
 
-import pandas as pd
-
 logger = logging.getLogger(__name__)
-
-REQUIRED_CSV_COLUMNS = {"time", "open", "high", "low", "close", "tick_volume"}
 
 
 class BacktestDataError(ValueError):
@@ -22,7 +18,7 @@ class BacktestDataError(ValueError):
 class BacktestDataService:
     async def load_from_mt5(
         self,
-        bridge,  # MT5Bridge instance (already connected)
+        bridge,
         symbol: str,
         timeframe: int,
         date_from,
@@ -30,8 +26,7 @@ class BacktestDataService:
     ) -> list[dict]:
         """Fetch OHLCV candles from MT5 for the given date range.
 
-        Returns list of dicts: time (datetime, UTC-aware), open, high, low,
-        close, tick_volume.  Raises BacktestDataError on failure.
+        Returns list of dicts: time, open, high, low, close, tick_volume, spread.
         """
         try:
             candles = await bridge.get_rates_range(symbol, timeframe, date_from, date_to)
@@ -43,32 +38,37 @@ class BacktestDataService:
                 f"No data returned for {symbol} {date_from} → {date_to}. "
                 "Check that the symbol is available in Market Watch and MT5 has history downloaded."
             )
-        logger.info(
-            "Loaded %d candles from MT5 | %s", len(candles), symbol
-        )
+        logger.info("Loaded %d candles from MT5 | %s", len(candles), symbol)
         return candles
 
     async def load_from_csv(self, file: io.StringIO | io.BytesIO) -> list[dict]:
-        """Parse a CSV file into a list of OHLCV candle dicts.
+        """Parse an MT5 tab-delimited CSV into a list of OHLCV candle dicts.
 
-        Expected CSV columns: time, open, high, low, close, tick_volume.
-        'time' must be parseable by pandas (e.g. '2020-01-02 00:00:00').
+        Expects MT5 export format:
+          <DATE>  <TIME>  <OPEN>  <HIGH>  <LOW>  <CLOSE>  <TICKVOL>  <VOL>  <SPREAD>
+          2017.01.02  00:00:00  1.10000  ...
+
+        Returns dicts with keys: time, open, high, low, close, tick_volume, spread.
+        Raises BacktestDataError on parse failure.
         """
-        try:
-            df = pd.read_csv(file)
-        except Exception as exc:
-            raise BacktestDataError(f"Failed to parse CSV: {exc}") from exc
-
-        df.columns = [c.strip().lower() for c in df.columns]
-        missing = REQUIRED_CSV_COLUMNS - set(df.columns)
-        if missing:
-            raise BacktestDataError(f"Missing columns in CSV: {sorted(missing)}")
+        from services.mtf_csv_loader import load_mt5_csv, MTFCSVError
 
         try:
-            df["time"] = pd.to_datetime(df["time"], utc=True)
-        except Exception as exc:
-            raise BacktestDataError(f"Cannot parse 'time' column: {exc}") from exc
+            ohlcv_list = load_mt5_csv(file)
+        except MTFCSVError as exc:
+            raise BacktestDataError(str(exc)) from exc
 
-        df = df.sort_values("time").reset_index(drop=True)
-        logger.info("Loaded %d candles from CSV", len(df))
-        return df[["time", "open", "high", "low", "close", "tick_volume"]].to_dict("records")
+        candles = [
+            {
+                "time": c.time,
+                "open": c.open,
+                "high": c.high,
+                "low": c.low,
+                "close": c.close,
+                "tick_volume": c.tick_volume,
+                "spread": c.spread,
+            }
+            for c in ohlcv_list
+        ]
+        logger.info("Loaded %d candles from CSV", len(candles))
+        return candles

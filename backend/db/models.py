@@ -293,6 +293,7 @@ class BacktestRun(Base):
     avg_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_consec_wins: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_consec_losses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    avg_spread: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )

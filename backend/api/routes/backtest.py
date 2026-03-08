@@ -66,6 +66,7 @@ class BacktestRunSummary(BaseModel):
     avg_loss: float | None
     max_consec_wins: int | None
     max_consec_losses: int | None
+    avg_spread: float | None
     created_at: str
 
     model_config = {"from_attributes": True}
@@ -98,6 +99,7 @@ class BacktestRunSummary(BaseModel):
             avg_loss=r.avg_loss,
             max_consec_wins=r.max_consec_wins,
             max_consec_losses=r.max_consec_losses,
+            avg_spread=r.avg_spread,
             created_at=r.created_at.isoformat(),
         )
 
@@ -287,14 +289,31 @@ async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)) -> None:
 
 @router.post("/data/upload")
 async def upload_csv(file: UploadFile = File(...)) -> dict:
-    """Save uploaded CSV to a temp file, return upload_id for use in run submission."""
+    """Save uploaded CSV to temp file, return upload_id + avg_spread_pts for display."""
+    import io as _io
     suffix = ".csv"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, mode="wb") as f:
         content = await file.read()
         f.write(content)
         tmp_path = f.name
-    logger.info("CSV uploaded: %s (%d bytes)", tmp_path, len(content))
-    return {"upload_id": tmp_path, "size_bytes": len(content)}
+
+    # Compute avg spread for display in the UI (informational only — never fail upload)
+    avg_spread_pts: float | None = None
+    try:
+        from services.backtest_data import BacktestDataService
+        svc = BacktestDataService()
+        candles = await svc.load_from_csv(_io.StringIO(content.decode("utf-8", errors="replace")))
+        spreads = [c["spread"] for c in candles if c.get("spread", 0) > 0]
+        if spreads:
+            avg_spread_pts = round(sum(spreads) / len(spreads), 1)
+    except Exception:
+        pass  # avg_spread is informational — never fail the upload for it
+
+    logger.info(
+        "CSV uploaded: %s (%d bytes, avg_spread=%.1f pts)",
+        tmp_path, len(content), avg_spread_pts or 0,
+    )
+    return {"upload_id": tmp_path, "size_bytes": len(content), "avg_spread_pts": avg_spread_pts}
 
 
 # ── Analytics endpoints ────────────────────────────────────────────────────────
@@ -467,6 +486,7 @@ async def _run_backtest_job(
                 await broadcast_all("backtest_progress", {"run_id": run_id, "progress_pct": pct})
 
             result = await engine.run(candles, strategy_instance, config, progress_cb=_progress)
+            run.avg_spread = result.get("avg_spread")
 
             # ── Persist trades ────────────────────────────────────────────────
             for td in result["trades"]:

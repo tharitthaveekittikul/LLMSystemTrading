@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 
-def _make_candles(n: int, base_price: float = 1.10000) -> list[dict]:
+def _make_candles(n: int, base_price: float = 1.10000, spread: int = 0) -> list[dict]:
     """Generate n synthetic M15 candles with a mild uptrend."""
     candles = []
     t = datetime(2020, 1, 2, tzinfo=timezone.utc)
@@ -18,6 +18,7 @@ def _make_candles(n: int, base_price: float = 1.10000) -> list[dict]:
             "low": price - 0.00030,
             "close": price + 0.00010,
             "tick_volume": 100,
+            "spread": spread,
         })
         price += 0.00001
         t += timedelta(minutes=15)
@@ -207,3 +208,54 @@ async def test_engine_accepts_rule_only_strategy():
         progress_cb=None,
     )
     assert "trades" in result
+
+
+@pytest.mark.asyncio
+async def test_engine_result_contains_avg_spread():
+    """BacktestEngine.run() result includes 'avg_spread' key."""
+    from services.backtest_engine import BacktestEngine
+
+    candles = _make_candles(100, spread=20)
+    engine = BacktestEngine()
+    config = {
+        "symbol": "EURUSD", "timeframe": "M15",
+        "initial_balance": 10000.0, "spread_pips": 1.5,
+        "execution_mode": "close_price", "volume": 0.1, "max_llm_calls": 0,
+    }
+    result = await engine.run(candles, _always_hold_strategy(), config, None)
+    assert "avg_spread" in result
+    assert result["avg_spread"] == pytest.approx(20.0, abs=0.1)
+
+
+@pytest.mark.asyncio
+async def test_engine_avg_spread_zero_when_no_spread_in_candles():
+    """avg_spread is 0.0 when candles have no 'spread' key."""
+    from services.backtest_engine import BacktestEngine
+
+    candles = _make_candles(100)  # spread=0 (default)
+    engine = BacktestEngine()
+    config = {
+        "symbol": "EURUSD", "timeframe": "M15",
+        "initial_balance": 10000.0, "spread_pips": 1.5,
+        "execution_mode": "close_price", "volume": 0.1, "max_llm_calls": 0,
+    }
+    result = await engine.run(candles, _always_hold_strategy(), config, None)
+    assert result["avg_spread"] is None  # None when no candle has a non-zero spread
+
+
+@pytest.mark.asyncio
+async def test_engine_per_candle_spread_used_in_intra_candle_mode():
+    """intra_candle mode uses per-candle spread from CSV when non-zero."""
+    from services.backtest_engine import BacktestEngine
+
+    candles = _make_candles(200, spread=100)
+    engine = BacktestEngine()
+    config = {
+        "symbol": "EURUSD", "timeframe": "M15",
+        "initial_balance": 10000.0, "spread_pips": 0.0,
+        "execution_mode": "intra_candle", "volume": 0.1, "max_llm_calls": 0,
+    }
+    result = await engine.run(candles, _always_buy_strategy(), config, None)
+    # With per-candle spread and intra_candle mode, trades should exist
+    assert len(result["trades"]) > 0
+    assert result["avg_spread"] == pytest.approx(100.0, abs=0.1)

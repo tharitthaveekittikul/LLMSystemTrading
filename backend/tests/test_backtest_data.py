@@ -2,61 +2,61 @@
 import io
 import pytest
 
+# MT5 export format (tab-separated, angle-bracket headers)
+SAMPLE_MT5_CSV = (
+    "<DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>\n"
+    "2020.01.02\t00:00:00\t1.12345\t1.12400\t1.12300\t1.12380\t100\t0\t15\n"
+    "2020.01.02\t00:15:00\t1.12380\t1.12450\t1.12350\t1.12420\t120\t0\t18\n"
+)
+
 
 @pytest.mark.asyncio
-async def test_load_from_csv_basic():
-    """CSV with correct headers parses to candle dicts."""
+async def test_load_from_csv_accepts_mt5_format():
+    """MT5 tab-delimited CSV with angle-bracket headers parses correctly."""
     from services.backtest_data import BacktestDataService
 
-    csv_content = (
-        "time,open,high,low,close,tick_volume\n"
-        "2020-01-02 00:00:00,1.12345,1.12400,1.12300,1.12380,100\n"
-        "2020-01-02 00:15:00,1.12380,1.12450,1.12350,1.12420,120\n"
-    )
     svc = BacktestDataService()
-    candles = await svc.load_from_csv(io.StringIO(csv_content))
+    candles = await svc.load_from_csv(io.StringIO(SAMPLE_MT5_CSV))
     assert len(candles) == 2
     assert candles[0]["open"] == pytest.approx(1.12345)
     assert candles[1]["close"] == pytest.approx(1.12420)
 
 
 @pytest.mark.asyncio
-async def test_load_from_csv_missing_column_raises():
-    """CSV missing required columns raises BacktestDataError."""
-    from services.backtest_data import BacktestDataService, BacktestDataError
+async def test_load_from_csv_includes_spread():
+    """Result candle dicts include 'spread' key from <SPREAD> column."""
+    from services.backtest_data import BacktestDataService
 
-    csv_content = "time,open,high,low\n2020-01-02,1.1,1.2,1.0\n"
     svc = BacktestDataService()
-    with pytest.raises(BacktestDataError, match="Missing columns"):
-        await svc.load_from_csv(io.StringIO(csv_content))
+    candles = await svc.load_from_csv(io.StringIO(SAMPLE_MT5_CSV))
+    assert candles[0]["spread"] == 15
+    assert candles[1]["spread"] == 18
 
 
 @pytest.mark.asyncio
-async def test_load_from_csv_case_insensitive_headers():
-    """CSV headers are normalised to lowercase."""
-    from services.backtest_data import BacktestDataService
+async def test_load_from_csv_missing_required_column_raises():
+    """CSV missing required columns raises BacktestDataError."""
+    from services.backtest_data import BacktestDataService, BacktestDataError
 
-    csv_content = (
-        "Time,Open,High,Low,Close,Tick_Volume\n"
-        "2020-01-02 00:00:00,1.1,1.2,1.0,1.15,50\n"
-    )
+    bad_csv = "col1\tcol2\n1\t2\n"
     svc = BacktestDataService()
-    candles = await svc.load_from_csv(io.StringIO(csv_content))
-    assert len(candles) == 1
+    with pytest.raises(BacktestDataError, match="Missing columns"):
+        await svc.load_from_csv(io.StringIO(bad_csv))
 
 
 @pytest.mark.asyncio
 async def test_load_from_csv_sorted_by_time():
-    """Candles are returned sorted by time regardless of CSV row order."""
+    """Candles are returned sorted oldest-first regardless of CSV order."""
     from services.backtest_data import BacktestDataService
 
-    csv_content = (
-        "time,open,high,low,close,tick_volume\n"
-        "2020-01-02 00:15:00,1.2,1.3,1.1,1.25,80\n"
-        "2020-01-02 00:00:00,1.1,1.2,1.0,1.15,60\n"
+    # Rows in reverse order
+    csv = (
+        "<DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>\n"
+        "2020.01.02\t00:15:00\t1.20000\t1.30000\t1.10000\t1.25000\t80\t0\t10\n"
+        "2020.01.02\t00:00:00\t1.10000\t1.20000\t1.00000\t1.15000\t60\t0\t10\n"
     )
     svc = BacktestDataService()
-    candles = await svc.load_from_csv(io.StringIO(csv_content))
+    candles = await svc.load_from_csv(io.StringIO(csv))
     assert candles[0]["open"] == pytest.approx(1.1)
     assert candles[1]["open"] == pytest.approx(1.2)
 

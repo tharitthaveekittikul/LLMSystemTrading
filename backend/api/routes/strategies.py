@@ -4,12 +4,12 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db.models import Account, AccountStrategy, AIJournal, Strategy
+from db.models import Account, AccountStrategy, AIJournal, BacktestRun, Strategy, Trade
 from db.postgres import get_db
 from services.scheduler import add_binding_jobs, remove_binding_jobs, remove_all_binding_jobs
 
@@ -23,6 +23,7 @@ class StrategyCreate(BaseModel):
     name: str
     description: str | None = None
     strategy_type: str = "config"
+    execution_mode: str = "llm_only"
     trigger_type: str = "candle_close"
     interval_minutes: int | None = None
     symbols: list[str] = []
@@ -40,6 +41,7 @@ class StrategyUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     strategy_type: str | None = None
+    execution_mode: str | None = None
     trigger_type: str | None = None
     interval_minutes: int | None = None
     symbols: list[str] | None = None
@@ -59,6 +61,7 @@ class StrategyResponse(BaseModel):
     name: str
     description: str | None
     strategy_type: str
+    execution_mode: str
     trigger_type: str
     interval_minutes: int | None
     symbols: list[str]
@@ -97,6 +100,7 @@ def _to_response(strategy: Strategy, binding_count: int = 0) -> StrategyResponse
         name=strategy.name,
         description=strategy.description,
         strategy_type=strategy.strategy_type,
+        execution_mode=strategy.execution_mode,
         trigger_type=strategy.trigger_type,
         interval_minutes=strategy.interval_minutes,
         symbols=json.loads(strategy.symbols or "[]"),
@@ -133,10 +137,18 @@ async def list_strategies(db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
 async def create_strategy(body: StrategyCreate, db: AsyncSession = Depends(get_db)):
+    # Derive strategy_type from execution_mode when not explicitly overriding
+    execution_mode = body.execution_mode or "llm_only"
+    strategy_type = body.strategy_type
+    if execution_mode == "llm_only":
+        strategy_type = "prompt"
+    elif execution_mode in {"rule_only", "rule_then_llm", "hybrid_validator", "multi_agent"}:
+        strategy_type = "code"
     strategy = Strategy(
         name=body.name,
         description=body.description,
-        strategy_type=body.strategy_type,
+        strategy_type=strategy_type,
+        execution_mode=execution_mode,
         trigger_type=body.trigger_type,
         interval_minutes=body.interval_minutes,
         symbols=json.dumps(body.symbols),
@@ -179,10 +191,18 @@ async def update_strategy(
 ):
     strategy = await _get_or_404(db, strategy_id)
     data = body.model_dump(exclude_none=True)
+    # strategy_type is always derived from execution_mode; never set it directly
+    data.pop("strategy_type", None)
     if "symbols" in data:
         data["symbols"] = json.dumps(data["symbols"])
     for key, value in data.items():
         setattr(strategy, key, value)
+    if body.execution_mode is not None:
+        # Keep strategy_type in sync with execution_mode
+        if body.execution_mode == "llm_only":
+            strategy.strategy_type = "prompt"
+        elif body.execution_mode in {"rule_only", "rule_then_llm", "hybrid_validator", "multi_agent"}:
+            strategy.strategy_type = "code"
     try:
         await db.commit()
         await db.refresh(strategy)
@@ -376,3 +396,53 @@ async def get_strategy_runs(strategy_id: int, db: AsyncSession = Depends(get_db)
         }
         for r in runs
     ]
+
+
+@router.get("/{strategy_id}/stats")
+async def get_strategy_stats(
+    strategy_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return latest backtest stats + live trading stats for a strategy."""
+    await _get_or_404(db, strategy_id)
+
+    # Latest completed backtest run
+    latest_bt = (await db.execute(
+        select(BacktestRun)
+        .where(BacktestRun.strategy_id == strategy_id)
+        .where(BacktestRun.status == "completed")
+        .order_by(desc(BacktestRun.created_at))
+        .limit(1)
+    )).scalar_one_or_none()
+
+    # All closed live trades for this strategy
+    closed_trades = (await db.execute(
+        select(Trade)
+        .where(Trade.strategy_id == strategy_id)
+        .where(Trade.closed_at.is_not(None))
+    )).scalars().all()
+
+    backtest_stats = None
+    if latest_bt:
+        backtest_stats = {
+            "win_rate": latest_bt.win_rate,
+            "profit_factor": latest_bt.profit_factor,
+            "total_trades": latest_bt.total_trades,
+            "total_return_pct": latest_bt.total_return_pct,
+            "max_drawdown_pct": latest_bt.max_drawdown_pct,
+            "run_date": latest_bt.created_at.isoformat(),
+            "symbol": latest_bt.symbol,
+            "timeframe": latest_bt.timeframe,
+        }
+
+    live_stats = None
+    if closed_trades:
+        wins = [t for t in closed_trades if (t.profit or 0) > 0]
+        total_pnl = sum((t.profit or 0) for t in closed_trades)
+        live_stats = {
+            "total_trades": len(closed_trades),
+            "win_rate": round(len(wins) / len(closed_trades), 4),
+            "total_pnl": round(total_pnl, 2),
+        }
+
+    return {"backtest": backtest_stats, "live": live_stats}

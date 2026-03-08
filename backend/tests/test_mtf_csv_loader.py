@@ -45,3 +45,22 @@ def test_load_mt5_csv_raises_on_missing_columns():
     bad_csv = "col1\tcol2\n1\t2\n"
     with pytest.raises(MTFCSVError, match="Missing columns"):
         load_mt5_csv(io.StringIO(bad_csv))
+
+
+def test_load_mt5_csv_reads_spread_column():
+    """Spread column is parsed and stored in OHLCV.spread."""
+    candles = load_mt5_csv(io.StringIO(SAMPLE_MT5_CSV))
+    # SAMPLE_MT5_CSV has spreads 200, 588, 400
+    assert candles[0].spread == 200
+    assert candles[1].spread == 588
+    assert candles[2].spread == 400
+
+
+def test_load_mt5_csv_spread_defaults_to_zero_when_absent():
+    """OHLCV.spread == 0 if CSV has no <SPREAD> column."""
+    csv_no_spread = (
+        "<DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\n"
+        "2017.01.02\t00:00:00\t1.10000\t1.10100\t1.09900\t1.10050\t100\t0\n"
+    )
+    candles = load_mt5_csv(io.StringIO(csv_no_spread))
+    assert candles[0].spread == 0

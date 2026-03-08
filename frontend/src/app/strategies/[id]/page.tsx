@@ -117,11 +117,16 @@ export default function StrategyDetailPage() {
       <AppHeader title={strategy.name} />
       <div className="flex flex-1 flex-col gap-4 p-4 max-w-3xl mx-auto w-full">
         {/* Header */}
-        <div className="flex items-start gap-3">
+        <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/strategies">
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/strategies/${strategyId}/edit`}>
+              Edit Strategy
             </Link>
           </Button>
         </div>

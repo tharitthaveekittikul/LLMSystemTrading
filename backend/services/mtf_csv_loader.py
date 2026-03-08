@@ -63,6 +63,7 @@ def load_mt5_csv(file: io.StringIO | io.BytesIO) -> list[OHLCV]:
             low=float(row.low),
             close=float(row.close),
             tick_volume=int(row.tickvol),
+            spread=int(getattr(row, "spread", 0) or 0),
         )
         for row in df.itertuples()
     ]

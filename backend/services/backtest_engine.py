@@ -84,7 +84,7 @@ class BacktestEngine:
         symbol = config["symbol"]
         timeframe = config["timeframe"]
         balance = config["initial_balance"]
-        spread = config.get("spread_pips", 1.5) * _pip_value(symbol)
+        default_spread_price = config.get("spread_pips", 1.5) * _pip_value(symbol)
         mode = config.get("execution_mode", "close_price")
         volume = config.get("volume", 0.1)
         max_llm = config.get("max_llm_calls", 100)
@@ -100,6 +100,13 @@ class BacktestEngine:
         last_signal: dict | None = None
 
         for i, candle in enumerate(candles):
+            # Per-candle spread (from CSV); falls back to config spread_pips
+            spread_pts = candle.get("spread", 0)
+            candle_spread_price = (
+                _spread_to_price(spread_pts, symbol) if spread_pts > 0
+                else default_spread_price
+            )
+
             # ── 1. Check open position SL/TP ──────────────────────────────────
             if open_position is not None:
                 closed = _check_exit(open_position, candle, mode)
@@ -147,7 +154,7 @@ class BacktestEngine:
 
                 # ── 3. Open new position ───────────────────────────────────────
                 if signal and signal.get("action") in ("BUY", "SELL"):
-                    fill_price = _fill_price(signal, candle, candles, i, mode, spread)
+                    fill_price = _fill_price(signal, candle, candles, i, mode, candle_spread_price)
                     if fill_price is not None:
                         open_position = {
                             "symbol": symbol,
@@ -189,11 +196,17 @@ class BacktestEngine:
             trades.append(trade)
             equity_curve.append({"time": last_candle["time"], "equity": round(balance, 4)})
 
+        non_zero_spreads = [c.get("spread", 0) for c in candles if c.get("spread", 0) > 0]
+        avg_spread: float | None = (
+            round(sum(non_zero_spreads) / len(non_zero_spreads), 1)
+            if non_zero_spreads else None
+        )
+
         logger.info(
             "Backtest complete | %d candles | %d trades | final_equity=%.2f",
             total, len(trades), balance,
         )
-        return {"trades": trades, "equity_curve": equity_curve}
+        return {"trades": trades, "equity_curve": equity_curve, "avg_spread": avg_spread}
 
 
 # ── Private helpers ────────────────────────────────────────────────────────────
@@ -201,6 +214,21 @@ class BacktestEngine:
 def _pip_value(symbol: str) -> float:
     """Convert 1 pip to price units. JPY pairs use 0.01, others 0.0001."""
     return 0.01 if "JPY" in symbol else 0.0001
+
+
+def _spread_to_price(spread_pts: int, symbol: str) -> float:
+    """Convert MT5 spread in points to a price offset.
+
+    MT5 point size by instrument:
+      JPY pairs   : 1 pt = 0.001
+      Metals/index: 1 pt = 0.01  (XAU, XAG, US30, NAS, SPX, DAX)
+      Forex 5-digit: 1 pt = 0.00001  (default)
+    """
+    if "JPY" in symbol:
+        return spread_pts * 0.001
+    if any(m in symbol for m in ("XAU", "XAG", "US30", "NAS", "SPX", "DAX")):
+        return spread_pts * 0.01
+    return spread_pts * 0.00001
 
 
 def _check_exit(pos: dict, candle: dict, mode: str) -> dict | None:

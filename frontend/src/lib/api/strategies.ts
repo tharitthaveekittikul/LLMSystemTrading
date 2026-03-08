@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api"
-import type { Strategy, StrategyBinding, CreateStrategyPayload, StrategyRun } from "@/types/trading"
+import type { Strategy, StrategyBinding, CreateStrategyPayload, StrategyRun, StrategyStats } from "@/types/trading"
 
 export const strategiesApi = {
   list: () => apiRequest<Strategy[]>("/strategies"),
@@ -30,4 +30,5 @@ export const strategiesApi = {
     }),
   runs: (id: number) => apiRequest<StrategyRun[]>(`/strategies/${id}/runs`),
   bindings: (id: number) => apiRequest<StrategyBinding[]>(`/strategies/${id}/bindings`),
+  getStats: (id: number) => apiRequest<StrategyStats>(`/strategies/${id}/stats`),
 }

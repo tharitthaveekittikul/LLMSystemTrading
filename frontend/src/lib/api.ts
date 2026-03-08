@@ -196,7 +196,7 @@ export const backtestApi = {
       recommendations: string[];
     }>(`/backtest/runs/${runId}/analytics/combinations?limit=${limit}`),
 
-  uploadCsv: async (file: File): Promise<{ upload_id: string; size_bytes: number }> => {
+  uploadCsv: async (file: File): Promise<{ upload_id: string; size_bytes: number; avg_spread_pts?: number }> => {
     const form = new FormData();
     form.append("file", file);
     const res = await fetch(`${API_V1}/backtest/data/upload`, { method: "POST", body: form });

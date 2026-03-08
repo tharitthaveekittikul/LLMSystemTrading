@@ -16,6 +16,7 @@ class OHLCV:
     low: float
     close: float
     tick_volume: int
+    spread: int = 0  # MT5 spread in points (0 if not provided)
 
 
 @dataclass

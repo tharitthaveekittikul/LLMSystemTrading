@@ -228,6 +228,7 @@ export interface Strategy {
   name: string;
   description: string | null;
   strategy_type: "config" | "prompt" | "code";
+  execution_mode: "llm_only" | "rule_then_llm" | "rule_only" | "hybrid_validator" | "multi_agent";
   trigger_type: "interval" | "candle_close";
   interval_minutes: number | null;
   symbols: string[];
@@ -254,7 +255,7 @@ export interface StrategyBinding {
 export interface CreateStrategyPayload {
   name: string;
   description?: string;
-  strategy_type: "config" | "prompt" | "code";
+  execution_mode: "llm_only" | "rule_then_llm" | "rule_only" | "hybrid_validator" | "multi_agent";
   trigger_type: "interval" | "candle_close";
   interval_minutes?: number;
   symbols: string[];
@@ -277,6 +278,28 @@ export interface StrategyRun {
   confidence: number;
   reasoning: string;
   created_at: string;
+}
+
+export interface StrategyBacktestStats {
+  win_rate: number | null;
+  profit_factor: number | null;
+  total_trades: number | null;
+  total_return_pct: number | null;
+  max_drawdown_pct: number | null;
+  run_date: string;
+  symbol: string;
+  timeframe: string;
+}
+
+export interface StrategyLiveStats {
+  total_trades: number;
+  win_rate: number;
+  total_pnl: number;
+}
+
+export interface StrategyStats {
+  backtest: StrategyBacktestStats | null;
+  live: StrategyLiveStats | null;
 }
 
 // ── History ───────────────────────────────────────────────────────────────────
@@ -382,6 +405,7 @@ export interface BacktestRunSummary {
   avg_loss: number | null;
   max_consec_wins: number | null;
   max_consec_losses: number | null;
+  avg_spread: number | null;
   created_at: string;
 }
 

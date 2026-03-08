@@ -90,6 +90,12 @@ export function BacktestMetricsGrid({ run }: Props) {
           run.max_consec_wins != null ? String(run.max_consec_wins) : "—"
         }
       />
+      {run.avg_spread != null && run.avg_spread > 0 && (
+        <MetricCard
+          label="Avg Spread (pts)"
+          value={run.avg_spread.toFixed(1)}
+        />
+      )}
     </div>
   );
 }

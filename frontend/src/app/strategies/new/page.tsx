@@ -24,7 +24,7 @@ const STEP_LABELS = [
   "Bind Accounts",
 ];
 const TIMEFRAMES = ["M15", "M30", "H1", "H4", "D1"];
-type StratType = "config" | "prompt" | "code";
+type ExecMode = "llm_only" | "rule_then_llm" | "rule_only" | "hybrid_validator" | "multi_agent";
 type TrigType = "candle_close" | "interval";
 
 export default function NewStrategyPage() {
@@ -36,7 +36,7 @@ export default function NewStrategyPage() {
   const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
   const [form, setForm] = useState<CreateStrategyPayload>({
     name: "",
-    strategy_type: "config",
+    execution_mode: "llm_only",
     trigger_type: "candle_close",
     symbols: [],
     timeframe: "M15",
@@ -137,27 +137,32 @@ export default function NewStrategyPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Type</Label>
-                <div className="flex gap-2">
-                  {(["config", "prompt", "code"] as StratType[]).map((t) => (
+                <Label>Execution Mode</Label>
+                <div className="grid grid-cols-1 gap-2">
+                  {([
+                    ["llm_only", "LLM Only", "LLM analyzes every candle. Requires custom_prompt."],
+                    ["rule_then_llm", "Rule → LLM", "Rule pre-filters; LLM validates triggered signals. Requires Python class."],
+                    ["rule_only", "Rule Only", "Fully deterministic rules. Zero LLM cost. Requires Python class."],
+                    ["hybrid_validator", "Hybrid Validator", "Rules open the trade; LLM validates post-entry. Requires Python class."],
+                    ["multi_agent", "Multi-Agent", "Rules + LLM run in parallel; consensus required. Requires Python class."],
+                  ] as [ExecMode, string, string][]).map(([mode, label, desc]) => (
                     <button
-                      key={t}
-                      onClick={() =>
-                        setForm((f) => ({ ...f, strategy_type: t }))
-                      }
-                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-colors ${form.strategy_type === t ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"}`}
+                      key={mode}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, execution_mode: mode }))}
+                      className={`text-left rounded-lg border px-3 py-2 transition-colors ${
+                        form.execution_mode === mode
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background hover:bg-muted"
+                      }`}
                     >
-                      {t}
+                      <p className="text-sm font-medium">{label}</p>
+                      <p className={`text-xs mt-0.5 ${form.execution_mode === mode ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                        {desc}
+                      </p>
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {form.strategy_type === "config"
-                    ? "Simple risk parameters — lot size, SL, TP."
-                    : form.strategy_type === "prompt"
-                      ? "Custom LLM system prompt for market analysis."
-                      : "Python class extending BaseStrategy in backend/strategies/."}
-                </p>
               </div>
             </>
           )}
@@ -248,134 +253,44 @@ export default function NewStrategyPage() {
           {step === 2 && (
             <>
               <h3 className="font-semibold">Step 3 — Configuration</h3>
-              {form.strategy_type === "config" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <Label>Lot size</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="default"
-                        value={form.lot_size ?? ""}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            lot_size: e.target.value
-                              ? Number(e.target.value)
-                              : undefined,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>SL pips</Label>
-                      <Input
-                        type="number"
-                        placeholder="default"
-                        value={form.sl_pips ?? ""}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            sl_pips: e.target.value
-                              ? Number(e.target.value)
-                              : undefined,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>TP pips</Label>
-                      <Input
-                        type="number"
-                        placeholder="default"
-                        value={form.tp_pips ?? ""}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            tp_pips: e.target.value
-                              ? Number(e.target.value)
-                              : undefined,
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Switch
-                      checked={form.news_filter ?? true}
-                      onCheckedChange={(v) =>
-                        setForm((f) => ({ ...f, news_filter: v }))
-                      }
-                      id="news_filter"
-                    />
-                    <Label htmlFor="news_filter">
-                      News filter (skip trading near high-impact news)
-                    </Label>
-                  </div>
-                </div>
-              )}
-              {form.strategy_type === "prompt" && (
+              {/* LLM Only: show custom prompt */}
+              {form.execution_mode === "llm_only" && (
                 <div className="space-y-2">
-                  <Label>Custom LLM system prompt</Label>
+                  <Label>Custom LLM System Prompt</Label>
                   <Textarea
                     value={form.custom_prompt ?? ""}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        custom_prompt: e.target.value || undefined,
-                      }))
-                    }
+                    onChange={(e) => setForm((f) => ({ ...f, custom_prompt: e.target.value || undefined }))}
                     className="font-mono text-sm"
                     rows={10}
                     placeholder="You are a forex trading expert specializing in..."
                   />
                 </div>
               )}
-              {form.strategy_type === "code" && (
+
+              {/* Code-based modes: show module_path + class_name */}
+              {form.execution_mode !== "llm_only" && (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Module path</Label>
+                    <Label>Module Path</Label>
                     <Input
                       value={form.module_path ?? ""}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          module_path: e.target.value || undefined,
-                        }))
-                      }
-                      placeholder="strategies.eurusd_m15_scalp"
+                      onChange={(e) => setForm((f) => ({ ...f, module_path: e.target.value || undefined }))}
+                      placeholder="strategies.harmonic_strategy"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Class name</Label>
+                    <Label>Class Name</Label>
                     <Input
                       value={form.class_name ?? ""}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          class_name: e.target.value || undefined,
-                        }))
-                      }
-                      placeholder="EURUSDScalp"
+                      onChange={(e) => setForm((f) => ({ ...f, class_name: e.target.value || undefined }))}
+                      placeholder="HarmonicStrategy"
                     />
                   </div>
                   <div className="rounded-lg bg-muted p-4 text-sm text-muted-foreground space-y-2">
-                    <p className="font-medium text-foreground">
-                      How to add a code strategy:
-                    </p>
+                    <p className="font-medium text-foreground">How to add a code strategy:</p>
                     <ol className="list-decimal list-inside space-y-1">
-                      <li>
-                        Create{" "}
-                        <code className="font-mono">
-                          backend/strategies/your_strategy.py
-                        </code>
-                      </li>
-                      <li>
-                        Extend <code className="font-mono">BaseStrategy</code>{" "}
-                        and implement{" "}
-                        <code className="font-mono">system_prompt()</code>
-                      </li>
+                      <li>Create <code className="font-mono">backend/strategies/your_strategy.py</code></li>
+                      <li>Extend <code className="font-mono">RuleOnlyStrategy</code> (or the relevant base class) and implement <code className="font-mono">generate_rule_signal()</code></li>
                       <li>Restart the backend once</li>
                       <li>Enter module path and class name above</li>
                     </ol>

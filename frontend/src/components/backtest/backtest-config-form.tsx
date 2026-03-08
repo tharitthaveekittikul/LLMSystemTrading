@@ -45,6 +45,7 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
   const [maxLlm, setMaxLlm] = useState("100");
   const [volume, setVolume] = useState("0.1");
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvAvgSpread, setCsvAvgSpread] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +62,7 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
       if (csvFile) {
         const result = await backtestApi.uploadCsv(csvFile);
         csvUploadId = result.upload_id;
+        setCsvAvgSpread(result.avg_spread_pts ?? null);
       }
       const req: BacktestRunRequest = {
         strategy_id: Number(strategyId),
@@ -141,16 +143,22 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
             onChange={(e) => setBalance(e.target.value)}
           />
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Spread (pips)</Label>
-          <Input
-            className="h-8 text-xs"
-            type="number"
-            step="0.1"
-            value={spread}
-            onChange={(e) => setSpread(e.target.value)}
-          />
-        </div>
+        {!csvFile ? (
+          <div className="space-y-1">
+            <Label className="text-xs">Spread (pips)</Label>
+            <Input
+              className="h-8 text-xs"
+              type="number"
+              step="0.1"
+              value={spread}
+              onChange={(e) => setSpread(e.target.value)}
+            />
+          </div>
+        ) : csvAvgSpread != null ? (
+          <p className="text-[10px] text-muted-foreground">
+            Avg spread from CSV: ~{csvAvgSpread} pts (applied per candle)
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-1">
@@ -201,10 +209,13 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
           className="h-8 text-xs cursor-pointer"
           type="file"
           accept=".csv"
-          onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            setCsvFile(e.target.files?.[0] ?? null);
+            setCsvAvgSpread(null);
+          }}
         />
         <p className="text-[10px] text-muted-foreground">
-          Columns: time, open, high, low, close, tick_volume
+          MT5 export format: tab-separated with &lt;DATE&gt; &lt;TIME&gt; &lt;OPEN&gt;…&lt;SPREAD&gt; headers
         </p>
       </div>
 
