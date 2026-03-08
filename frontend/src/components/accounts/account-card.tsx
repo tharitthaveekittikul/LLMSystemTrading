@@ -109,55 +109,51 @@ export function AccountCard({
         </CardHeader>
 
         <CardContent className="space-y-1 text-sm">
-          <div className="flex justify-between text-muted-foreground">
+          <div className="flex justify-between gap-4 text-muted-foreground">
             <span>Broker</span>
-            <span className="text-foreground">{account.broker}</span>
+            <span className="text-right text-foreground">{account.broker}</span>
           </div>
-          <div className="flex justify-between text-muted-foreground">
+          <div className="flex justify-between gap-4 text-muted-foreground">
             <span>Login</span>
-            <span className="font-mono text-foreground">{account.login}</span>
+            <span className="font-mono text-right text-foreground">
+              {account.login}
+            </span>
           </div>
-          <div className="flex justify-between text-muted-foreground">
+          <div className="flex justify-between gap-4 text-muted-foreground">
             <span>Server</span>
-            <span className="truncate max-w-[160px] text-foreground">
+            <span className="truncate text-right text-foreground">
               {account.server}
             </span>
           </div>
-          <div className="flex justify-between text-muted-foreground">
+          <div className="flex justify-between gap-4 text-muted-foreground">
             <span>Max Lot</span>
-            <span className="text-foreground">{account.max_lot_size}</span>
+            <span className="text-right text-foreground">
+              {account.max_lot_size}
+            </span>
           </div>
-          <div className="flex justify-between text-muted-foreground">
+          <div className="flex justify-between gap-4 text-muted-foreground">
             <span>Risk / Trade</span>
-            <span className="text-foreground">
+            <span className="text-right text-foreground">
               {((account.risk_pct ?? 0.01) * 100).toFixed(1)}%
             </span>
           </div>
-          <div className="flex justify-between text-muted-foreground">
+          <div className="flex justify-between gap-4 text-muted-foreground">
             <span>Added</span>
-            <span className="text-foreground">{createdAt}</span>
+            <span className="text-right text-foreground">{createdAt}</span>
           </div>
-          {account.mt5_path ? (
-            <div className="flex justify-between text-muted-foreground">
-              <span>MT5 Path</span>
-              <span
-                className="truncate text-foreground"
-                title={account.mt5_path}
-              >
-                {account.mt5_path}
-              </span>
-            </div>
-          ) : (
-            <div className="flex justify-between text-muted-foreground">
-              <span>MT5 Path</span>
-              <span
-                className="truncate text-foreground"
-                title={"C:\\Program Files\\MetaTrader 5\\terminal64.exe"}
-              >
-                {"C:\\Program Files\\MetaTrader 5\\terminal64.exe"}
-              </span>
-            </div>
-          )}
+          <div className="flex justify-between gap-4 text-muted-foreground">
+            <span>MT5 Path</span>
+            <span
+              className="truncate text-right text-foreground"
+              title={
+                account.mt5_path ||
+                "C:\\Program Files\\MetaTrader 5\\terminal64.exe"
+              }
+            >
+              {account.mt5_path ||
+                "C:\\Program Files\\MetaTrader 5\\terminal64.exe"}
+            </span>
+          </div>
           {liveInfo && (
             <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t text-sm">
               <div>
@@ -185,55 +181,64 @@ export function AccountCard({
           )}
         </CardContent>
 
-        <CardFooter className="gap-2 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
-            onClick={handleGetInfo}
-            disabled={loadingInfo}
-          >
-            <Info className="mr-1.5 h-3.5 w-3.5" />
-            {loadingInfo ? "Connecting…" : "MT5 Info"}
-          </Button>
+        <CardFooter className="flex-wrap gap-2 pt-2">
+          <div className="flex w-full gap-2 sm:w-auto sm:flex-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={handleGetInfo}
+              disabled={loadingInfo}
+            >
+              <Info className="mr-1.5 h-3.5 w-3.5" />
+              {loadingInfo ? "Connecting…" : "MT5 Info"}
+            </Button>
 
-          <Button variant="outline" size="sm" asChild className="flex-1">
-            <Link href={`/accounts/${account.id}/history`}>
-              <History className="mr-1.5 h-3.5 w-3.5" />
-              History
-            </Link>
-          </Button>
+            <Button variant="outline" size="sm" asChild className="flex-1">
+              <Link href={`/accounts/${account.id}/history`}>
+                <History className="mr-1.5 h-3.5 w-3.5" />
+                History
+              </Link>
+            </Button>
+          </div>
 
-          <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-1.5 ml-auto sm:ml-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditOpen(true)}
+              className="h-8 w-8 p-0"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Remove account?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will deactivate <strong>{account.name}</strong> (login{" "}
-                  {account.login}). No trades or history will be deleted.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete}>
-                  Remove
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove account?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will deactivate <strong>{account.name}</strong> (login{" "}
+                    {account.login}). No trades or history will be deleted.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete}>
+                    Remove
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </CardFooter>
       </Card>
 

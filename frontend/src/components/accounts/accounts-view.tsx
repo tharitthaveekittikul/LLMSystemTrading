@@ -44,13 +44,13 @@ export function AccountsView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           {loading
             ? "Loading…"
             : `${accounts.length} account${accounts.length !== 1 ? "s" : ""}`}
         </p>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
+        <Button size="sm" onClick={() => setDialogOpen(true)} className="w-fit">
           <Plus className="mr-1.5 h-4 w-4" />
           Add Account
         </Button>
