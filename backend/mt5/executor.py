@@ -15,36 +15,57 @@ from services.kill_switch import is_active as kill_switch_active
 from services.risk_manager import exceeds_position_limit
 
 try:
-    import MetaTrader5 as mt5  # only for ORDER_TYPE_* constants
+    import MetaTrader5 as mt5  # only for ORDER_TYPE_* and TRADE_ACTION_* constants
 
-    _ORDER_TYPE_BUY = mt5.ORDER_TYPE_BUY
-    _ORDER_TYPE_SELL = mt5.ORDER_TYPE_SELL
-    _ORDER_FILLING_IOC = mt5.ORDER_FILLING_IOC
+    _ORDER_TYPE_BUY        = mt5.ORDER_TYPE_BUY
+    _ORDER_TYPE_SELL       = mt5.ORDER_TYPE_SELL
+    _ORDER_TYPE_BUY_LIMIT  = mt5.ORDER_TYPE_BUY_LIMIT   # 2
+    _ORDER_TYPE_SELL_LIMIT = mt5.ORDER_TYPE_SELL_LIMIT  # 3
+    _ORDER_TYPE_BUY_STOP   = mt5.ORDER_TYPE_BUY_STOP    # 4
+    _ORDER_TYPE_SELL_STOP  = mt5.ORDER_TYPE_SELL_STOP   # 5
+    _TRADE_ACTION_DEAL     = mt5.TRADE_ACTION_DEAL
+    _TRADE_ACTION_PENDING  = mt5.TRADE_ACTION_PENDING   # 5
+    _ORDER_FILLING_IOC     = mt5.ORDER_FILLING_IOC
 except ImportError:
-    _ORDER_TYPE_BUY = 0
-    _ORDER_TYPE_SELL = 1
+    _ORDER_TYPE_BUY = 0;        _ORDER_TYPE_SELL = 1
+    _ORDER_TYPE_BUY_LIMIT = 2;  _ORDER_TYPE_SELL_LIMIT = 3
+    _ORDER_TYPE_BUY_STOP = 4;   _ORDER_TYPE_SELL_STOP = 5
+    _TRADE_ACTION_DEAL = 1;     _TRADE_ACTION_PENDING = 5
     _ORDER_FILLING_IOC = 1
 
 logger = logging.getLogger(__name__)
+
+_VALID_ORDER_ACTIONS = frozenset({"BUY", "SELL", "BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP"})
+
+_ORDER_TYPE_MAP: dict[str, int] = {
+    "BUY":        _ORDER_TYPE_BUY,
+    "SELL":       _ORDER_TYPE_SELL,
+    "BUY_LIMIT":  _ORDER_TYPE_BUY_LIMIT,
+    "SELL_LIMIT": _ORDER_TYPE_SELL_LIMIT,
+    "BUY_STOP":   _ORDER_TYPE_BUY_STOP,
+    "SELL_STOP":  _ORDER_TYPE_SELL_STOP,
+}
+
+_PENDING_ACTIONS = frozenset({"BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP"})
 
 
 class OrderRequest(BaseModel):
     """Validated order request.  Raises ValidationError on bad input."""
 
     symbol: str = Field(..., min_length=1, max_length=20)
-    direction: str = Field(..., description="BUY or SELL")
+    action: str = Field(..., description="BUY | SELL | BUY_LIMIT | SELL_LIMIT | BUY_STOP | SELL_STOP")
     volume: float = Field(..., gt=0.0, description="Lot size, must be positive")
     entry_price: float = Field(..., gt=0.0)
     stop_loss: float = Field(..., gt=0.0)
     take_profit: float = Field(..., gt=0.0)
     comment: str = Field(default="AI-Trade", max_length=64)
-    deviation: int = Field(default=20, ge=0, description="Max price deviation in points")
+    deviation: int = Field(default=20, ge=0, description="Max price deviation in points (market orders only)")
 
-    @field_validator("direction")
+    @field_validator("action")
     @classmethod
-    def validate_direction(cls, v: str) -> str:
-        if v.upper() not in {"BUY", "SELL"}:
-            raise ValueError("direction must be 'BUY' or 'SELL'")
+    def validate_action(cls, v: str) -> str:
+        if v.upper() not in _VALID_ORDER_ACTIONS:
+            raise ValueError(f"action must be one of {sorted(_VALID_ORDER_ACTIONS)}")
         return v.upper()
 
 
@@ -64,8 +85,8 @@ class MT5Executor:
         # ── Kill switch gate (mandatory check) ───────────────────────────────
         if kill_switch_active():
             logger.warning(
-                "Order rejected — kill switch active | symbol=%s direction=%s volume=%s",
-                request.symbol, request.direction, request.volume,
+                "Order rejected — kill switch active | symbol=%s action=%s volume=%s",
+                request.symbol, request.action, request.volume,
             )
             return OrderResult(success=False, error="Kill switch is active — order rejected")
 
@@ -79,8 +100,8 @@ class MT5Executor:
         exceeded, reason = exceeds_position_limit(open_positions, settings.max_open_positions)
         if exceeded:
             logger.warning(
-                "Order rejected — %s | symbol=%s direction=%s",
-                reason, request.symbol, request.direction,
+                "Order rejected — %s | symbol=%s action=%s",
+                reason, request.symbol, request.action,
             )
             return OrderResult(success=False, error=reason)
 
@@ -100,35 +121,38 @@ class MT5Executor:
         if dry_run:
             fake_ticket = -int(time.time())  # negative — distinguishable from real tickets
             logger.info(
-                "DRY RUN order | symbol=%s direction=%s volume=%s fake_ticket=%s",
-                request.symbol, request.direction, request.volume, fake_ticket,
+                "DRY RUN order | symbol=%s action=%s volume=%s fake_ticket=%s",
+                request.symbol, request.action, request.volume, fake_ticket,
             )
             return OrderResult(success=True, ticket=fake_ticket, retcode=10009)
 
         logger.info(
-            "Placing order | symbol=%s direction=%s volume=%s entry=%s sl=%s tp=%s",
-            request.symbol, request.direction, request.volume,
+            "Placing order | symbol=%s action=%s volume=%s entry=%s sl=%s tp=%s",
+            request.symbol, request.action, request.volume,
             request.entry_price, request.stop_loss, request.take_profit,
         )
 
-        order_type = _ORDER_TYPE_BUY if request.direction == "BUY" else _ORDER_TYPE_SELL
+        is_pending = request.action in _PENDING_ACTIONS
+        mt5_action = _TRADE_ACTION_PENDING if is_pending else _TRADE_ACTION_DEAL
+        order_type  = _ORDER_TYPE_MAP[request.action]
         filling_mode = await self._bridge.get_filling_mode(request.symbol)
         logger.debug("Filling mode for %s: %s", request.symbol, filling_mode)
 
         mt5_request = {
-            "action": 1,  # TRADE_ACTION_DEAL
-            "symbol": request.symbol,
-            "volume": request.volume,
-            "type": order_type,
-            "price": request.entry_price,
-            "sl": request.stop_loss,
-            "tp": request.take_profit,
-            "deviation": request.deviation,
-            "magic": 20250101,  # EA magic number
-            "comment": request.comment,
-            "type_time": 0,    # ORDER_TIME_GTC
+            "action":       mt5_action,
+            "symbol":       request.symbol,
+            "volume":       request.volume,
+            "type":         order_type,
+            "price":        request.entry_price,
+            "sl":           request.stop_loss,
+            "tp":           request.take_profit,
+            "magic":        20250101,
+            "comment":      request.comment,
+            "type_time":    0,          # ORDER_TIME_GTC
             "type_filling": filling_mode,
         }
+        if not is_pending:
+            mt5_request["deviation"] = request.deviation
 
         result = await self._bridge.send_order(mt5_request)
         if not result:
@@ -140,8 +164,8 @@ class MT5Executor:
         if retcode == 10009:  # TRADE_RETCODE_DONE
             ticket = result.get("order")
             logger.info(
-                "Order placed | symbol=%s direction=%s volume=%s ticket=%s",
-                request.symbol, request.direction, request.volume, ticket,
+                "Order placed | symbol=%s action=%s volume=%s ticket=%s",
+                request.symbol, request.action, request.volume, ticket,
             )
             return OrderResult(success=True, ticket=ticket, retcode=retcode)
 

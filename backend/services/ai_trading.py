@@ -37,6 +37,7 @@ from services.alerting import send_alert
 from services.history_sync import HistoryService
 from services.kill_switch import is_active as kill_switch_active
 from services.pipeline_tracer import PipelineTracer
+from strategies.base_strategy import direction_from_action
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ def _calculate_lot_size(
 def _apply_regime_filter(signal: TradingSignal, regime: str) -> TradingSignal:
     """Return a new TradingSignal with action=HOLD if regime blocks the direction."""
     allowed = _REGIME_SIGNAL_FILTER.get(regime, {"BUY", "SELL"})
-    if signal.action not in allowed:
+    if direction_from_action(signal.action) not in allowed:
         logger.info("Signal %s blocked by HMM regime '%s'", signal.action, regime)
         return TradingSignal(
             action="HOLD",
@@ -758,7 +759,7 @@ class AITradingService:
         )
         order_req = OrderRequest(
             symbol=mt5_symbol,  # broker-specific name resolved at OHLCV fetch time
-            direction=signal.action,
+            action=signal.action,
             volume=effective_lot_size,
             entry_price=signal.entry,
             stop_loss=signal.stop_loss,
@@ -770,7 +771,7 @@ class AITradingService:
             input_data={
                 "symbol": symbol,
                 "mt5_symbol": mt5_symbol,
-                "direction": signal.action,
+                "action": signal.action,
                 "volume": effective_lot_size,
                 "entry": signal.entry,
                 "sl": signal.stop_loss,
@@ -833,7 +834,7 @@ class AITradingService:
             account_id=account_id,
             ticket=order_result.ticket,
             symbol=symbol,
-            direction=signal.action,
+            direction=direction_from_action(signal.action),
             volume=effective_lot_size,
             entry_price=signal.entry,
             stop_loss=signal.stop_loss,
@@ -854,7 +855,8 @@ class AITradingService:
         await broadcast(account_id, "trade_opened", {
             "ticket": order_result.ticket,
             "symbol": symbol,
-            "direction": signal.action,
+            "direction": direction_from_action(signal.action),
+            "action": signal.action,
             "volume": effective_lot_size,
             "entry_price": signal.entry,
             "stop_loss": signal.stop_loss,

@@ -20,8 +20,11 @@ logger = logging.getLogger(__name__)
 
 # ── Signal schema ─────────────────────────────────────────────────────────────
 
+_VALID_ACTIONS = frozenset({"BUY", "SELL", "BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP", "HOLD"})
+
+
 class TradingSignal(BaseModel):
-    action: str = Field(..., description="BUY | SELL | HOLD")
+    action: str = Field(..., description="BUY | SELL | BUY_LIMIT | SELL_LIMIT | BUY_STOP | SELL_STOP | HOLD")
     entry: float = Field(..., description="Recommended entry price")
     stop_loss: float = Field(..., description="Stop loss price")
     take_profit: float = Field(..., description="Take profit price")
@@ -32,8 +35,8 @@ class TradingSignal(BaseModel):
     @field_validator("action")
     @classmethod
     def validate_action(cls, v: str) -> str:
-        if v.upper() not in {"BUY", "SELL", "HOLD"}:
-            raise ValueError("action must be BUY, SELL, or HOLD")
+        if v.upper() not in _VALID_ACTIONS:
+            raise ValueError(f"action must be one of {sorted(_VALID_ACTIONS)}")
         return v.upper()
 
 
@@ -258,7 +261,7 @@ _EXECUTION_SYSTEM = """You are a professional forex trader making execution deci
 Based on the market analysis and position context provided, return ONLY strictly valid JSON.
 Use EXACTLY these field names:
 {{
-  "action": "BUY | SELL | HOLD",
+  "action": "BUY | SELL | BUY_LIMIT | SELL_LIMIT | BUY_STOP | SELL_STOP | HOLD",
   "entry": <float>,
   "stop_loss": <float>,
   "take_profit": <float>,
@@ -266,6 +269,14 @@ Use EXACTLY these field names:
   "rationale": "<brief 1-2 sentence explanation>",
   "timeframe": "<e.g. M15>"
 }}
+
+Order type guidance (IMPORTANT — pick the right action):
+- BUY / SELL: market order — use ONLY when price is already at your optimal entry level.
+- BUY_LIMIT: pending buy below current price — expect retracement DOWN to 'entry' then reversal up.
+- SELL_LIMIT: pending sell above current price — expect retracement UP to 'entry' then reversal down.
+- BUY_STOP: pending buy above current price — buy on upside BREAKOUT through 'entry'.
+- SELL_STOP: pending sell below current price — sell on downside BREAKDOWN through 'entry'.
+- HOLD: no trade opportunity.
 
 Rules:
 - Signal BUY or SELL only when multiple indicators confirm the same direction.

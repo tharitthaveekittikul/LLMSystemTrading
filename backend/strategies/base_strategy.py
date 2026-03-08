@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class StrategyResult:
-    action: Literal["BUY", "SELL", "HOLD"]
+    action: Literal["BUY", "SELL", "BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP", "HOLD"]
     entry: float | None
     stop_loss: float | None
     take_profit: float | None
@@ -38,6 +38,29 @@ _HOLD = StrategyResult(
     action="HOLD", entry=None, stop_loss=None, take_profit=None,
     confidence=0.0, rationale="No signal", timeframe="",
 )
+
+
+def direction_from_action(action: str) -> str:
+    """Return underlying direction: BUY_LIMIT -> BUY, SELL_STOP -> SELL, HOLD -> HOLD."""
+    if action.startswith("BUY"):
+        return "BUY"
+    if action.startswith("SELL"):
+        return "SELL"
+    return "HOLD"
+
+
+def is_market_order(action: str) -> bool:
+    """True only for immediate market execution actions."""
+    return action in {"BUY", "SELL"}
+
+
+async def analyze_market(**kwargs):  # type: ignore[return]
+    """Module-level proxy so patch('strategies.base_strategy.analyze_market') works in tests.
+
+    Lazily imports ai.orchestrator to avoid loading LLM config at import time.
+    """
+    from ai.orchestrator import analyze_market as _analyze_market
+    return await _analyze_market(**kwargs)
 
 
 class AbstractStrategy(ABC):
@@ -89,7 +112,6 @@ class LLMOnlyStrategy(AbstractStrategy):
         return "\n".join(parts)
 
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:
-        from ai.orchestrator import analyze_market
         ctx = self.build_context(market_data)
         result = await analyze_market(
             symbol=market_data.symbol,
@@ -128,7 +150,6 @@ class RuleThenLLMStrategy(AbstractStrategy):
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:
         if not self.check_trigger(market_data):
             return _HOLD
-        from ai.orchestrator import analyze_market
         result = await analyze_market(
             symbol=market_data.symbol,
             context=str(market_data.indicators),
@@ -211,7 +232,6 @@ class MultiAgentStrategy(AbstractStrategy):
 
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:
         import asyncio
-        from ai.orchestrator import analyze_market
 
         rule_result, llm_result = await asyncio.gather(
             self._get_rule_result(market_data),
@@ -223,7 +243,7 @@ class MultiAgentStrategy(AbstractStrategy):
         )
         if rule_result is None or rule_result.action == "HOLD":
             return _HOLD
-        if llm_result.signal.action != rule_result.action:
+        if direction_from_action(llm_result.signal.action) != direction_from_action(rule_result.action):
             return _HOLD
         return StrategyResult(
             action=rule_result.action,

@@ -122,7 +122,7 @@ async def main() -> None:
         # ── 6. Place order ─────────────────────────────────────────────────
         order_request = OrderRequest(
             symbol=SYMBOL,
-            direction=DIRECTION,
+            action=DIRECTION,
             volume=VOLUME,
             entry_price=entry,
             stop_loss=sl,

@@ -39,7 +39,7 @@ def test_prz_calculator_returns_strategy_result():
         indicators={}, trigger_time=t,
     )
     result = to_signal(pattern, md)
-    assert result.action in ("BUY", "SELL")
+    assert result.action in ("BUY_LIMIT", "SELL_LIMIT")
     assert result.stop_loss is not None
     assert result.take_profit is not None
     assert result.pattern_name == "Gartley"

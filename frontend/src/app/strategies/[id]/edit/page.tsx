@@ -87,21 +87,21 @@ export default function EditStrategyPage() {
     try {
       await strategiesApi.update(strategyId, {
         name: form.name,
-        description: form.description,
+        description: form.description ?? undefined,
         execution_mode: form.execution_mode,
         trigger_type: form.trigger_type,
-        interval_minutes: form.interval_minutes,
+        interval_minutes: form.interval_minutes ?? undefined,
         symbols: form.symbols,
         timeframe: form.timeframe,
         primary_tf: form.primary_tf,
         context_tfs: form.context_tfs,
-        lot_size: form.lot_size,
-        sl_pips: form.sl_pips,
-        tp_pips: form.tp_pips,
+        lot_size: form.lot_size ?? undefined,
+        sl_pips: form.sl_pips ?? undefined,
+        tp_pips: form.tp_pips ?? undefined,
         news_filter: form.news_filter,
-        custom_prompt: form.custom_prompt,
-        module_path: form.module_path,
-        class_name: form.class_name,
+        custom_prompt: form.custom_prompt ?? undefined,
+        module_path: form.module_path ?? undefined,
+        class_name: form.class_name ?? undefined,
       });
       router.push(`/strategies/${strategyId}`);
     } catch (err) {

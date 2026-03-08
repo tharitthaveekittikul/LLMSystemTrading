@@ -1,3 +1,13 @@
+// All possible trading actions — market and pending orders
+export type OrderAction =
+  | "BUY"
+  | "SELL"
+  | "BUY_LIMIT"
+  | "SELL_LIMIT"
+  | "BUY_STOP"
+  | "SELL_STOP"
+  | "HOLD";
+
 // ── Account ──────────────────────────────────────────────────────────────────
 
 export interface Account {
@@ -102,6 +112,8 @@ export interface Trade {
   opened_at: string;
   closed_at: string | null;
   source: "ai" | "manual";
+  order_type?: "market" | "limit" | "stop";
+  order_status?: "pending" | "filled" | "cancelled" | "expired";
 }
 
 // ── AI Signals ────────────────────────────────────────────────────────────────
@@ -111,7 +123,7 @@ export interface AISignal {
   account_id: number;
   symbol: string;
   timeframe: string;
-  signal: "BUY" | "SELL" | "HOLD";
+  signal: OrderAction;
   confidence: number;
   rationale: string;
   llm_provider: string;
@@ -184,7 +196,7 @@ export interface DailyPnLResponse {
 // ── Analyze Result ─────────────────────────────────────────────────────────────
 
 export interface AnalyzeResult {
-  action: "BUY" | "SELL" | "HOLD";
+  action: OrderAction;
   entry: number;
   stop_loss: number;
   take_profit: number;
@@ -278,7 +290,7 @@ export interface StrategyRun {
   account_id: number;
   symbol: string;
   timeframe: string;
-  action: "BUY" | "SELL" | "HOLD";
+  action: OrderAction;
   confidence: number;
   reasoning: string;
   created_at: string;
@@ -359,7 +371,7 @@ export interface PipelineRunSummary {
   symbol: string;
   timeframe: string;
   status: "running" | "completed" | "hold" | "skipped" | "failed";
-  final_action: "BUY" | "SELL" | "HOLD" | null;
+  final_action: OrderAction | null;
   total_duration_ms: number | null;
   journal_id: number | null;
   trade_id: number | null;

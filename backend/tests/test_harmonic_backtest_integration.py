@@ -56,5 +56,5 @@ async def test_harmonic_strategy_backtest_runs_without_error():
 
     actions = [r.action for r in results]
     assert "HOLD" in actions   # most will be HOLD (no pattern)
-    # May or may not have BUY/SELL depending on synthetic data — just check no exception
+    # May or may not have BUY_LIMIT/SELL_LIMIT depending on synthetic data — just check no exception
     print(f"Actions: {set(actions)}")

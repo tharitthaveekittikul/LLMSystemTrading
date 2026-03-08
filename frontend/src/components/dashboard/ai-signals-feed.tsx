@@ -13,6 +13,10 @@ const actionVariant: Record<
 > = {
   BUY: "default",
   SELL: "secondary",
+  BUY_LIMIT: "default",
+  SELL_LIMIT: "secondary",
+  BUY_STOP: "default",
+  SELL_STOP: "secondary",
   HOLD: "outline",
 };
 

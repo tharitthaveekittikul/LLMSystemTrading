@@ -53,7 +53,7 @@ def test_drawdown_zero_balance_safe():
 def _make_order() -> OrderRequest:
     return OrderRequest(
         symbol="EURUSD",
-        direction="BUY",
+        action="BUY",
         volume=0.1,
         entry_price=1.0850,
         stop_loss=1.0800,

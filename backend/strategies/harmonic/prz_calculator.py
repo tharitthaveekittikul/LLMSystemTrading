@@ -65,7 +65,7 @@ def to_signal(
     else:
         tp1 = entry + atr_value * 2 if is_bullish else entry - atr_value * 2
 
-    action = "BUY" if is_bullish else "SELL"
+    action = "BUY_LIMIT" if is_bullish else "SELL_LIMIT"
 
     return StrategyResult(
         action=action,

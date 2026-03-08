@@ -133,3 +133,56 @@ async def test_analyze_market_confidence_gate_downgrades_to_hold():
             ohlcv=[],
         )
     assert result.signal.action == "HOLD"
+
+
+def test_trading_signal_accepts_pending_actions():
+    from ai.orchestrator import TradingSignal
+    for action in ("BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP"):
+        sig = TradingSignal(
+            action=action, entry=1.085, stop_loss=1.080,
+            take_profit=1.095, confidence=0.8, rationale="test", timeframe="M15",
+        )
+        assert sig.action == action
+
+
+def test_trading_signal_rejects_unknown_action():
+    from pydantic import ValidationError
+    from ai.orchestrator import TradingSignal
+    with pytest.raises(ValidationError):
+        TradingSignal(
+            action="LONG", entry=1.085, stop_loss=1.080,
+            take_profit=1.095, confidence=0.8, rationale="test", timeframe="M15",
+        )
+
+
+@pytest.mark.asyncio
+async def test_analyze_market_returns_pending_action():
+    """analyze_market passes through BUY_LIMIT without downgrading it."""
+    from unittest.mock import AsyncMock, patch
+    from ai.orchestrator import LLMRoleResult, analyze_market
+
+    def _role(content):
+        return LLMRoleResult(
+            content=content, input_tokens=10, output_tokens=10, total_tokens=20,
+            model="gpt-4o", provider="openai", duration_ms=100, raw_text=str(content),
+        )
+
+    ma = _role({"trend": "bullish", "trend_strength": 0.8, "key_support": 1.08,
+                "key_resistance": 1.09, "volatility": "medium", "context_notes": "ok"})
+    ed = _role({"action": "BUY_LIMIT", "entry": 1.082, "stop_loss": 1.078,
+                "take_profit": 1.092, "confidence": 0.85, "rationale": "PRZ entry", "timeframe": "M15"})
+
+    with (
+        patch("ai.orchestrator._build_llm"),
+        patch("ai.orchestrator._run_market_analysis", new=AsyncMock(return_value=ma)),
+        patch("ai.orchestrator._run_execution_decision", new=AsyncMock(return_value=ed)),
+        patch("ai.orchestrator.settings") as mock_cfg,
+    ):
+        mock_cfg.llm_confidence_threshold = 0.5
+        result = await analyze_market(
+            symbol="XAUUSD", timeframe="M15", current_price=1.085,
+            indicators={}, ohlcv=[],
+        )
+
+    assert result.signal.action == "BUY_LIMIT"
+    assert result.signal.entry == 1.082

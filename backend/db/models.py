@@ -42,7 +42,7 @@ class Trade(Base):
     account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), index=True)
     ticket: Mapped[int] = mapped_column(Integer, index=True)  # MT5 order ticket
     symbol: Mapped[str] = mapped_column(String(20), index=True)
-    direction: Mapped[str] = mapped_column(String(4))  # BUY | SELL
+    direction: Mapped[str] = mapped_column(String(4))  # BUY | SELL (underlying direction)
     volume: Mapped[float] = mapped_column(Float)
     entry_price: Mapped[float] = mapped_column(Float)
     stop_loss: Mapped[float] = mapped_column(Float)
@@ -53,6 +53,8 @@ class Trade(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | manual
     is_paper_trade: Mapped[bool] = mapped_column(Boolean, default=False)
+    order_type:   Mapped[str] = mapped_column(String(6),  default="market")   # market | limit | stop
+    order_status: Mapped[str] = mapped_column(String(9),  default="filled")   # pending | filled | cancelled | expired
     strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id", ondelete="SET NULL"), nullable=True)
 
     __table_args__ = (
@@ -75,7 +77,7 @@ class AIJournal(Base):
     trade_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("trades.id"), unique=True, nullable=True)
     symbol: Mapped[str] = mapped_column(String(20), index=True)
     timeframe: Mapped[str] = mapped_column(String(10))
-    signal: Mapped[str] = mapped_column(String(10))       # BUY | SELL | HOLD
+    signal: Mapped[str] = mapped_column(String(15))       # BUY | SELL | BUY_LIMIT | SELL_LIMIT | HOLD
     confidence: Mapped[float] = mapped_column(Float)
     rationale: Mapped[str] = mapped_column(Text)
     indicators_snapshot: Mapped[str] = mapped_column(Text)  # JSON string
@@ -170,7 +172,7 @@ class PipelineRun(Base):
     timeframe: Mapped[str] = mapped_column(String(10))
     status: Mapped[str] = mapped_column(String(20), default="running")
     # running | completed | hold | skipped | failed
-    final_action: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    final_action: Mapped[str | None] = mapped_column(String(15), nullable=True)
     total_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     journal_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("ai_journal.id"), nullable=True
