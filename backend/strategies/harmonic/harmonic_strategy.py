@@ -18,36 +18,41 @@ logger = logging.getLogger(__name__)
 
 
 class HarmonicStrategy(RuleOnlyStrategy):
-    primary_tf = "M15"
-    context_tfs = ["H1", "M1"]
-    candle_counts = {"H1": 20, "M15": 50, "M1": 5}
-    symbols = ["XAUUSD", "GBPJPY", "EURUSD", "GBPUSD", "USDJPY"]
     execution_mode = "rule_only"
 
     # Configurable parameters
     fractal_n: int = 2              # Williams Fractals confirmation candles each side
     min_pattern_pips: float = 0.0   # minimum XA leg (0 = no filter)
 
+    def apply_db_config(self, strategy_db: "Strategy") -> None:
+        super().apply_db_config(strategy_db)
+        counts = {self.primary_tf: 50}
+        for tf in self.context_tfs:
+            counts[tf] = 20  # Normally H1/M1 need ~20 candles context
+        self.candle_counts = counts
+
     def check_rule(self, market_data: MTFMarketData) -> StrategyResult | None:
         from strategies.harmonic.swing_detector import find_pivots
         from strategies.harmonic.pattern_scanner import scan
         from strategies.harmonic.prz_calculator import to_signal
 
-        m15_data = market_data.timeframes.get(self.primary_tf)
-        if not m15_data or len(m15_data.candles) < 10:
+        primary_data = market_data.timeframes.get(self.primary_tf)
+        if not primary_data or len(primary_data.candles) < 10:
             return None
 
-        h1_data = market_data.timeframes.get("H1")
-        h1_candles = h1_data.candles if h1_data else None
+        # Try to use the first context timeframe (usually H1) for trend alignment
+        trend_tf = self.context_tfs[0] if self.context_tfs else None
+        trend_data = market_data.timeframes.get(trend_tf) if trend_tf else None
+        trend_candles = trend_data.candles if trend_data else None
 
-        pivots = find_pivots(m15_data.candles, n=self.fractal_n)
+        pivots = find_pivots(primary_data.candles, n=self.fractal_n)
         if len(pivots) < 5:
             logger.debug("Not enough pivots (%d) for pattern scan on %s",
                          len(pivots), market_data.symbol)
             return None
 
         patterns = scan(pivots, min_pattern_pips=self.min_pattern_pips,
-                        h1_candles=h1_candles)
+                        trend_candles=trend_candles)
         if not patterns:
             return None
 

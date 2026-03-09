@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from services.mtf_data import MTFMarketData
+    from db.models import Strategy
 
 
 @dataclass
@@ -71,6 +72,26 @@ class AbstractStrategy(ABC):
     candle_counts: dict[str, int] = {"H1": 20, "M15": 10, "M1": 5}
     symbols: tuple[str, ...] = ()                  # immutable — subclasses assign a new tuple
     execution_mode: str = ""
+
+    def apply_db_config(self, strategy_db: "Strategy") -> None:
+        """Hydrate strategy attributes from the database configuration."""
+        import json
+        if strategy_db.primary_tf:
+            self.primary_tf = strategy_db.primary_tf
+
+        if strategy_db.context_tfs and strategy_db.context_tfs != "[]":
+            try:
+                # Store as tuple to match the type hint
+                self.context_tfs = tuple(json.loads(strategy_db.context_tfs))
+            except json.JSONDecodeError:
+                pass
+
+        if strategy_db.symbols and strategy_db.symbols != "[]":
+            try:
+                # Store as tuple to match the type hint
+                self.symbols = tuple(json.loads(strategy_db.symbols))
+            except json.JSONDecodeError:
+                pass
 
     @abstractmethod
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:

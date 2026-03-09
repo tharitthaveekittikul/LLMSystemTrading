@@ -27,14 +27,14 @@ _MAX_PIVOTS_TO_SCAN = 20   # only scan recent pivots for performance
 def scan(
     pivots: list[Pivot],
     min_pattern_pips: float = 0.0,
-    h1_candles: list[OHLCV] | None = None,
+    trend_candles: list[OHLCV] | None = None,
 ) -> list[PatternResult]:
     """Scan pivot list for all 7 harmonic patterns.
 
     Args:
         pivots:           Confirmed pivot list from find_pivots().
         min_pattern_pips: Minimum XA leg size in price units (0 = no filter).
-        h1_candles:       Optional H1 candles for trend alignment scoring.
+        trend_candles:    Optional higher-timeframe candles for trend alignment scoring.
 
     Returns:
         All valid patterns sorted by quality_score descending.
@@ -57,7 +57,7 @@ def scan(
         for pattern in _XABCD_PATTERNS:
             result = pattern.validate(x, a, b, c, d)
             if result is not None:
-                result.quality_score = _quality_score(result, xa_size, h1_candles)
+                result.quality_score = _quality_score(result, xa_size, trend_candles)
                 results.append(result)
 
     # Slide 5-pivot window for Shark (uses OXABC)
@@ -67,7 +67,7 @@ def scan(
         result = _SHARK.validate(o, x, a, b, c)
         if result is not None:
             ox_size = abs(x.price - o.price)
-            result.quality_score = _quality_score(result, ox_size, h1_candles)
+            result.quality_score = _quality_score(result, ox_size, trend_candles)
             results.append(result)
 
     results.sort(key=lambda r: r.quality_score, reverse=True)
@@ -78,20 +78,20 @@ def scan(
 def _quality_score(
     result: PatternResult,
     ref_leg_size: float,
-    h1_candles: list[OHLCV] | None,
+    trend_candles: list[OHLCV] | None,
 ) -> float:
     """Compute quality score: ratio_accuracy × size_score × trend_alignment."""
     # Size score: larger pattern (in price) = more significant; normalise to 0-1
     size_score = min(1.0, ref_leg_size / 0.01)   # 0.01 price units = max score for forex
 
     trend_alignment = 1.0
-    if h1_candles and len(h1_candles) >= 5:
-        # Simple trend: compare last 5 H1 closes
-        closes = [c.close for c in h1_candles[-5:]]
-        h1_trend_up = closes[-1] > closes[0]
-        if result.direction == "bullish" and h1_trend_up:
+    if trend_candles and len(trend_candles) >= 5:
+        # Simple trend: compare last 5 higher-TF closes
+        closes = [c.close for c in trend_candles[-5:]]
+        trend_up = closes[-1] > closes[0]
+        if result.direction == "bullish" and trend_up:
             trend_alignment = 1.2
-        elif result.direction == "bearish" and not h1_trend_up:
+        elif result.direction == "bearish" and not trend_up:
             trend_alignment = 1.2
 
     return result.ratio_accuracy * size_score * trend_alignment

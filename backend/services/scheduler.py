@@ -46,6 +46,9 @@ def _build_overrides(strategy):
         try:
             mod = importlib.import_module(strategy.module_path)
             instance = getattr(mod, strategy.class_name)()
+            if hasattr(instance, "apply_db_config"):
+                instance.apply_db_config(strategy)
+                
             # AbstractStrategy subclasses expose .symbols as a list attribute directly
             if hasattr(instance, "primary_tf"):
                 instance_symbols = getattr(instance, "symbols", None) or symbols
@@ -115,6 +118,13 @@ async def _run_strategy_job(
 
     try:
         if is_abstract:
+            async with AsyncSessionLocal() as db_session:
+                from db.models import Strategy
+                if strategy_id:
+                    strat_db = await db_session.get(Strategy, strategy_id)
+                    if strat_db and hasattr(strategy_instance, "apply_db_config"):
+                        strategy_instance.apply_db_config(strat_db)
+
             # New path: AbstractStrategy.run(MTFMarketData) handles its own orchestration.
             # NOTE: MTFDataFetcher for live market data is a future integration task.
             # For now, log that the strategy is ready and skip execution.

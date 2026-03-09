@@ -609,12 +609,9 @@ def _load_strategy(strategy_db: Strategy):
         cls = getattr(mod, strategy_db.class_name)
         instance = cls()
         instance.strategy_type = "code"
-        # Override primary_tf and context_tfs from DB so the instance reflects
-        # how the strategy was configured, not the class-level hardcoded defaults.
-        if strategy_db.primary_tf:
-            instance.primary_tf = strategy_db.primary_tf
-        if strategy_db.context_tfs and strategy_db.context_tfs != "[]":
-            instance.context_tfs = json.loads(strategy_db.context_tfs)
+        # Hydrate primary_tf, context_tfs, symbols from DB
+        if hasattr(instance, "apply_db_config"):
+            instance.apply_db_config(strategy_db)
         return instance
 
     class _ConfigStrategy:

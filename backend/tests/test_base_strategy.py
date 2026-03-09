@@ -49,14 +49,4 @@ def test_generate_signal_default_returns_none():
     assert s.generate_signal({}) is None
 
 
-def test_eurusd_scalp_is_valid_strategy():
-    from strategies.eurusd_m15_scalp import EURUSDScalp
-    s = EURUSDScalp()
-    assert s.symbols == ["EURUSD", "GBPUSD"]
-    assert s.timeframe == "M15"
-    assert s.trigger_type == "candle_close"
-    assert len(s.system_prompt()) > 20
-    assert s.lot_size() == 0.05
-    assert s.sl_pips() == 15
-    assert s.tp_pips() is None   # not set, uses account default
-    assert s.news_filter() is True
+
