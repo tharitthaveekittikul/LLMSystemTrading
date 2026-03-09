@@ -31,7 +31,9 @@ export function LLMUsageSummaryCards({ data }: SummaryCardsProps) {
         </CardHeader>
         <CardContent>
           <p className="text-2xl font-bold">{formatCost(data.total_cost_usd)}</p>
-          <p className="text-xs text-muted-foreground mt-1">USD</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            USD <span className="opacity-70 ml-1.5">≈ {(data.total_cost_usd * (data.usd_thb_rate || 36.0)).toLocaleString(undefined, { maximumFractionDigits: 2 })} Baht</span>
+          </p>
         </CardContent>
       </Card>
 

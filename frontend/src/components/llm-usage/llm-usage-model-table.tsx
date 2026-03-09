@@ -32,9 +32,10 @@ function fmtCost(usd: number) {
 
 interface ModelTableProps {
   data: LLMModelUsage[]
+  usdThbRate?: number
 }
 
-export function LLMUsageModelTable({ data }: ModelTableProps) {
+export function LLMUsageModelTable({ data, usdThbRate }: ModelTableProps) {
   return (
     <Card>
       <CardHeader>
@@ -85,7 +86,14 @@ export function LLMUsageModelTable({ data }: ModelTableProps) {
                     {fmtTokens(row.total_tokens)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums font-semibold pr-4">
-                    {fmtCost(row.cost_usd)}
+                    <div className="flex flex-col items-end">
+                      <span>{fmtCost(row.cost_usd)}</span>
+                      {row.cost_usd > 0 && (
+                        <span className="text-[10px] text-muted-foreground font-normal opacity-70">
+                          ≈ {(row.cost_usd * (usdThbRate || 36.0)).toFixed(2)} THB
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.currency import get_usd_thb_rate
 from core.llm_pricing import get_pricing_list
 from db.models import LLMCall
 from db.postgres import get_db
@@ -29,6 +30,7 @@ class LLMUsageSummary(BaseModel):
     total_calls: int
     active_models: list[str]
     by_provider: dict[str, ProviderStats]
+    usd_thb_rate: float
 
 
 class LLMTimeseriesPoint(BaseModel):
@@ -96,12 +98,15 @@ async def get_summary(
         by_provider[p].tokens += r.total_tokens or 0
         by_provider[p].calls += 1
 
+    rate = await get_usd_thb_rate()
+
     return LLMUsageSummary(
         total_cost_usd=round(total_cost, 8),
         total_tokens=total_tokens,
         total_calls=len(rows),
         active_models=active_models,
         by_provider=by_provider,
+        usd_thb_rate=rate,
     )
 
 

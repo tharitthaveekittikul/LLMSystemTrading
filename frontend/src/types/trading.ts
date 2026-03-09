@@ -488,6 +488,7 @@ export interface LLMUsageSummary {
   total_calls: number
   active_models: string[]
   by_provider: Record<string, LLMProviderStats>
+  usd_thb_rate: number
 }
 
 export interface LLMTimeseriesPoint {

@@ -149,7 +149,7 @@ export default function LLMUsagePage() {
 
         {/* ── Model Breakdown Table ── */}
         {!loading && modelUsage.length >= 0 ? (
-          <LLMUsageModelTable data={modelUsage} />
+          <LLMUsageModelTable data={modelUsage} usdThbRate={summary?.usd_thb_rate} />
         ) : (
           <div className="h-40 rounded-lg border bg-muted/40 animate-pulse" />
         )}
