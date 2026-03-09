@@ -28,17 +28,13 @@ interface Props {
   onRunCreated: (run: BacktestRunSummary) => void;
 }
 
-const sixYearsAgo = () => {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 6);
-  return d.toISOString().slice(0, 10);
-};
+
 
 export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
   const [strategyId, setStrategyId] = useState<string>("");
   const [symbol, setSymbol] = useState("XAUUSD.s");
-  const [startDate, setStartDate] = useState(sixYearsAgo());
-  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState("2017-01-02");
+  const [endDate, setEndDate] = useState("2023-12-29");
   const [balance, setBalance] = useState("1000");
   const [spread, setSpread] = useState("1.5");
   const [mode, setMode] = useState<"close_price" | "intra_candle">(
