@@ -126,15 +126,20 @@ async def _run_strategy_job(
                         strategy_instance.apply_db_config(strat_db)
 
             # New path: AbstractStrategy.run(MTFMarketData) handles its own orchestration.
-            # NOTE: MTFDataFetcher for live market data is a future integration task.
-            # For now, log that the strategy is ready and skip execution.
-            logger.info(
-                "AbstractStrategy scheduled job (live integration pending): "
-                "account=%d symbol=%s strategy=%s.%s",
-                account_id, symbol, module_path, class_name,
+            from services.abstract_runner import run_abstract_strategy_pipeline
+            signal, journal_id = await run_abstract_strategy_pipeline(
+                account_id=account_id,
+                symbol=symbol,
+                timeframe=timeframe,
+                db=db_session,
+                strategy_id=strategy_id,
+                strategy_overrides=overrides,
+                strategy_instance=strategy_instance,
             )
-            # TODO: Wire in MTFDataFetcher, call strategy_instance.run(md),
-            #       and persist StrategyResult to AIJournal.
+            
+            if signal:
+                logger.info("Job done: account=%d symbol=%s action=%s",
+                            account_id, symbol, signal.action)
         else:
             # Legacy path: use AITradingService (unchanged).
             async with AsyncSessionLocal() as db:
