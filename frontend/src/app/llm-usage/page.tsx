@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ExternalLink } from "lucide-react";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -79,19 +79,38 @@ export default function LLMUsagePage() {
     void loadPeriodData(period, granularity);
   }, [period, granularity, loadPeriodData]);
 
-  const periodSelector = (
-    <div className="flex items-center gap-1 rounded-lg border p-1">
-      {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-        <Button
-          key={p}
-          variant={period === p ? "default" : "ghost"}
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          onClick={() => setPeriod(p)}
-        >
-          {PERIOD_LABELS[p]}
+  const headerActions = (
+    <div className="flex items-center gap-3">
+      <div className="hidden md:flex items-center gap-2">
+        <Button variant="outline" size="sm" className="h-8 px-3 text-xs gap-1.5 text-muted-foreground hover:text-foreground" asChild>
+          <a href="https://platform.openai.com/usage" target="_blank" rel="noopener noreferrer">
+            OpenAI <ExternalLink className="h-3 w-3" />
+          </a>
         </Button>
-      ))}
+        <Button variant="outline" size="sm" className="h-8 px-3 text-xs gap-1.5 text-muted-foreground hover:text-foreground" asChild>
+          <a href="https://platform.claude.com/usage" target="_blank" rel="noopener noreferrer">
+            Claude <ExternalLink className="h-3 w-3" />
+          </a>
+        </Button>
+        <Button variant="outline" size="sm" className="h-8 px-3 text-xs gap-1.5 text-muted-foreground hover:text-foreground" asChild>
+          <a href="https://aistudio.google.com/u/1/usage" target="_blank" rel="noopener noreferrer">
+            Gemini <ExternalLink className="h-3 w-3" />
+          </a>
+        </Button>
+      </div>
+      <div className="flex items-center gap-1 rounded-lg border p-1">
+        {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+          <Button
+            key={p}
+            variant={period === p ? "default" : "ghost"}
+            size="sm"
+            className="h-7 px-2.5 text-xs"
+            onClick={() => setPeriod(p)}
+          >
+            {PERIOD_LABELS[p]}
+          </Button>
+        ))}
+      </div>
     </div>
   );
 
@@ -100,7 +119,7 @@ export default function LLMUsagePage() {
       <AppHeader
         title="LLM Usage"
         subtitle="Token consumption and cost across all AI providers"
-        actions={periodSelector}
+        actions={headerActions}
         showAccountSelector={false}
         showConnectionStatus={false}
       />
