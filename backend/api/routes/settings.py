@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.security import decrypt, encrypt
 from db.models import LLMProviderConfig, TaskLLMAssignment
 from db.postgres import get_db
@@ -15,7 +16,10 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 _VALID_PROVIDERS = {"openai", "gemini", "anthropic"}
-_VALID_TASKS = {"market_analysis", "vision", "execution_decision"}
+_VALID_TASKS = {
+    "market_analysis", "vision", "execution_decision",
+    "maintenance_technical", "maintenance_sentiment", "maintenance_decision",
+}
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
@@ -232,7 +236,10 @@ async def get_assignments(db: AsyncSession = Depends(get_db)) -> list[TaskAssign
     assigned = {row.task: row for row in rows}
 
     result: list[TaskAssignment] = []
-    for task in ["market_analysis", "vision", "execution_decision"]:
+    for task in [
+        "market_analysis", "vision", "execution_decision",
+        "maintenance_technical", "maintenance_sentiment", "maintenance_decision",
+    ]:
         row = assigned.get(task)
         if row:
             result.append(TaskAssignment(task=task, provider=row.provider, model_name=row.model_name))
@@ -275,3 +282,51 @@ async def save_assignments(
     await db.commit()
     logger.info("Task LLM assignments saved | count=%d", len(body.assignments))
     return await get_assignments(db)
+
+
+# ── Global Settings ────────────────────────────────────────────────────────────
+
+class GlobalSettings(BaseModel):
+    maintenance_interval_minutes: int
+    maintenance_task_enabled: bool
+    llm_confidence_threshold: float
+    news_enabled: bool
+
+
+class GlobalSettingsPatch(BaseModel):
+    maintenance_interval_minutes: int | None = None
+    maintenance_task_enabled: bool | None = None
+    llm_confidence_threshold: float | None = None
+    news_enabled: bool | None = None
+
+
+@router.get("/global", response_model=GlobalSettings)
+async def get_global_settings() -> GlobalSettings:
+    """Return current global settings from config."""
+    return GlobalSettings(
+        maintenance_interval_minutes=settings.maintenance_interval_minutes,
+        maintenance_task_enabled=settings.maintenance_task_enabled,
+        llm_confidence_threshold=settings.llm_confidence_threshold,
+        news_enabled=settings.news_enabled,
+    )
+
+
+@router.patch("/global", response_model=GlobalSettings)
+async def patch_global_settings(body: GlobalSettingsPatch) -> GlobalSettings:
+    """Update in-memory settings (runtime only — restart to make permanent)."""
+    if body.maintenance_interval_minutes is not None:
+        if body.maintenance_interval_minutes < 1:
+            raise HTTPException(status_code=422, detail="maintenance_interval_minutes must be >= 1")
+        settings.maintenance_interval_minutes = body.maintenance_interval_minutes
+        from services.scheduler import reschedule_maintenance_job
+        reschedule_maintenance_job(body.maintenance_interval_minutes)
+    if body.maintenance_task_enabled is not None:
+        settings.maintenance_task_enabled = body.maintenance_task_enabled
+    if body.llm_confidence_threshold is not None:
+        if not 0.0 <= body.llm_confidence_threshold <= 1.0:
+            raise HTTPException(status_code=422, detail="llm_confidence_threshold must be 0.0-1.0")
+        settings.llm_confidence_threshold = body.llm_confidence_threshold
+    if body.news_enabled is not None:
+        settings.news_enabled = body.news_enabled
+    logger.info("Global settings updated | %s", body.model_dump(exclude_none=True))
+    return await get_global_settings()

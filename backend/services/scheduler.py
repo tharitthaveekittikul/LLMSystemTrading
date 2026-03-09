@@ -168,6 +168,29 @@ async def start_scheduler(db: "AsyncSession") -> None:
     )
     logger.info("HMM weekly retrain job registered (Sunday 01:00 UTC)")
 
+    # Position maintenance sweep — runs every maintenance_interval_minutes
+    from core.config import settings
+    from services.position_maintenance import PositionMaintenanceService
+    from db.postgres import AsyncSessionLocal
+    _maintenance_service = PositionMaintenanceService()
+
+    async def _run_maintenance_sweep() -> None:
+        async with AsyncSessionLocal() as db:
+            await _maintenance_service.run_maintenance_sweep(db)
+
+    _scheduler.add_job(
+        _run_maintenance_sweep,
+        trigger=IntervalTrigger(minutes=settings.maintenance_interval_minutes),
+        id="position_maintenance_sweep",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    logger.info(
+        "Position maintenance job registered | interval=%dmin enabled=%s",
+        settings.maintenance_interval_minutes,
+        settings.maintenance_task_enabled,
+    )
+
     _scheduler.start()
     logger.info("Scheduler started with %d jobs", len(_scheduler.get_jobs()))
 
@@ -193,6 +216,32 @@ def remove_all_binding_jobs(binding_id: int) -> None:
         if job.id.startswith(prefix):
             _scheduler.remove_job(job.id)
             logger.info("Removed job %s", job.id)
+
+
+def reschedule_maintenance_job(interval_minutes: int) -> None:
+    """Update the maintenance sweep trigger after a settings change."""
+    if not _scheduler.running:
+        return
+    _maintenance_service_ref = None
+    existing = _scheduler.get_job("position_maintenance_sweep")
+    if existing:
+        _maintenance_service_ref = existing.func
+    # Build a fresh closure that re-creates its own db session
+    from db.postgres import AsyncSessionLocal
+
+    async def _run_maintenance_sweep() -> None:
+        from services.position_maintenance import PositionMaintenanceService
+        async with AsyncSessionLocal() as db:
+            await PositionMaintenanceService().run_maintenance_sweep(db)
+
+    _scheduler.add_job(
+        _run_maintenance_sweep if _maintenance_service_ref is None else _maintenance_service_ref,
+        trigger=IntervalTrigger(minutes=interval_minutes),
+        id="position_maintenance_sweep",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    logger.info("Maintenance job rescheduled | interval=%dmin", interval_minutes)
 
 
 def stop_scheduler() -> None:

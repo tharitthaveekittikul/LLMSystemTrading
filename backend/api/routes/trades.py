@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import Account, Trade
 from db.postgres import get_db
 
+import logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
@@ -96,3 +99,24 @@ async def list_trades(
 
         result = await db.execute(query)
         return result.scalars().all()
+
+
+class TradePatch(BaseModel):
+    maintenance_enabled: bool | None = None
+
+
+@router.patch("/{trade_id}", response_model=dict)
+async def patch_trade(
+    trade_id: int,
+    body: TradePatch,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Update trade properties (currently: maintenance_enabled toggle)."""
+    trade = await db.get(Trade, trade_id)
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    if body.maintenance_enabled is not None:
+        trade.maintenance_enabled = body.maintenance_enabled
+    await db.commit()
+    logger.info("Trade patched | id=%s maintenance_enabled=%s", trade_id, trade.maintenance_enabled)
+    return {"id": trade_id, "maintenance_enabled": trade.maintenance_enabled}

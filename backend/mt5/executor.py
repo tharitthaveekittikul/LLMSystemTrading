@@ -25,12 +25,14 @@ try:
     _ORDER_TYPE_SELL_STOP  = mt5.ORDER_TYPE_SELL_STOP   # 5
     _TRADE_ACTION_DEAL     = mt5.TRADE_ACTION_DEAL
     _TRADE_ACTION_PENDING  = mt5.TRADE_ACTION_PENDING   # 5
+    _TRADE_ACTION_SLTP     = mt5.TRADE_ACTION_SLTP      # 6
     _ORDER_FILLING_IOC     = mt5.ORDER_FILLING_IOC
 except ImportError:
     _ORDER_TYPE_BUY = 0;        _ORDER_TYPE_SELL = 1
     _ORDER_TYPE_BUY_LIMIT = 2;  _ORDER_TYPE_SELL_LIMIT = 3
     _ORDER_TYPE_BUY_STOP = 4;   _ORDER_TYPE_SELL_STOP = 5
     _TRADE_ACTION_DEAL = 1;     _TRADE_ACTION_PENDING = 5
+    _TRADE_ACTION_SLTP = 6
     _ORDER_FILLING_IOC = 1
 
 logger = logging.getLogger(__name__)
@@ -238,3 +240,55 @@ class MT5Executor:
             retcode=retcode,
             error=result.get("comment") if not success else None,
         )
+
+    async def modify_order(
+        self,
+        ticket: int,
+        symbol: str,
+        new_sl: float,
+        new_tp: float,
+        dry_run: bool = False,
+    ) -> OrderResult:
+        """Modify the stop loss and take profit of an existing open position.
+
+        Uses TRADE_ACTION_SLTP — no price deviation needed.
+        Kill switch is checked before the MT5 call.
+        """
+        if kill_switch_active():
+            logger.warning(
+                "Modify rejected — kill switch active | ticket=%s symbol=%s",
+                ticket, symbol,
+            )
+            return OrderResult(success=False, error="Kill switch is active")
+
+        if dry_run:
+            logger.info(
+                "DRY RUN modify | ticket=%s symbol=%s new_sl=%s new_tp=%s",
+                ticket, symbol, new_sl, new_tp,
+            )
+            return OrderResult(success=True, ticket=ticket, retcode=10009)
+
+        logger.info(
+            "Modifying position | ticket=%s symbol=%s new_sl=%s new_tp=%s",
+            ticket, symbol, new_sl, new_tp,
+        )
+
+        result = await self._bridge.modify_position_sltp(ticket, symbol, new_sl, new_tp)
+        if not result:
+            code, msg = await self._bridge.get_last_error()
+            logger.error(
+                "Modify send failed | ticket=%s | code=%s msg=%s", ticket, code, msg
+            )
+            return OrderResult(success=False, error=msg, retcode=code)
+
+        retcode = result.get("retcode", -1)
+        if retcode == 10009:
+            logger.info("Position modified | ticket=%s symbol=%s", ticket, symbol)
+            return OrderResult(success=True, ticket=ticket, retcode=retcode)
+
+        error_msg = result.get("comment", "Unknown error")
+        logger.error(
+            "Modify rejected by broker | ticket=%s retcode=%s error=%s",
+            ticket, retcode, error_msg,
+        )
+        return OrderResult(success=False, error=error_msg, retcode=retcode)

@@ -55,6 +55,7 @@ export default function EditStrategyPage() {
           sl_pips: s.sl_pips ?? undefined,
           tp_pips: s.tp_pips ?? undefined,
           news_filter: s.news_filter,
+          maintenance_enabled: s.maintenance_enabled,
           custom_prompt: s.custom_prompt ?? undefined,
           module_path: s.module_path ?? undefined,
           class_name: s.class_name ?? undefined,
@@ -99,6 +100,7 @@ export default function EditStrategyPage() {
         sl_pips: form.sl_pips ?? undefined,
         tp_pips: form.tp_pips ?? undefined,
         news_filter: form.news_filter,
+        maintenance_enabled: form.maintenance_enabled,
         custom_prompt: form.custom_prompt ?? undefined,
         module_path: form.module_path ?? undefined,
         class_name: form.class_name ?? undefined,
@@ -398,6 +400,19 @@ export default function EditStrategyPage() {
                   id="news_filter"
                 />
                 <Label htmlFor="news_filter">News filter</Label>
+              </div>
+              <div className="flex items-center justify-between py-2 border-t">
+                <div>
+                  <p className="text-sm font-medium">Position Maintenance</p>
+                  <p className="text-xs text-muted-foreground">
+                    Allow AI to review and manage positions opened by this strategy
+                  </p>
+                </div>
+                <Switch
+                  checked={form.maintenance_enabled ?? true}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, maintenance_enabled: v }))}
+                  id="maintenance_enabled"
+                />
               </div>
             </>
           )}

@@ -114,6 +114,7 @@ export interface Trade {
   source: "ai" | "manual";
   order_type?: "market" | "limit" | "stop";
   order_status?: "pending" | "filled" | "cancelled" | "expired";
+  maintenance_enabled?: boolean;
 }
 
 // ── AI Signals ────────────────────────────────────────────────────────────────
@@ -255,6 +256,7 @@ export interface Strategy {
   module_path: string | null;
   class_name: string | null;
   is_active: boolean;
+  maintenance_enabled: boolean;
   binding_count: number;
 }
 
@@ -375,6 +377,7 @@ export interface PipelineRunSummary {
   total_duration_ms: number | null;
   journal_id: number | null;
   trade_id: number | null;
+  task_type?: "signal" | "maintenance";
   created_at: string;
 }
 
@@ -391,6 +394,7 @@ export interface PipelineRunCompleteData {
   final_action: string | null;
   total_duration_ms: number;
   step_count: number;
+  task_type?: "signal" | "maintenance";
 }
 
 // ── Backtest ──────────────────────────────────────────────────────────────────
@@ -508,4 +512,13 @@ export interface LLMPricingEntry {
   provider: string
   input_per_1m_usd: number | null
   output_per_1m_usd: number | null
+}
+
+// ── Global Settings ───────────────────────────────────────────────────────────
+
+export interface GlobalSettings {
+  maintenance_interval_minutes: number;
+  maintenance_task_enabled: boolean;
+  llm_confidence_threshold: number;
+  news_enabled: boolean;
 }

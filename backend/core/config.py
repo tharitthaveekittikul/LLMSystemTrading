@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     max_open_positions: int = 5
     default_risk_percent: float = 1.0
 
+    # ── Maintenance Task ───────────────────────────────────────────────────────
+    maintenance_interval_minutes: int = 60  # set MAINTENANCE_INTERVAL_MINUTES in .env
+    maintenance_task_enabled: bool = True   # set MAINTENANCE_TASK_ENABLED=false to disable globally
+
     # ── Field validators ──────────────────────────────────────────────────────
 
     @field_validator("cors_origins", mode="before")
@@ -101,6 +105,13 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"default_risk_percent must be between 0 and 100 (exclusive), got {v}"
             )
+        return v
+
+    @field_validator("maintenance_interval_minutes")
+    @classmethod
+    def validate_maintenance_interval(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"maintenance_interval_minutes must be >= 1, got {v}")
         return v
 
     @field_validator("max_open_positions")

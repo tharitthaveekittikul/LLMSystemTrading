@@ -58,6 +58,7 @@ class StrategyUpdate(BaseModel):
     module_path: str | None = None
     class_name: str | None = None
     is_active: bool | None = None
+    maintenance_enabled: bool | None = None
 
 
 class StrategyResponse(BaseModel):
@@ -80,6 +81,7 @@ class StrategyResponse(BaseModel):
     module_path: str | None
     class_name: str | None
     is_active: bool
+    maintenance_enabled: bool
     binding_count: int = 0
     model_config = {"from_attributes": True}
 
@@ -121,6 +123,7 @@ def _to_response(strategy: Strategy, binding_count: int = 0) -> StrategyResponse
         module_path=strategy.module_path,
         class_name=strategy.class_name,
         is_active=strategy.is_active,
+        maintenance_enabled=strategy.maintenance_enabled,
         binding_count=binding_count,
     )
 

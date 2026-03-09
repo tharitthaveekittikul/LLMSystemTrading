@@ -58,6 +58,12 @@ export const tradesApi = {
     const qs = query.toString();
     return apiRequest<import("@/types/trading").Trade[]>(`/trades${qs ? `?${qs}` : ""}`);
   },
+
+  patch: (tradeId: number, body: { maintenance_enabled?: boolean }) =>
+    apiRequest<{ id: number; maintenance_enabled: boolean }>(
+      `/trades/${tradeId}`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
 };
 
 // ── Signals ───────────────────────────────────────────────────────────────────
@@ -105,6 +111,7 @@ export const logsApi = {
     account_id?: number;
     symbol?: string;
     status?: string;
+    task_type?: "signal" | "maintenance";
     limit?: number;
     offset?: number;
   }) => {
@@ -112,6 +119,7 @@ export const logsApi = {
     if (params?.account_id != null) query.set("account_id", String(params.account_id));
     if (params?.symbol) query.set("symbol", params.symbol);
     if (params?.status) query.set("status", params.status);
+    if (params?.task_type) query.set("task_type", params.task_type);
     if (params?.limit != null) query.set("limit", String(params.limit));
     if (params?.offset != null) query.set("offset", String(params.offset));
     const qs = query.toString();

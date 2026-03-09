@@ -62,6 +62,34 @@ class LLMAnalysisResult:
     execution_decision: LLMRoleResult
 
 
+_VALID_MAINTENANCE_ACTIONS = frozenset({"HOLD", "CLOSE", "MODIFY"})
+
+
+class MaintenanceDecision(BaseModel):
+    """LLM output from the maintenance_decision role."""
+    action: str = Field(..., description="HOLD | CLOSE | MODIFY")
+    new_sl: float | None = Field(None, description="New stop loss price (MODIFY only)")
+    new_tp: float | None = Field(None, description="New take profit price (MODIFY only)")
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    rationale: str = Field(..., description="1-2 sentence explanation")
+
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, v: str) -> str:
+        if v.upper() not in _VALID_MAINTENANCE_ACTIONS:
+            raise ValueError(f"action must be one of {sorted(_VALID_MAINTENANCE_ACTIONS)}")
+        return v.upper()
+
+
+@dataclass
+class MaintenanceResult:
+    """Combined result from the 3-role maintenance pipeline."""
+    decision: MaintenanceDecision
+    technical_analysis: LLMRoleResult
+    sentiment_analysis: LLMRoleResult
+    maintenance_decision: LLMRoleResult
+
+
 # ── LLM factory ───────────────────────────────────────────────────────────────
 
 def _build_llm(
@@ -284,6 +312,54 @@ Rules:
 - Check open positions before signaling. Avoid doubling same direction unless confidence > 0.90.
 - Never open opposing positions simultaneously."""
 
+_MAINTENANCE_TECHNICAL_SYSTEM = """You are a professional forex technical analyst reviewing an existing open position.
+Analyze the position's technical merit given current market conditions.
+Return ONLY strictly valid JSON:
+{
+  "trend": "uptrend | downtrend | ranging",
+  "trend_strength": <float 0.0-1.0>,
+  "key_support": <float>,
+  "key_resistance": <float>,
+  "position_alignment": "aligned | misaligned | neutral",
+  "technical_score": <float -1.0 to 1.0>,
+  "notes": "<2-3 sentences on technical outlook for this position>"
+}"""
+
+_MAINTENANCE_SENTIMENT_SYSTEM = """You are a professional forex market analyst assessing news sentiment impact.
+Given upcoming economic events and recent news, assess directional sentiment for the symbol.
+Return ONLY strictly valid JSON:
+{
+  "sentiment_direction": "BULLISH | BEARISH | NEUTRAL",
+  "event_risk": "HIGH | MEDIUM | LOW",
+  "key_events": ["<event 1>", "<event 2>"],
+  "sentiment_score": <float -1.0 to 1.0>,
+  "notes": "<2 sentences on news impact for this symbol>"
+}"""
+
+_MAINTENANCE_DECISION_SYSTEM = """You are a professional forex risk manager reviewing an open position.
+Given the technical analysis, sentiment analysis, and the position's current state,
+recommend whether to HOLD, CLOSE, or MODIFY the position's SL/TP.
+
+You MUST adhere to the strategy constraints provided. When suggesting MODIFY:
+- new_sl and new_tp must respect the minimum SL distance (sl_pips)
+- For profitable positions: new_sl must move toward profit (trailing logic)
+- new_tp must maintain at least 1:1 R:R relative to new_sl distance from entry
+
+Return ONLY strictly valid JSON:
+{
+  "action": "HOLD | CLOSE | MODIFY",
+  "new_sl": <float or null>,
+  "new_tp": <float or null>,
+  "confidence": <float 0.0-1.0>,
+  "rationale": "<1-2 sentence explanation>"
+}
+
+Rules:
+- Signal CLOSE if position is strongly misaligned with current technical + sentiment.
+- Signal MODIFY only when SL/TP improvements are clearly justified.
+- Signal HOLD when uncertain or when the position is performing as expected.
+- NEVER suggest modifications that increase risk beyond the strategy's risk_pct."""
+
 
 # ── Role: Market Analysis ──────────────────────────────────────────────────────
 
@@ -409,6 +485,79 @@ async def _run_execution_decision(
     return await _call_llm_for_role(llm, messages, "execution_decision")
 
 
+# ── Maintenance Roles ──────────────────────────────────────────────────────────
+
+async def _run_maintenance_technical(
+    llm: BaseChatModel,
+    symbol: str,
+    timeframe: str,
+    ohlcv: list[dict],
+    indicators: dict,
+    position: dict,
+    strategy_params: dict,
+) -> LLMRoleResult:
+    """Role 1: Technical analysis of the existing position."""
+    human = "\n".join([
+        f"Symbol: {symbol} | Timeframe: {timeframe}",
+        f"\nPosition State:\n{json.dumps(position, indent=2, default=str)}",
+        f"\nIndicators:\n{json.dumps(indicators, indent=2)}",
+        f"\nStrategy Params:\n{json.dumps(strategy_params, indent=2)}",
+        f"\nLast 20 OHLCV candles (oldest → newest):\n{json.dumps(ohlcv[-20:], indent=2, default=str)}",
+        "\nProvide the technical analysis JSON.",
+    ])
+    messages = [
+        SystemMessage(content=_MAINTENANCE_TECHNICAL_SYSTEM),
+        HumanMessage(content=human),
+    ]
+    return await _call_llm_for_role(llm, messages, "maintenance_technical")
+
+
+async def _run_maintenance_sentiment(
+    llm: BaseChatModel,
+    symbol: str,
+    news_context: str | None,
+    trade_history_context: str | None,
+) -> LLMRoleResult:
+    """Role 2: News sentiment analysis for the symbol."""
+    human_parts = [f"Symbol: {symbol}"]
+    if news_context:
+        human_parts.append(f"\nUpcoming News & Events:\n{news_context}")
+    else:
+        human_parts.append("\nNo news data available — assess NEUTRAL sentiment.")
+    if trade_history_context:
+        human_parts.append(f"\nRecent Trade History:\n{trade_history_context}")
+    human_parts.append("\nProvide the sentiment analysis JSON.")
+    messages = [
+        SystemMessage(content=_MAINTENANCE_SENTIMENT_SYSTEM),
+        HumanMessage(content="\n".join(human_parts)),
+    ]
+    return await _call_llm_for_role(llm, messages, "maintenance_sentiment")
+
+
+async def _run_maintenance_decision(
+    llm: BaseChatModel,
+    symbol: str,
+    position: dict,
+    technical_output: dict,
+    sentiment_output: dict,
+    strategy_params: dict,
+) -> LLMRoleResult:
+    """Role 3: Final hold/close/modify decision."""
+    human = "\n".join([
+        f"Symbol: {symbol}",
+        f"\nPosition State:\n{json.dumps(position, indent=2, default=str)}",
+        f"\nStrategy Constraints:\n{json.dumps(strategy_params, indent=2)}",
+        f"\nTechnical Analysis:\n{json.dumps(technical_output, indent=2, default=str)}",
+        f"\nSentiment Analysis:\n{json.dumps(sentiment_output, indent=2, default=str)}",
+        "\nProvide the maintenance decision JSON.",
+    ])
+    messages = [
+        SystemMessage(content=_MAINTENANCE_DECISION_SYSTEM),
+        HumanMessage(content=human),
+    ]
+    return await _call_llm_for_role(llm, messages, "maintenance_decision")
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 async def analyze_market(
@@ -497,4 +646,97 @@ async def analyze_market(
         market_analysis=ma_result,
         chart_vision=cv_result,
         execution_decision=ed_result,
+    )
+
+
+# ── Public: Maintenance Pipeline ───────────────────────────────────────────────
+
+async def review_position(
+    symbol: str,
+    timeframe: str,
+    ohlcv: list[dict],
+    indicators: dict,
+    position: dict,
+    strategy_params: dict,
+    news_context: str | None = None,
+    trade_history_context: str | None = None,
+    *,
+    technical_llm: BaseChatModel | None = None,
+    sentiment_llm: BaseChatModel | None = None,
+    decision_llm: BaseChatModel | None = None,
+) -> MaintenanceResult:
+    """3-role LLM maintenance pipeline: technical → sentiment → decision.
+
+    Args:
+        symbol: Instrument symbol (e.g. 'EURUSD').
+        timeframe: Strategy timeframe (e.g. 'H1').
+        ohlcv: List of OHLCV candle dicts (last 20 sufficient).
+        indicators: Dict of computed indicator values.
+        position: Dict with position state (ticket, direction, entry_price,
+                  current_price, current_sl, current_tp, unrealized_pnl,
+                  volume, duration_hours).
+        strategy_params: Dict with sl_pips, tp_pips, risk_pct, max_lot_size.
+        news_context: Optional formatted news string from MarketContext.
+        trade_history_context: Optional formatted trade history string.
+        technical_llm: Override LLM for role 1. Uses default provider if None.
+        sentiment_llm: Override LLM for role 2. Uses default provider if None.
+        decision_llm: Override LLM for role 3. Uses default provider if None.
+
+    Returns:
+        MaintenanceResult with parsed decision and all 3 role results.
+    """
+    llm_technical = technical_llm or _build_llm()
+    llm_sentiment = sentiment_llm or _build_llm()
+    llm_decision = decision_llm or _build_llm()
+
+    # Role 1: Technical analysis
+    tech_result = await _run_maintenance_technical(
+        llm_technical, symbol, timeframe, ohlcv, indicators, position, strategy_params
+    )
+
+    # Role 2: Sentiment analysis
+    sent_result = await _run_maintenance_sentiment(
+        llm_sentiment, symbol, news_context, trade_history_context
+    )
+
+    # Role 3: Final decision (receives outputs of roles 1 and 2)
+    tech_output = tech_result.content if isinstance(tech_result.content, dict) else {}
+    sent_output = sent_result.content if isinstance(sent_result.content, dict) else {}
+    dec_result = await _run_maintenance_decision(
+        llm_decision, symbol, position, tech_output, sent_output, strategy_params
+    )
+
+    # Parse MaintenanceDecision from role 3 output
+    raw = dec_result.content if isinstance(dec_result.content, dict) else {}
+    raw.setdefault("action", "HOLD")
+    raw.setdefault("confidence", 0.0)
+    raw.setdefault("rationale", "No rationale provided.")
+    if isinstance(raw.get("action"), str):
+        raw["action"] = raw["action"].upper()
+
+    try:
+        decision = MaintenanceDecision(**raw)
+    except Exception as exc:
+        logger.warning("MaintenanceDecision parse failed (%s) — defaulting to HOLD: %s", exc, raw)
+        decision = MaintenanceDecision(
+            action="HOLD", confidence=0.0, rationale=f"Parse error: {exc}"
+        )
+
+    # Confidence gate: downgrade to HOLD if below threshold
+    if decision.action != "HOLD" and decision.confidence < settings.llm_confidence_threshold:
+        logger.info(
+            "Maintenance decision downgraded HOLD (confidence %.2f < threshold %.2f)",
+            decision.confidence, settings.llm_confidence_threshold,
+        )
+        decision = MaintenanceDecision(
+            action="HOLD",
+            confidence=decision.confidence,
+            rationale=f"Confidence {decision.confidence:.2f} below threshold — HOLD",
+        )
+
+    return MaintenanceResult(
+        decision=decision,
+        technical_analysis=tech_result,
+        sentiment_analysis=sent_result,
+        maintenance_decision=dec_result,
     )

@@ -31,6 +31,7 @@ import { useTradingStore } from "@/hooks/use-trading-store";
 import { formatDateTime } from "@/lib/date";
 import type { Trade } from "@/types/trading";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -98,7 +99,7 @@ function SkeletonRows() {
     <>
       {Array.from({ length: 5 }).map((_, i) => (
         <TableRow key={i}>
-          {Array.from({ length: 9 }).map((_, j) => (
+          {Array.from({ length: 10 }).map((_, j) => (
             <TableCell key={j}>
               <div className="h-4 rounded bg-muted animate-pulse w-16" />
             </TableCell>
@@ -117,6 +118,25 @@ function TradesContent() {
   const [loading, setLoading] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+
+  async function handleMaintenanceToggle(tradeId: number, enabled: boolean) {
+    setTogglingIds((prev) => new Set(prev).add(tradeId));
+    try {
+      await tradesApi.patch(tradeId, { maintenance_enabled: enabled });
+      setTrades((prev) =>
+        prev.map((t) => (t.id === tradeId ? { ...t, maintenance_enabled: enabled } : t))
+      );
+    } catch (e) {
+      console.error("Failed to update maintenance toggle", e);
+    } finally {
+      setTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tradeId);
+        return next;
+      });
+    }
+  }
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -296,6 +316,7 @@ function TradesContent() {
                 <TableHead className="text-right">Entry</TableHead>
                 <TableHead className="text-right">Close</TableHead>
                 <TableHead className="text-right">P&amp;L</TableHead>
+                <TableHead className="text-center">Maint.</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -303,7 +324,7 @@ function TradesContent() {
                 <SkeletonRows />
               ) : trades.length === 0 && !loading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-16">
+                  <TableCell colSpan={11} className="text-center py-16">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <Inbox className="h-8 w-8 opacity-40" />
                       <span className="text-sm">No trades found</span>
@@ -362,6 +383,16 @@ function TradesContent() {
                       {t.profit != null
                         ? (t.profit >= 0 ? "+" : "") + t.profit.toFixed(2)
                         : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {t.closed_at === null && (
+                        <Switch
+                          checked={t.maintenance_enabled ?? true}
+                          onCheckedChange={(v) => handleMaintenanceToggle(t.id, v)}
+                          disabled={togglingIds.has(t.id)}
+                          aria-label="Toggle position maintenance"
+                        />
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

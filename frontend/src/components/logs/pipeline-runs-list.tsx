@@ -49,6 +49,7 @@ export function PipelineRunsList({
   const [loading, setLoading] = useState(true);
   const [symbolFilter, setSymbolFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [taskTypeFilter, setTaskTypeFilter] = useState<"all" | "signal" | "maintenance">("all");
   const [newRunIds, setNewRunIds] = useState<Set<number>>(new Set());
 
   const fetchRuns = useCallback(async () => {
@@ -58,6 +59,7 @@ export function PipelineRunsList({
         account_id: activeAccountId ?? undefined,
         symbol: symbolFilter.trim() || undefined,
         status: statusFilter !== "all" ? statusFilter : undefined,
+        task_type: taskTypeFilter !== "all" ? taskTypeFilter : undefined,
         limit: 100,
       });
       setRuns(data);
@@ -66,7 +68,7 @@ export function PipelineRunsList({
     } finally {
       setLoading(false);
     }
-  }, [activeAccountId, symbolFilter, statusFilter]);
+  }, [activeAccountId, symbolFilter, statusFilter, taskTypeFilter]);
 
   useEffect(() => {
     fetchRuns();
@@ -85,6 +87,7 @@ export function PipelineRunsList({
         total_duration_ms: data.total_duration_ms,
         journal_id: null,
         trade_id: null,
+        task_type: data.task_type,
         created_at: new Date().toISOString(),
       };
       setNewRunIds((prev) => new Set(prev).add(data.run_id));
@@ -121,6 +124,22 @@ export function PipelineRunsList({
             <SelectItem value="failed">Failed</SelectItem>
           </SelectContent>
         </Select>
+        <div className="flex gap-1">
+          {(["all", "signal", "maintenance"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTaskTypeFilter(t)}
+              className={[
+                "flex-1 rounded px-2 py-1 text-xs font-medium transition-colors",
+                taskTypeFilter === t
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-accent",
+              ].join(" ")}
+            >
+              {t === "all" ? "All" : t === "signal" ? "Signal" : "Maintenance"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* List */}
@@ -168,6 +187,11 @@ export function PipelineRunsList({
                   #{run.id} · {formatDateTime(run.created_at)}
                   {run.total_duration_ms != null &&
                     ` · ${run.total_duration_ms}ms`}
+                  {run.task_type === "maintenance" && (
+                    <span className="ml-1.5 inline-block rounded bg-purple-500/15 px-1 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-400">
+                      maint
+                    </span>
+                  )}
                 </p>
               </button>
             );

@@ -26,10 +26,17 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineTracer:
-    def __init__(self, account_id: int, symbol: str, timeframe: str) -> None:
+    def __init__(
+        self,
+        account_id: int,
+        symbol: str,
+        timeframe: str,
+        task_type: str = "signal",
+    ) -> None:
         self._account_id = account_id
         self._symbol = symbol
         self._timeframe = timeframe
+        self._task_type = task_type
         self._run: PipelineRun | None = None
         self._seq = 0
         self._start_ms = 0.0
@@ -48,6 +55,7 @@ class PipelineTracer:
             account_id=self._account_id,
             symbol=self._symbol,
             timeframe=self._timeframe,
+            task_type=self._task_type,
             status="running",
         )
         self._db.add(self._run)
@@ -157,6 +165,7 @@ class PipelineTracer:
                         "final_action": self._final_action,
                         "total_duration_ms": total_ms,
                         "step_count": self._seq,
+                        "task_type": self._task_type,
                     })
                 except Exception as exc:
                     logger.debug("WS broadcast failed (non-critical): %s", exc)

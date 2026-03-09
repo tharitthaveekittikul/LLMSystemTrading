@@ -118,6 +118,15 @@ class MT5Bridge:
             raw = await self._run(mt5.positions_get)
         return [p._asdict() for p in raw] if raw else []
 
+    async def get_orders(self, symbol: str | None = None) -> list[dict]:
+        """Fetch pending (unfilled) orders. Returns empty list if none."""
+        self._require_mt5()
+        if symbol:
+            raw = await self._run(mt5.orders_get, symbol=symbol)
+        else:
+            raw = await self._run(mt5.orders_get)
+        return [o._asdict() for o in raw] if raw else []
+
     # ── Symbols ───────────────────────────────────────────────────────────────
 
     async def get_symbols(self, market_watch_only: bool = True) -> list[str]:
@@ -296,6 +305,30 @@ class MT5Bridge:
             return mt5.ORDER_FILLING_IOC
         # RETURN (mask & 4) or unknown — RETURN is the safest default for Forex/CFD
         return mt5.ORDER_FILLING_RETURN
+
+    async def modify_position_sltp(
+        self,
+        ticket: int,
+        symbol: str,
+        new_sl: float,
+        new_tp: float,
+    ) -> dict | None:
+        """Modify the SL/TP of an existing open position.
+
+        Uses TRADE_ACTION_SLTP (value 6) which does NOT require a price or deviation.
+        Returns the order_send result dict, or None on MT5 API failure.
+        """
+        self._require_mt5()
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "symbol": symbol,
+            "position": ticket,
+            "sl": new_sl,
+            "tp": new_tp,
+            "magic": 20250101,
+        }
+        result = await self._run(partial(mt5.order_send, **request))
+        return result._asdict() if result else None
 
     async def send_order(self, request: dict) -> dict | None:
 

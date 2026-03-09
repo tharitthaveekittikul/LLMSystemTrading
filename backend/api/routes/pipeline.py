@@ -37,6 +37,7 @@ class PipelineRunSummary(BaseModel):
     total_duration_ms: int | None
     journal_id: int | None
     trade_id: int | None
+    task_type: str
     created_at: str
 
     model_config = {"from_attributes": True}
@@ -53,6 +54,7 @@ class PipelineRunSummary(BaseModel):
             total_duration_ms=run.total_duration_ms,
             journal_id=run.journal_id,
             trade_id=run.trade_id,
+            task_type=run.task_type or "signal",
             created_at=run.created_at.isoformat(),
         )
 
@@ -67,6 +69,7 @@ async def list_runs(
     account_id: int | None = Query(None),
     symbol: str | None = Query(None),
     status: str | None = Query(None),
+    task_type: str | None = Query(None, pattern="^(signal|maintenance)$"),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -78,6 +81,8 @@ async def list_runs(
         q = q.where(PipelineRun.symbol == symbol)
     if status:
         q = q.where(PipelineRun.status == status)
+    if task_type:
+        q = q.where(PipelineRun.task_type == task_type)
     q = q.limit(limit).offset(offset)
     runs = (await db.execute(q)).scalars().all()
     return [PipelineRunSummary.from_orm_custom(r) for r in runs]

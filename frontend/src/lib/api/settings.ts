@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import type { GlobalSettings } from "@/types/trading";
 
 export interface ProviderStatus {
   provider: string;
@@ -42,5 +43,14 @@ export const settingsApi = {
     apiRequest<TaskAssignment[]>("/settings/llm/assignments", {
       method: "PUT",
       body: JSON.stringify({ assignments }),
+    }),
+
+  getGlobal: () =>
+    apiRequest<GlobalSettings>("/settings/global"),
+
+  patchGlobal: (body: Partial<GlobalSettings>) =>
+    apiRequest<GlobalSettings>("/settings/global", {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
 };
