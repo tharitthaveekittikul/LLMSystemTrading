@@ -51,6 +51,7 @@ def _strategy_result_to_dict(result) -> dict | None:
         "entry": result.entry,
         "stop_loss": result.stop_loss,
         "take_profit": result.take_profit,
+        "take_profit_levels": result.take_profit_levels,
         "confidence": result.confidence,
         "rationale": result.rationale,
         "timeframe": result.timeframe,
@@ -123,12 +124,29 @@ class BacktestEngine:
 
             # ── 1. Check open position SL/TP ──────────────────────────────────
             if open_position is not None:
-                closed = _check_exit(open_position, candle, mode)
-                if closed:
+                closed, partial_profit_event = _check_exit(open_position, candle, mode)
+                
+                if partial_profit_event:
+                    # Scale out: close a portion of the trade and adjust SL
+                    profit = _calc_profit(open_position, partial_profit_event["exit_price"], partial_profit_event["volume_closed"], symbol)
+                    balance += profit
+                    
+                    trade_part = {**open_position, **partial_profit_event, "volume": partial_profit_event["volume_closed"], "profit": round(profit, 4), "equity_after": round(balance, 4)}
+                    trades.append(trade_part)
+                    equity_curve.append({"time": partial_profit_event["exit_time"], "equity": round(balance, 4)})
+                    
+                    open_position["volume"] -= partial_profit_event["volume_closed"]
+                    # If we don't have enough volume to keep going, we fully close it
+                    if open_position["volume"] < 0.001:
+                        open_position = None
+                    else:
+                        open_position["stop_loss"] = partial_profit_event["new_sl"]
+
+                if closed and open_position is not None:
+                    # Fully closed
                     profit = _calc_profit(open_position, closed["exit_price"], open_position["volume"], symbol)
                     balance += profit
-                    trade = {**open_position, **closed, "profit": round(profit, 4),
-                             "equity_after": round(balance, 4)}
+                    trade = {**open_position, **closed, "profit": round(profit, 4), "equity_after": round(balance, 4)}
                     trades.append(trade)
                     equity_curve.append({"time": closed["exit_time"], "equity": round(balance, 4)})
                     open_position = None
@@ -243,6 +261,8 @@ class BacktestEngine:
                             "entry_price": round(fill_price, 5),
                             "stop_loss": round(signal["stop_loss"], 5),
                             "take_profit": round(signal["take_profit"], 5),
+                            "take_profit_levels": signal.get("take_profit_levels"),
+                            "tp_level_idx": 0, # Keep track of which TP level we are targeting
                             "volume": trade_volume,
                             "exit_time": None,
                             "exit_price": None,
@@ -311,51 +331,92 @@ def _spread_to_price(spread_pts: int, symbol: str) -> float:
     return spread_pts * 0.00001
 
 
-def _check_exit(pos: dict, candle: dict, mode: str) -> dict | None:
-    """Return exit info dict or None if position stays open."""
+def _check_exit(pos: dict, candle: dict, mode: str) -> tuple[dict | None, dict | None]:
+    """Return (fully_closed_info, partial_closed_info) tuples."""
     direction = pos["direction"]
     sl = pos["stop_loss"]
     tp = pos["take_profit"]
+    tp_levels = pos.get("take_profit_levels")
+    tp_idx = pos.get("tp_level_idx", 0)
+    
+    # We dynamically switch intended TP to the active TP level
+    active_tp = tp
+    if tp_levels and tp_idx < len(tp_levels):
+        active_tp = tp_levels[tp_idx]
+        
     t = candle["time"]
+    
+    fully_closed = None
+    partial_closed = None
 
     if mode == "close_price":
         price = candle["close"]
         if direction == "BUY":
             if price <= sl:
-                return {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
-            if price >= tp:
-                return {"exit_time": t, "exit_price": tp, "exit_reason": "tp"}
+                fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+            elif price >= active_tp:
+                if tp_levels and tp_idx < len(tp_levels) - 1:
+                    # Partial TP reached
+                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
+                    pos["tp_level_idx"] = tp_idx + 1
+                else:
+                    fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
         else:  # SELL
             if price >= sl:
-                return {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
-            if price <= tp:
-                return {"exit_time": t, "exit_price": tp, "exit_reason": "tp"}
+                fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+            elif price <= active_tp:
+                if tp_levels and tp_idx < len(tp_levels) - 1:
+                    # Partial TP reached
+                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
+                    pos["tp_level_idx"] = tp_idx + 1
+                else:
+                    fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
     else:  # intra_candle
         high, low = candle["high"], candle["low"]
         open_p = candle["open"]
         if direction == "BUY":
             sl_hit = low <= sl
-            tp_hit = high >= tp
+            tp_hit = high >= active_tp
             if sl_hit and tp_hit:
-                return ({"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
-                        if abs(open_p - sl) <= abs(open_p - tp)
-                        else {"exit_time": t, "exit_price": tp, "exit_reason": "tp"})
-            if sl_hit:
-                return {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
-            if tp_hit:
-                return {"exit_time": t, "exit_price": tp, "exit_reason": "tp"}
+                if abs(open_p - sl) <= abs(open_p - active_tp):
+                    fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+                else:
+                    if tp_levels and tp_idx < len(tp_levels) - 1:
+                        partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
+                        pos["tp_level_idx"] = tp_idx + 1
+                        # Note: we might theoretically hit the new SL inside the same candle, but for simplicity we ignore this micro-action.
+                    else:
+                        fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
+            elif sl_hit:
+                fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+            elif tp_hit:
+                if tp_levels and tp_idx < len(tp_levels) - 1:
+                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
+                    pos["tp_level_idx"] = tp_idx + 1
+                else:
+                    fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
         else:  # SELL
             sl_hit = high >= sl
-            tp_hit = low <= tp
+            tp_hit = low <= active_tp
             if sl_hit and tp_hit:
-                return ({"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
-                        if abs(open_p - sl) <= abs(open_p - tp)
-                        else {"exit_time": t, "exit_price": tp, "exit_reason": "tp"})
-            if sl_hit:
-                return {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
-            if tp_hit:
-                return {"exit_time": t, "exit_price": tp, "exit_reason": "tp"}
-    return None
+                if abs(open_p - sl) <= abs(open_p - active_tp):
+                    fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+                else:
+                    if tp_levels and tp_idx < len(tp_levels) - 1:
+                        partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
+                        pos["tp_level_idx"] = tp_idx + 1
+                    else:
+                        fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
+            elif sl_hit:
+                fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+            elif tp_hit:
+                if tp_levels and tp_idx < len(tp_levels) - 1:
+                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
+                    pos["tp_level_idx"] = tp_idx + 1
+                else:
+                    fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
+                    
+    return fully_closed, partial_closed
 
 
 def _fill_price(

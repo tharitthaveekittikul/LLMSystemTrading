@@ -30,6 +30,7 @@ class StrategyResult:
     confidence: float
     rationale: str
     timeframe: str
+    take_profit_levels: list[float] | None = None
     pattern_name: str | None = None
     pattern_metadata: dict | None = None
     llm_result: object | None = None   # LLMAnalysisResult if LLM was used
