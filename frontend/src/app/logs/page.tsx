@@ -16,8 +16,12 @@ import type {
 
 export default function LogsPage() {
   const { activeAccountId } = useTradingStore();
-  const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(null);
-  const newRunHandlerRef = useRef<((data: PipelineRunCompleteData) => void) | null>(null);
+  const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(
+    null,
+  );
+  const newRunHandlerRef = useRef<
+    ((data: PipelineRunCompleteData) => void) | null
+  >(null);
 
   const [pricing, setPricing] = useState<LLMPricingEntry[]>([]);
   const [usdThbRate, setUsdThbRate] = useState<number>(36.0);
@@ -25,7 +29,7 @@ export default function LogsPage() {
   useEffect(() => {
     Promise.all([
       llmUsageApi.getPricing().catch(() => []),
-      llmUsageApi.getSummary("day").catch(() => null)
+      llmUsageApi.getSummary("day").catch(() => null),
     ]).then(([pricingData, summaryData]) => {
       setPricing(pricingData);
       if (summaryData?.usd_thb_rate) {
@@ -38,7 +42,7 @@ export default function LogsPage() {
     (handler: (data: PipelineRunCompleteData) => void) => {
       newRunHandlerRef.current = handler;
     },
-    []
+    [],
   );
 
   useWebSocket(activeAccountId, {
@@ -52,10 +56,13 @@ export default function LogsPage() {
       <AppHeader
         title="Pipeline Logs"
         subtitle="Every AI analysis run, step by step"
-        showAccountSelector={false}
+        showAccountSelector={true}
         showConnectionStatus={false}
       />
-      <div className="flex flex-1 min-h-0 overflow-hidden" style={{ height: "calc(100vh - 3rem)" }}>
+      <div
+        className="flex flex-1 min-h-0 overflow-hidden"
+        style={{ height: "calc(100vh - 3rem)" }}
+      >
         {/* Left — runs list */}
         <div className="w-72 shrink-0 border-r flex flex-col">
           <PipelineRunsList
@@ -68,7 +75,11 @@ export default function LogsPage() {
         {/* Right — detail */}
         <div className="flex-1 overflow-hidden">
           {selectedRun ? (
-            <PipelineRunDetailPanel run={selectedRun} pricing={pricing} usdThbRate={usdThbRate} />
+            <PipelineRunDetailPanel
+              run={selectedRun}
+              pricing={pricing}
+              usdThbRate={usdThbRate}
+            />
           ) : (
             <div className="h-full flex items-center justify-center">
               <p className="text-sm text-muted-foreground">
