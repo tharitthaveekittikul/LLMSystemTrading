@@ -269,6 +269,29 @@ class TaskLLMAssignment(Base):
     )
 
 
+class RiskSettings(Base):
+    __tablename__ = "risk_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Rule 1: Drawdown check
+    drawdown_check_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_drawdown_pct: Mapped[float] = mapped_column(Float, default=10.0)
+    # Rule 2: Position limit
+    position_limit_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_open_positions: Mapped[int] = mapped_column(Integer, default=5)
+    # Rule 3: Rate limit per symbol
+    rate_limit_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    rate_limit_max_trades: Mapped[int] = mapped_column(Integer, default=3)
+    rate_limit_window_hours: Mapped[float] = mapped_column(Float, default=4.0)
+    # Rule 4: Hedging
+    hedging_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
 class BacktestRun(Base):
     __tablename__ = "backtest_runs"
 

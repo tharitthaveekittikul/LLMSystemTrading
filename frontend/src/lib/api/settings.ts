@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import type { GlobalSettings } from "@/types/trading";
+import type { GlobalSettings, RiskSettings } from "@/types/trading";
 
 export interface ProviderStatus {
   provider: string;
@@ -50,6 +50,15 @@ export const settingsApi = {
 
   patchGlobal: (body: Partial<GlobalSettings>) =>
     apiRequest<GlobalSettings>("/settings/global", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  getRisk: () =>
+    apiRequest<RiskSettings>("/settings/risk"),
+
+  patchRisk: (body: Partial<RiskSettings>) =>
+    apiRequest<RiskSettings>("/settings/risk", {
       method: "PATCH",
       body: JSON.stringify(body),
     }),

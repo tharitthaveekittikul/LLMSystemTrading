@@ -32,10 +32,19 @@ def test_order_request_rejects_unknown():
         )
 
 
+def _make_mock_session_ctx():
+    mock_session = AsyncMock()
+    mock_ctx = AsyncMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+    return mock_ctx
+
+
 @pytest.mark.asyncio
 async def test_place_order_uses_pending_action_for_buy_limit():
     """BUY_LIMIT sends TRADE_ACTION_PENDING (5) to MT5, not TRADE_ACTION_DEAL (1)."""
     from mt5.executor import MT5Executor, OrderRequest
+    from services.risk_manager import RiskConfig
 
     mock_bridge = AsyncMock()
     mock_bridge.get_positions = AsyncMock(return_value=[])
@@ -43,10 +52,11 @@ async def test_place_order_uses_pending_action_for_buy_limit():
     mock_bridge.get_filling_mode = AsyncMock(return_value=1)
     mock_bridge.send_order = AsyncMock(return_value={"retcode": 10009, "order": 12345})
 
-    with (
-        patch("mt5.executor.kill_switch_active", return_value=False),
-        patch("mt5.executor.exceeds_position_limit", return_value=(False, "")),
-    ):
+    _all_off = RiskConfig(position_limit_enabled=False, rate_limit_enabled=False, hedging_allowed=True)
+
+    with patch("mt5.executor.kill_switch_active", return_value=False), \
+         patch("mt5.executor.load_risk_config", new=AsyncMock(return_value=_all_off)), \
+         patch("mt5.executor.AsyncSessionLocal", return_value=_make_mock_session_ctx()):
         executor = MT5Executor(mock_bridge)
         req = OrderRequest(
             symbol="XAUUSD", action="BUY_LIMIT", volume=0.1,
@@ -65,6 +75,7 @@ async def test_place_order_uses_pending_action_for_buy_limit():
 async def test_place_order_uses_deal_action_for_buy():
     """BUY sends TRADE_ACTION_DEAL (1) with deviation."""
     from mt5.executor import MT5Executor, OrderRequest
+    from services.risk_manager import RiskConfig
 
     mock_bridge = AsyncMock()
     mock_bridge.get_positions = AsyncMock(return_value=[])
@@ -72,10 +83,11 @@ async def test_place_order_uses_deal_action_for_buy():
     mock_bridge.get_filling_mode = AsyncMock(return_value=1)
     mock_bridge.send_order = AsyncMock(return_value={"retcode": 10009, "order": 12346})
 
-    with (
-        patch("mt5.executor.kill_switch_active", return_value=False),
-        patch("mt5.executor.exceeds_position_limit", return_value=(False, "")),
-    ):
+    _all_off = RiskConfig(position_limit_enabled=False, rate_limit_enabled=False, hedging_allowed=True)
+
+    with patch("mt5.executor.kill_switch_active", return_value=False), \
+         patch("mt5.executor.load_risk_config", new=AsyncMock(return_value=_all_off)), \
+         patch("mt5.executor.AsyncSessionLocal", return_value=_make_mock_session_ctx()):
         executor = MT5Executor(mock_bridge)
         req = OrderRequest(
             symbol="XAUUSD", action="BUY", volume=0.1,

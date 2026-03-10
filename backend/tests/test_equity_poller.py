@@ -79,6 +79,7 @@ async def _noop(*args, **kwargs):
 async def test_poll_account_activates_kill_switch_on_drawdown(monkeypatch):
     """Drawdown >= max_drawdown_percent must activate the kill switch."""
     import services.kill_switch as ks
+    from services.risk_manager import RiskConfig
 
     # Reset kill switch state and patch DB + WS side effects
     monkeypatch.setattr(ks, "_active", False)
@@ -91,15 +92,21 @@ async def test_poll_account_activates_kill_switch_on_drawdown(monkeypatch):
         "margin_level": 0.0, "currency": "USD",
     }
 
-    from unittest.mock import AsyncMock, patch
-
     inserted = []
     broadcasts = []
 
+    # RiskConfig with drawdown enabled at 10% — equity=8000, balance=10000 = 20% drawdown
+    risk_cfg = RiskConfig(drawdown_check_enabled=True, max_drawdown_pct=10.0)
+    mock_session = AsyncMock()
+    mock_ctx = AsyncMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
     from services.equity_poller import _poll_account
-    with patch("services.equity_poller.settings") as mock_cfg:
+    with patch("services.equity_poller.settings") as mock_cfg, \
+         patch("services.equity_poller.load_risk_config", new=AsyncMock(return_value=risk_cfg)), \
+         patch("services.equity_poller.AsyncSessionLocal", return_value=mock_ctx):
         mock_cfg.mt5_path = ""
-        mock_cfg.max_drawdown_percent = 10.0
 
         with patch("services.equity_poller.MT5Bridge") as mock_bridge_cls:
             mock_bridge = AsyncMock()

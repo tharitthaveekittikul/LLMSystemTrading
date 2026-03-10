@@ -523,3 +523,17 @@ export interface GlobalSettings {
   llm_confidence_threshold: number;
   news_enabled: boolean;
 }
+
+
+// ── Risk Settings ──────────────────────────────────────────────────────────
+
+export interface RiskSettings {
+  drawdown_check_enabled: boolean;
+  max_drawdown_pct: number;
+  position_limit_enabled: boolean;
+  max_open_positions: number;
+  rate_limit_enabled: boolean;
+  rate_limit_max_trades: number;
+  rate_limit_window_hours: number;
+  hedging_allowed: boolean;
+}
