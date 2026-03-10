@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { strategiesApi } from "@/lib/api/strategies";
 import type { Strategy, StrategyStats } from "@/types/trading";
-import { Plus, Edit2, Trash2 } from "lucide-react";
+import { Plus, Edit2, Trash2, Play, Loader2 } from "lucide-react";
 
 const TYPE_COLORS: Record<string, string> = {
   config: "bg-blue-100 text-blue-800",
@@ -36,6 +36,7 @@ export default function StrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [triggeringId, setTriggeringId] = useState<number | null>(null);
   const [statsMap, setStatsMap] = useState<Record<number, StrategyStats>>({});
 
   useEffect(() => {
@@ -83,6 +84,17 @@ export default function StrategiesPage() {
       setDeletingId(null);
     } catch (err) {
       console.error(err);
+    }
+  }
+
+  async function handleTrigger(id: number) {
+    try {
+      setTriggeringId(id);
+      await strategiesApi.trigger(id);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTriggeringId(null);
     }
   }
 
@@ -224,6 +236,19 @@ export default function StrategiesPage() {
                     </div>
                   )}
                   <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleTrigger(s.id)}
+                      disabled={!s.is_active || triggeringId === s.id}
+                    >
+                      {triggeringId === s.id ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Play className="mr-1 h-3 w-3" />
+                      )}
+                      Trigger
+                    </Button>
                     <Button variant="outline" size="sm" asChild>
                       <Link href={`/strategies/${s.id}/edit`}>
                         <Edit2 className="mr-1 h-3 w-3" />

@@ -225,18 +225,17 @@ async def update_strategy(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Strategy name already exists")
     logger.info("Strategy updated | id=%s", strategy_id)
-    # Reschedule active bindings so they immediately use the updated config
-    if strategy.is_active:
-        bindings_result = await db.execute(
-            select(AccountStrategy)
-            .where(AccountStrategy.strategy_id == strategy_id, AccountStrategy.is_active.is_(True))
-            .options(selectinload(AccountStrategy.account))
-        )
-        for binding in bindings_result.scalars().all():
-            if binding.account.is_active:
-                remove_all_binding_jobs(binding.id)
-                binding.strategy = strategy
-                add_binding_jobs(binding)
+    # Reschedule bindings and remove inactive ones
+    bindings_result = await db.execute(
+        select(AccountStrategy)
+        .where(AccountStrategy.strategy_id == strategy_id)
+        .options(selectinload(AccountStrategy.account))
+    )
+    for binding in bindings_result.scalars().all():
+        remove_all_binding_jobs(binding.id)
+        if strategy.is_active and binding.is_active and binding.account.is_active:
+            binding.strategy = strategy
+            add_binding_jobs(binding)
     return _to_response(strategy)
 
 
@@ -253,6 +252,32 @@ async def delete_strategy(strategy_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(strategy)
     await db.commit()
     logger.info("Strategy deleted | id=%s", strategy_id)
+
+
+@router.post("/{strategy_id}/trigger", status_code=status.HTTP_202_ACCEPTED)
+async def trigger_strategy(strategy_id: int, db: AsyncSession = Depends(get_db)):
+    """Manually trigger all active bindings for this strategy."""
+    strategy = await _get_or_404(db, strategy_id)
+    if not strategy.is_active:
+        raise HTTPException(status_code=400, detail="Cannot trigger an inactive strategy")
+        
+    result = await db.execute(
+        select(AccountStrategy)
+        .where(AccountStrategy.strategy_id == strategy_id)
+        .where(AccountStrategy.is_active.is_(True))
+        .options(selectinload(AccountStrategy.account))
+    )
+    bindings = [b for b in result.scalars().all() if b.account.is_active]
+    
+    if not bindings:
+        raise HTTPException(status_code=400, detail="No active bindings to trigger")
+        
+    from services.scheduler import trigger_binding_manually
+    for binding in bindings:
+        binding.strategy = strategy
+        trigger_binding_manually(binding)
+        
+    return {"message": f"Triggered {len(bindings)} active bindings"}
 
 
 @router.post(

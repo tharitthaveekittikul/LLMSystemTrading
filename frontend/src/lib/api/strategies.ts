@@ -31,4 +31,5 @@ export const strategiesApi = {
   runs: (id: number) => apiRequest<StrategyRun[]>(`/strategies/${id}/runs`),
   bindings: (id: number) => apiRequest<StrategyBinding[]>(`/strategies/${id}/bindings`),
   getStats: (id: number) => apiRequest<StrategyStats>(`/strategies/${id}/stats`),
+  trigger: (id: number) => apiRequest<{ message: string }>(`/strategies/${id}/trigger`, { method: "POST" }),
 }

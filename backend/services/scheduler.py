@@ -263,3 +263,29 @@ def stop_scheduler() -> None:
     if _scheduler.running:
         _scheduler.shutdown(wait=False)
         logger.info("Scheduler stopped")
+
+
+def trigger_binding_manually(binding) -> None:
+    """Manually trigger a binding's strategy job once, immediately."""
+    from datetime import datetime, timezone
+    strategy = binding.strategy
+    symbols, overrides, strategy_id = _build_overrides(strategy)
+    module_path = strategy.module_path if strategy.execution_mode != "llm_only" else None
+    class_name  = strategy.class_name  if strategy.execution_mode != "llm_only" else None
+    for symbol in symbols:
+        # Generate a unique one-off job ID
+        one_off_id = f"manual_{binding.id}_{symbol}_{int(datetime.now(timezone.utc).timestamp())}"
+        try:
+            _scheduler.add_job(
+                _run_strategy_job,
+                trigger="date",
+                run_date=datetime.now(timezone.utc),
+                id=one_off_id,
+                args=[binding.account_id, symbol, strategy.timeframe, strategy_id, overrides,
+                      module_path, class_name],
+                replace_existing=True,
+                misfire_grace_time=60,
+            )
+            logger.info("Manually triggered %s", one_off_id)
+        except Exception as e:
+            logger.error("Failed to trigger job manually %s: %s", one_off_id, e)
