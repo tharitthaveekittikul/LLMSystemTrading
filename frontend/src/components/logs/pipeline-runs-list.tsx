@@ -49,7 +49,9 @@ export function PipelineRunsList({
   const [loading, setLoading] = useState(true);
   const [symbolFilter, setSymbolFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [taskTypeFilter, setTaskTypeFilter] = useState<"all" | "signal" | "maintenance">("all");
+  const [taskTypeFilter, setTaskTypeFilter] = useState<
+    "all" | "signal" | "maintenance"
+  >("all");
   const [newRunIds, setNewRunIds] = useState<Set<number>>(new Set());
 
   const fetchRuns = useCallback(async () => {
@@ -189,7 +191,7 @@ export function PipelineRunsList({
                     ` · ${run.total_duration_ms}ms`}
                   {run.task_type === "maintenance" && (
                     <span className="ml-1.5 inline-block rounded bg-purple-500/15 px-1 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-400">
-                      maint
+                      maintenance
                     </span>
                   )}
                 </p>

@@ -519,11 +519,42 @@ class AITradingService:
             duration_ms=int((time.monotonic() - t0) * 1000),
         )
 
+        # ── 6.5 Risk Limits Pre-Check ──────────────────────────────────────────
+        t0 = time.monotonic()
+        from services.risk_manager import load_risk_config, check_position_limit, check_rate_limit
+        risk_cfg = await load_risk_config(db)
+        
+        exceeded_pos, pos_reason = check_position_limit(open_positions, risk_cfg)
+        exceeded_rate, rate_reason = False, ""
+        if not exceeded_pos:
+            exceeded_rate, rate_reason = await check_rate_limit(symbol, risk_cfg, db)
+            
+        is_risk_blocked = exceeded_pos or exceeded_rate
+        blocked_reason = pos_reason if exceeded_pos else rate_reason
+
+        await tracer.record(
+            "risk_limit_pre_check",
+            output_data={"blocked": is_risk_blocked, "reason": blocked_reason},
+            duration_ms=int((time.monotonic() - t0) * 1000),
+        )
+
         # ── 7. Rule-based signal (code strategies that override generate_signal) ─
         rule_based = False
         signal: TradingSignal | None = None
 
-        if strategy_instance is not None:
+        if is_risk_blocked:
+            signal = TradingSignal(
+                action="HOLD",
+                entry=0.0,
+                stop_loss=0.0,
+                take_profit=0.0,
+                confidence=1.0,
+                rationale=f"Risk limit reached: {blocked_reason} — skipping analysis.",
+                timeframe=tf_upper,
+            )
+            rule_based = True
+
+        elif strategy_instance is not None:
             t0 = time.monotonic()
             market_data = {
                 "symbol":         symbol,
