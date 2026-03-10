@@ -375,6 +375,7 @@ async def _run_market_analysis(
     news_context: str | None,
     trade_history_context: str | None,
     regime_context: str | None,
+    context_ohlcv: dict[str, list[dict]] | None = None,
 ) -> LLMRoleResult:
     """LLM Role 1: Analyze market conditions and produce a context summary."""
     pos_lines = [
@@ -387,12 +388,17 @@ async def _run_market_analysis(
     ]
 
     human_parts = [
-        f"Symbol: {symbol}\nTimeframe: {timeframe}\nCurrent Price: {current_price}",
-        f"\nIndicators:\n{json.dumps(indicators, indent=2)}",
+        f"Symbol: {symbol}\nPrimary Timeframe: {timeframe}\nCurrent Price: {current_price}",
+        f"\nIndicators (Primary {timeframe}):\n{json.dumps(indicators, indent=2)}",
     ]
     if regime_context:
         human_parts.append(f"\nMarket Regime (HMM):\n{regime_context}")
-    human_parts.append(f"\nLast 20 OHLCV candles (oldest → newest):\n{json.dumps(ohlcv[-20:], indent=2, default=str)}")
+    human_parts.append(f"\nLast 20 OHLCV candles ({timeframe}) (oldest → newest):\n{json.dumps(ohlcv[-20:], indent=2, default=str)}")
+    
+    if context_ohlcv:
+        for ctx_tf, ctx_candles in context_ohlcv.items():
+            human_parts.append(f"\nContext Timeframe: {ctx_tf} (Last 20 candles):\n{json.dumps(ctx_candles[-20:], indent=2, default=str)}")
+
     human_parts.append("\nCurrently Open Positions:\n" + "\n".join(pos_lines))
     if sig_lines:
         human_parts.append("\nRecent Signal History (newest first):\n" + "\n".join(sig_lines))
@@ -578,6 +584,7 @@ async def analyze_market(
     market_analysis_llm: BaseChatModel | None = None,
     chart_vision_llm: BaseChatModel | None = None,
     execution_decision_llm: BaseChatModel | None = None,
+    context_ohlcv: dict[str, list[dict]] | None = None,
 ) -> LLMAnalysisResult:
     """Run 3-role LLM analysis pipeline: market_analysis → chart_vision → execution_decision.
 
@@ -599,7 +606,7 @@ async def analyze_market(
     ma_result = await _run_market_analysis(
         ma_llm, symbol, timeframe, current_price,
         indicators, ohlcv, open_positions or [], recent_signals or [],
-        news_context, trade_history_context, regime_context,
+        news_context, trade_history_context, regime_context, context_ohlcv,
     )
     market_context = ma_result.content if isinstance(ma_result.content, dict) else {}
 

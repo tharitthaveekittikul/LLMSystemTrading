@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { PipelineStep } from "@/types/trading";
+import type { PipelineStep, LLMPricingEntry } from "@/types/trading";
 
 const STATUS_STYLES: Record<string, string> = {
   ok: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -68,23 +68,35 @@ function extractTokenInfo(step: PipelineStep): TokenInfo | null {
 
 interface PipelineStepCardProps {
   step: PipelineStep;
+  pricing?: LLMPricingEntry[];
+  usdThbRate?: number;
 }
 
 function JsonViewer({ raw }: { raw: string | null }) {
   if (!raw) return <span className="text-muted-foreground text-xs">—</span>;
+  
+  let formattedContent = raw;
+  let isJson = false;
+
   try {
     const parsed = JSON.parse(raw);
+    formattedContent = JSON.stringify(parsed, null, 2);
+    isJson = true;
+  } catch {
+    // Keep raw
+  }
+
+  if (isJson) {
     return (
       <pre className="text-xs bg-muted/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap break-all">
-        {JSON.stringify(parsed, null, 2)}
+        {formattedContent}
       </pre>
     );
-  } catch {
-    return <pre className="text-xs text-muted-foreground">{raw}</pre>;
   }
+  return <pre className="text-xs text-muted-foreground">{raw}</pre>;
 }
 
-export function PipelineStepCard({ step }: PipelineStepCardProps) {
+export function PipelineStepCard({ step, pricing = [], usdThbRate = 36.0 }: PipelineStepCardProps) {
   const [expanded, setExpanded] = useState(false)
   const hasDetail = step.input_json || step.output_json || step.error
   const label = STEP_LABELS[step.step_name] ?? step.step_name
@@ -133,6 +145,28 @@ export function PipelineStepCard({ step }: PipelineStepCardProps) {
               <span className="font-medium">∑ {(tokenInfo.total_tokens ?? 0).toLocaleString()} total</span>
             </>
           )}
+          {(() => {
+            const entry =
+              pricing.find(
+                (p) => p.model === tokenInfo.model && p.provider === tokenInfo.provider
+              ) || pricing.find((p) => p.model === tokenInfo.model);
+            if (!entry || entry.input_per_1m_usd == null || entry.output_per_1m_usd == null)
+              return null;
+            if (tokenInfo.input_tokens == null || tokenInfo.output_tokens == null) return null;
+
+            const costUsd =
+              (tokenInfo.input_tokens * entry.input_per_1m_usd) / 1000000 +
+              (tokenInfo.output_tokens * entry.output_per_1m_usd) / 1000000;
+
+            if (costUsd === 0) return null;
+
+            const costThb = costUsd * usdThbRate;
+            return (
+              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                (${costUsd.toFixed(4)} ≈ {costThb.toFixed(2)} THB)
+              </span>
+            );
+          })()}
         </div>
       )}
 

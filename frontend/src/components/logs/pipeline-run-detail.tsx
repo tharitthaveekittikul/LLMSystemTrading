@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PipelineStepCard } from "./pipeline-step-card";
 import { logsApi } from "@/lib/api";
-import type { PipelineRunDetail, PipelineRunSummary } from "@/types/trading";
+import type { PipelineRunDetail, PipelineRunSummary, LLMPricingEntry } from "@/types/trading";
 
 const STATUS_VARIANT: Record<string, string> = {
   completed: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -24,9 +24,11 @@ const ACTION_VARIANT: Record<string, string> = {
 
 interface PipelineRunDetailPanelProps {
   run: PipelineRunSummary;
+  pricing?: LLMPricingEntry[];
+  usdThbRate?: number;
 }
 
-export function PipelineRunDetailPanel({ run }: PipelineRunDetailPanelProps) {
+export function PipelineRunDetailPanel({ run, pricing = [], usdThbRate = 36.0 }: PipelineRunDetailPanelProps) {
   const [detail, setDetail] = useState<PipelineRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -86,7 +88,7 @@ export function PipelineRunDetailPanel({ run }: PipelineRunDetailPanelProps) {
           ))
         ) : detail ? (
           detail.steps.map((step) => (
-            <PipelineStepCard key={step.id} step={step} />
+            <PipelineStepCard key={step.id} step={step} pricing={pricing} usdThbRate={usdThbRate} />
           ))
         ) : (
           <p className="text-sm text-muted-foreground">Failed to load steps.</p>

@@ -1,21 +1,38 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import { PipelineRunsList } from "@/components/logs/pipeline-runs-list";
 import { PipelineRunDetailPanel } from "@/components/logs/pipeline-run-detail";
+import { llmUsageApi } from "@/lib/api";
 import type {
   PipelineRunCompleteData,
   PipelineRunSummary,
+  LLMPricingEntry,
 } from "@/types/trading";
 
 export default function LogsPage() {
   const { activeAccountId } = useTradingStore();
   const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(null);
   const newRunHandlerRef = useRef<((data: PipelineRunCompleteData) => void) | null>(null);
+
+  const [pricing, setPricing] = useState<LLMPricingEntry[]>([]);
+  const [usdThbRate, setUsdThbRate] = useState<number>(36.0);
+
+  useEffect(() => {
+    Promise.all([
+      llmUsageApi.getPricing().catch(() => []),
+      llmUsageApi.getSummary("day").catch(() => null)
+    ]).then(([pricingData, summaryData]) => {
+      setPricing(pricingData);
+      if (summaryData?.usd_thb_rate) {
+        setUsdThbRate(summaryData.usd_thb_rate);
+      }
+    });
+  }, []);
 
   const registerNewRunHandler = useCallback(
     (handler: (data: PipelineRunCompleteData) => void) => {
@@ -51,7 +68,7 @@ export default function LogsPage() {
         {/* Right — detail */}
         <div className="flex-1 overflow-hidden">
           {selectedRun ? (
-            <PipelineRunDetailPanel run={selectedRun} />
+            <PipelineRunDetailPanel run={selectedRun} pricing={pricing} usdThbRate={usdThbRate} />
           ) : (
             <div className="h-full flex items-center justify-center">
               <p className="text-sm text-muted-foreground">

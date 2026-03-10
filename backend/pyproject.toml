@@ -34,11 +34,12 @@ dependencies = [
     "mss>=9.0.0",
     # HTTP client
     "httpx>=0.28.0",
-    "pandas>=3.0.1",
+    "pandas>=2.0.0",
     "hmmlearn>=0.3.2",
     # Scheduler
     "apscheduler>=3.10,<4",
     "pydantic>=2.12.5",
+    "pandas-ta>=0.4.71b0",
 ]
 
 [project.optional-dependencies]
