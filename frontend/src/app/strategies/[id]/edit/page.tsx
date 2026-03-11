@@ -15,16 +15,42 @@ import { strategiesApi } from "@/lib/api/strategies";
 import type { Strategy } from "@/types/trading";
 import { X } from "lucide-react";
 
-type ExecMode = "llm_only" | "rule_then_llm" | "rule_only" | "hybrid_validator" | "multi_agent";
+type ExecMode =
+  | "llm_only"
+  | "rule_then_llm"
+  | "rule_only"
+  | "hybrid_validator"
+  | "multi_agent";
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
-const STEP_LABELS = ["Basics", "Market & Schedule", "Configuration", "Review & Save"];
+const STEP_LABELS = [
+  "Basics",
+  "Market & Schedule",
+  "Configuration",
+  "Review & Save",
+];
 
 const EXEC_MODES: [ExecMode, string, string][] = [
-  ["llm_only", "LLM Only", "LLM analyzes every candle. Requires custom_prompt."],
-  ["rule_then_llm", "Rule → LLM", "Rule pre-filters; LLM validates triggered signals."],
+  [
+    "llm_only",
+    "LLM Only",
+    "LLM analyzes every candle. Requires custom_prompt.",
+  ],
+  [
+    "rule_then_llm",
+    "Rule → LLM",
+    "Rule pre-filters; LLM validates triggered signals.",
+  ],
   ["rule_only", "Rule Only", "Fully deterministic rules. Zero LLM cost."],
-  ["hybrid_validator", "Hybrid Validator", "Rules open the trade; LLM validates post-entry."],
-  ["multi_agent", "Multi-Agent", "Rules + LLM in parallel; consensus required."],
+  [
+    "hybrid_validator",
+    "Hybrid Validator",
+    "Rules open the trade; LLM validates post-entry.",
+  ],
+  [
+    "multi_agent",
+    "Multi-Agent",
+    "Rules + LLM in parallel; consensus required.",
+  ],
 ];
 
 export default function EditStrategyPage() {
@@ -71,7 +97,7 @@ export default function EditStrategyPage() {
   const execMode = (form.execution_mode ?? "llm_only") as ExecMode;
 
   function addSymbol() {
-    const sym = symbolInput.trim().toUpperCase();
+    const sym = symbolInput.trim();
     const current = form.symbols ?? [];
     if (sym && !current.includes(sym)) {
       setForm((f) => ({ ...f, symbols: [...(f.symbols ?? []), sym] }));
@@ -80,7 +106,10 @@ export default function EditStrategyPage() {
   }
 
   function removeSymbol(sym: string) {
-    setForm((f) => ({ ...f, symbols: (f.symbols ?? []).filter((s) => s !== sym) }));
+    setForm((f) => ({
+      ...f,
+      symbols: (f.symbols ?? []).filter((s) => s !== sym),
+    }));
   }
 
   async function handleSubmit() {
@@ -129,8 +158,12 @@ export default function EditStrategyPage() {
         <div className="flex gap-1">
           {STEP_LABELS.map((label, i) => (
             <div key={i} className="flex-1 flex flex-col gap-1">
-              <div className={`h-1 rounded-full ${i <= step ? "bg-primary" : "bg-muted"}`} />
-              <span className="text-xs text-muted-foreground hidden sm:block">{label}</span>
+              <div
+                className={`h-1 rounded-full ${i <= step ? "bg-primary" : "bg-muted"}`}
+              />
+              <span className="text-xs text-muted-foreground hidden sm:block">
+                {label}
+              </span>
             </div>
           ))}
         </div>
@@ -145,14 +178,21 @@ export default function EditStrategyPage() {
                 <Input
                   id="name"
                   value={form.name ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, name: e.target.value }))
+                  }
                 />
               </div>
               <div className="space-y-2">
                 <Label>Description</Label>
                 <Textarea
                   value={form.description ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value || undefined }))}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      description: e.target.value || undefined,
+                    }))
+                  }
                   rows={2}
                 />
               </div>
@@ -163,7 +203,9 @@ export default function EditStrategyPage() {
                     <button
                       key={mode}
                       type="button"
-                      onClick={() => setForm((f) => ({ ...f, execution_mode: mode }))}
+                      onClick={() =>
+                        setForm((f) => ({ ...f, execution_mode: mode }))
+                      }
                       className={`text-left rounded-lg border px-3 py-2 transition-colors ${
                         execMode === mode
                           ? "bg-primary text-primary-foreground border-primary"
@@ -171,7 +213,9 @@ export default function EditStrategyPage() {
                       }`}
                     >
                       <p className="text-sm font-medium">{label}</p>
-                      <p className={`text-xs mt-0.5 ${execMode === mode ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                      <p
+                        className={`text-xs mt-0.5 ${execMode === mode ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                      >
                         {desc}
                       </p>
                     </button>
@@ -191,10 +235,14 @@ export default function EditStrategyPage() {
                   <Input
                     value={symbolInput}
                     onChange={(e) => setSymbolInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSymbol())}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && (e.preventDefault(), addSymbol())
+                    }
                     placeholder="e.g. EURUSD"
                   />
-                  <Button type="button" onClick={addSymbol} variant="outline">Add</Button>
+                  <Button type="button" onClick={addSymbol} variant="outline">
+                    Add
+                  </Button>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {(form.symbols ?? []).map((sym) => (
@@ -242,7 +290,9 @@ export default function EditStrategyPage() {
                         setForm((f) => ({
                           ...f,
                           primary_tf: tf,
-                          context_tfs: (f.context_tfs ?? []).filter((t) => t !== tf),
+                          context_tfs: (f.context_tfs ?? []).filter(
+                            (t) => t !== tf,
+                          ),
                         }))
                       }
                       className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
@@ -264,33 +314,35 @@ export default function EditStrategyPage() {
                   </span>
                 </Label>
                 <div className="flex gap-2 flex-wrap">
-                  {TIMEFRAMES.filter((tf) => tf !== form.primary_tf).map((tf) => {
-                    const selected = (form.context_tfs ?? []).includes(tf);
-                    return (
-                      <button
-                        key={tf}
-                        type="button"
-                        onClick={() =>
-                          setForm((f) => {
-                            const cur = f.context_tfs ?? [];
-                            return {
-                              ...f,
-                              context_tfs: selected
-                                ? cur.filter((t) => t !== tf)
-                                : [...cur, tf],
-                            };
-                          })
-                        }
-                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
-                          selected
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border bg-background hover:bg-muted"
-                        }`}
-                      >
-                        {tf}
-                      </button>
-                    );
-                  })}
+                  {TIMEFRAMES.filter((tf) => tf !== form.primary_tf).map(
+                    (tf) => {
+                      const selected = (form.context_tfs ?? []).includes(tf);
+                      return (
+                        <button
+                          key={tf}
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => {
+                              const cur = f.context_tfs ?? [];
+                              return {
+                                ...f,
+                                context_tfs: selected
+                                  ? cur.filter((t) => t !== tf)
+                                  : [...cur, tf],
+                              };
+                            })
+                          }
+                          className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
+                            selected
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-background hover:bg-muted"
+                          }`}
+                        >
+                          {tf}
+                        </button>
+                      );
+                    },
+                  )}
                 </div>
               </div>
               <div className="space-y-2">
@@ -300,7 +352,9 @@ export default function EditStrategyPage() {
                     <button
                       key={t}
                       type="button"
-                      onClick={() => setForm((f) => ({ ...f, trigger_type: t }))}
+                      onClick={() =>
+                        setForm((f) => ({ ...f, trigger_type: t }))
+                      }
                       className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                         form.trigger_type === t
                           ? "bg-primary text-primary-foreground border-primary"
@@ -317,10 +371,17 @@ export default function EditStrategyPage() {
                       type="number"
                       min={1}
                       value={form.interval_minutes ?? 15}
-                      onChange={(e) => setForm((f) => ({ ...f, interval_minutes: Number(e.target.value) }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          interval_minutes: Number(e.target.value),
+                        }))
+                      }
                       className="w-24"
                     />
-                    <span className="text-sm text-muted-foreground">minutes</span>
+                    <span className="text-sm text-muted-foreground">
+                      minutes
+                    </span>
                   </div>
                 )}
               </div>
@@ -336,7 +397,12 @@ export default function EditStrategyPage() {
                   <Label>Custom LLM System Prompt</Label>
                   <Textarea
                     value={form.custom_prompt ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, custom_prompt: e.target.value || undefined }))}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        custom_prompt: e.target.value || undefined,
+                      }))
+                    }
                     className="font-mono text-sm"
                     rows={10}
                     placeholder="You are a forex trading expert..."
@@ -349,7 +415,12 @@ export default function EditStrategyPage() {
                     <Label>Module Path</Label>
                     <Input
                       value={form.module_path ?? ""}
-                      onChange={(e) => setForm((f) => ({ ...f, module_path: e.target.value || undefined }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          module_path: e.target.value || undefined,
+                        }))
+                      }
                       placeholder="strategies.harmonic.harmonic_strategy"
                     />
                   </div>
@@ -357,7 +428,12 @@ export default function EditStrategyPage() {
                     <Label>Class Name</Label>
                     <Input
                       value={form.class_name ?? ""}
-                      onChange={(e) => setForm((f) => ({ ...f, class_name: e.target.value || undefined }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          class_name: e.target.value || undefined,
+                        }))
+                      }
                       placeholder="HarmonicStrategy"
                     />
                   </div>
@@ -370,7 +446,14 @@ export default function EditStrategyPage() {
                           type="number"
                           step="0.01"
                           value={form.lot_size ?? ""}
-                          onChange={(e) => setForm((f) => ({ ...f, lot_size: e.target.value ? Number(e.target.value) : undefined }))}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              lot_size: e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            }))
+                          }
                         />
                       </div>
                       <div className="space-y-1">
@@ -378,7 +461,14 @@ export default function EditStrategyPage() {
                         <Input
                           type="number"
                           value={form.sl_pips ?? ""}
-                          onChange={(e) => setForm((f) => ({ ...f, sl_pips: e.target.value ? Number(e.target.value) : undefined }))}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              sl_pips: e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            }))
+                          }
                         />
                       </div>
                       <div className="space-y-1">
@@ -386,7 +476,14 @@ export default function EditStrategyPage() {
                         <Input
                           type="number"
                           value={form.tp_pips ?? ""}
-                          onChange={(e) => setForm((f) => ({ ...f, tp_pips: e.target.value ? Number(e.target.value) : undefined }))}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              tp_pips: e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            }))
+                          }
                         />
                       </div>
                     </div>
@@ -396,7 +493,9 @@ export default function EditStrategyPage() {
               <div className="flex items-center gap-3">
                 <Switch
                   checked={form.news_filter ?? true}
-                  onCheckedChange={(v) => setForm((f) => ({ ...f, news_filter: v }))}
+                  onCheckedChange={(v) =>
+                    setForm((f) => ({ ...f, news_filter: v }))
+                  }
                   id="news_filter"
                 />
                 <Label htmlFor="news_filter">News filter</Label>
@@ -405,12 +504,15 @@ export default function EditStrategyPage() {
                 <div>
                   <p className="text-sm font-medium">Position Maintenance</p>
                   <p className="text-xs text-muted-foreground">
-                    Allow AI to review and manage positions opened by this strategy
+                    Allow AI to review and manage positions opened by this
+                    strategy
                   </p>
                 </div>
                 <Switch
                   checked={form.maintenance_enabled ?? true}
-                  onCheckedChange={(v) => setForm((f) => ({ ...f, maintenance_enabled: v }))}
+                  onCheckedChange={(v) =>
+                    setForm((f) => ({ ...f, maintenance_enabled: v }))
+                  }
                   id="maintenance_enabled"
                 />
               </div>
@@ -441,12 +543,16 @@ export default function EditStrategyPage() {
                 {(form.context_tfs ?? []).length > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Context TFs</span>
-                    <span className="font-medium">{(form.context_tfs ?? []).join(", ")}</span>
+                    <span className="font-medium">
+                      {(form.context_tfs ?? []).join(", ")}
+                    </span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Symbols</span>
-                  <span className="font-medium">{(form.symbols ?? []).join(", ")}</span>
+                  <span className="font-medium">
+                    {(form.symbols ?? []).join(", ")}
+                  </span>
                 </div>
               </div>
             </>
@@ -461,14 +567,21 @@ export default function EditStrategyPage() {
                 <Link href={`/strategies/${strategyId}`}>Cancel</Link>
               </Button>
             ) : (
-              <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Back</Button>
+              <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
+                Back
+              </Button>
             )}
           </div>
           <div>
             {step < 3 ? (
               <Button onClick={() => setStep((s) => s + 1)}>Next</Button>
             ) : (
-              <Button onClick={handleSubmit} disabled={submitting || !form.name?.trim() || !form.symbols?.length}>
+              <Button
+                onClick={handleSubmit}
+                disabled={
+                  submitting || !form.name?.trim() || !form.symbols?.length
+                }
+              >
                 {submitting ? "Saving..." : "Save Changes"}
               </Button>
             )}
