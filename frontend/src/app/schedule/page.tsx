@@ -8,7 +8,7 @@ import { ScheduledJobCard } from "@/components/schedule/scheduled-job-card";
 import { schedulerApi } from "@/lib/api";
 import type { ScheduledJob } from "@/types/trading";
 
-const REFRESH_INTERVAL_MS = 10_000;
+const REFRESH_INTERVAL_MS = 60_000; // 1 minute
 
 function EmptyGroup({ label }: { label: string }) {
   return (
@@ -34,7 +34,9 @@ export default function SchedulePage() {
       setJobs(data);
       setLastRefreshed(new Date());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load scheduled jobs");
+      setError(
+        err instanceof Error ? err.message : "Failed to load scheduled jobs",
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -84,7 +86,9 @@ export default function SchedulePage() {
             disabled={refreshing || loading}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+            />
             Refresh
           </button>
         </div>
@@ -114,7 +118,9 @@ export default function SchedulePage() {
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <Cpu className="h-4 w-4 text-blue-400" />
-                <h2 className="text-sm font-semibold text-blue-400">Strategy Jobs</h2>
+                <h2 className="text-sm font-semibold text-blue-400">
+                  Strategy Jobs
+                </h2>
                 <span className="text-xs text-muted-foreground">
                   ({strategyJobs.length})
                 </span>
@@ -135,7 +141,9 @@ export default function SchedulePage() {
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <Wrench className="h-4 w-4 text-purple-400" />
-                <h2 className="text-sm font-semibold text-purple-400">System Jobs</h2>
+                <h2 className="text-sm font-semibold text-purple-400">
+                  System Jobs
+                </h2>
                 <span className="text-xs text-muted-foreground">
                   ({systemJobs.length})
                 </span>
