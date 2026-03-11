@@ -273,7 +273,23 @@ class TaskLLMAssignment(Base):
     )
 
 
+class GlobalSettings(Base):
+    __tablename__ = "global_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    maintenance_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    maintenance_task_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    llm_confidence_threshold: Mapped[float] = mapped_column(Float, default=0.70)
+    news_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
 class RiskSettings(Base):
+
     __tablename__ = "risk_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

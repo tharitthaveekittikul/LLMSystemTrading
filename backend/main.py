@@ -38,6 +38,25 @@ async def lifespan(app: FastAPI):
     await init_questdb()
     logger.info("Database tables ready")
 
+    # ── Load persisted global settings from DB ────────────────────────────────
+    from db.postgres import AsyncSessionLocal
+    from db.models import GlobalSettings as GlobalSettingsModel
+    from sqlalchemy import select as sa_select
+    async with AsyncSessionLocal() as _db:
+        _row = (await _db.execute(
+            sa_select(GlobalSettingsModel).where(GlobalSettingsModel.id == 1)
+        )).scalar_one_or_none()
+        if _row:
+            settings.maintenance_interval_minutes = _row.maintenance_interval_minutes
+            settings.maintenance_task_enabled = _row.maintenance_task_enabled
+            settings.llm_confidence_threshold = _row.llm_confidence_threshold
+            settings.news_enabled = _row.news_enabled
+            logger.info(
+                "Global settings loaded from DB | maintenance_interval=%dmin enabled=%s",
+                _row.maintenance_interval_minutes,
+                _row.maintenance_task_enabled,
+            )
+
     from services.equity_poller import run_equity_poller
     poller_task = asyncio.create_task(run_equity_poller())
     logger.info("Equity poller task started")

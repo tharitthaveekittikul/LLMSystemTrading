@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.security import decrypt, encrypt
-from db.models import LLMProviderConfig, TaskLLMAssignment
+from db.models import LLMProviderConfig, TaskLLMAssignment, GlobalSettings as GlobalSettingsModel
 from db.postgres import get_db
 
 router = APIRouter()
@@ -301,8 +301,19 @@ class GlobalSettingsPatch(BaseModel):
 
 
 @router.get("/global", response_model=GlobalSettings)
-async def get_global_settings() -> GlobalSettings:
-    """Return current global settings from config."""
+async def get_global_settings(db: AsyncSession = Depends(get_db)) -> GlobalSettings:
+    """Return current global settings, preferring DB-persisted values."""
+    row = (await db.execute(
+        select(GlobalSettingsModel).where(GlobalSettingsModel.id == 1)
+    )).scalar_one_or_none()
+    if row:
+        return GlobalSettings(
+            maintenance_interval_minutes=row.maintenance_interval_minutes,
+            maintenance_task_enabled=row.maintenance_task_enabled,
+            llm_confidence_threshold=row.llm_confidence_threshold,
+            news_enabled=row.news_enabled,
+        )
+    # Fallback to in-memory config (first boot before migration runs)
     return GlobalSettings(
         maintenance_interval_minutes=settings.maintenance_interval_minutes,
         maintenance_task_enabled=settings.maintenance_task_enabled,
@@ -312,24 +323,41 @@ async def get_global_settings() -> GlobalSettings:
 
 
 @router.patch("/global", response_model=GlobalSettings)
-async def patch_global_settings(body: GlobalSettingsPatch) -> GlobalSettings:
-    """Update in-memory settings (runtime only — restart to make permanent)."""
+async def patch_global_settings(
+    body: GlobalSettingsPatch,
+    db: AsyncSession = Depends(get_db),
+) -> GlobalSettings:
+    """Update global settings — persisted to DB and applied in-memory immediately."""
+    row = (await db.execute(
+        select(GlobalSettingsModel).where(GlobalSettingsModel.id == 1)
+    )).scalar_one_or_none()
+    if not row:
+        row = GlobalSettingsModel(id=1)
+        db.add(row)
+
     if body.maintenance_interval_minutes is not None:
         if body.maintenance_interval_minutes < 1:
             raise HTTPException(status_code=422, detail="maintenance_interval_minutes must be >= 1")
+        row.maintenance_interval_minutes = body.maintenance_interval_minutes
         settings.maintenance_interval_minutes = body.maintenance_interval_minutes
         from services.scheduler import reschedule_maintenance_job
         reschedule_maintenance_job(body.maintenance_interval_minutes)
     if body.maintenance_task_enabled is not None:
+        row.maintenance_task_enabled = body.maintenance_task_enabled
         settings.maintenance_task_enabled = body.maintenance_task_enabled
     if body.llm_confidence_threshold is not None:
         if not 0.0 <= body.llm_confidence_threshold <= 1.0:
             raise HTTPException(status_code=422, detail="llm_confidence_threshold must be 0.0-1.0")
+        row.llm_confidence_threshold = body.llm_confidence_threshold
         settings.llm_confidence_threshold = body.llm_confidence_threshold
     if body.news_enabled is not None:
+        row.news_enabled = body.news_enabled
         settings.news_enabled = body.news_enabled
-    logger.info("Global settings updated | %s", body.model_dump(exclude_none=True))
-    return await get_global_settings()
+
+    await db.commit()
+    await db.refresh(row)
+    logger.info("Global settings persisted to DB | %s", body.model_dump(exclude_none=True))
+    return await get_global_settings(db)
 
 
 # ── Risk Settings ──────────────────────────────────────────────────────────
