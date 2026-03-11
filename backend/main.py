@@ -15,6 +15,7 @@ from api.routes import settings as settings_routes
 from api.routes import backtest as backtest_routes
 from api.routes import storage as storage_routes
 from api.routes import llm_usage as llm_usage_routes
+from api.routes import scheduler as scheduler_routes
 from core.config import settings
 from core.logging import setup_logging
 from db.postgres import init_db
@@ -87,6 +88,7 @@ app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["set
 app.include_router(backtest_routes.router, prefix="/api/v1/backtest", tags=["backtest"])
 app.include_router(storage_routes.router, prefix="/api/v1/storage", tags=["storage"])
 app.include_router(llm_usage_routes.router, prefix="/api/v1/llm-usage", tags=["llm-usage"])
+app.include_router(scheduler_routes.router, prefix="/api/v1/scheduler", tags=["scheduler"])
 
 
 @app.get("/health", tags=["system"])

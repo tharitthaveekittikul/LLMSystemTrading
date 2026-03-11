@@ -296,3 +296,10 @@ export const llmUsageApi = {
   getPricing: () =>
     apiRequest<import("@/types/trading").LLMPricingEntry[]>("/llm-usage/pricing"),
 };
+
+// ── Scheduler ─────────────────────────────────────────────────────────────────
+
+export const schedulerApi = {
+  getJobs: () =>
+    apiRequest<import("@/types/trading").ScheduledJob[]>("/scheduler/jobs"),
+};

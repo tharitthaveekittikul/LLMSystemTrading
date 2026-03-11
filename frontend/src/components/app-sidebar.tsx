@@ -13,6 +13,7 @@ import {
   ScrollText,
   Settings,
   Shield,
+  Timer,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -37,6 +38,7 @@ const navItems = [
   { title: "Trades", url: "/trades", icon: TrendingUp },
   { title: "AI Signals", url: "/signals", icon: Brain },
   { title: "Pipeline Logs", url: "/logs", icon: ScrollText },
+  { title: "Schedule", url: "/schedule", icon: Timer },
   { title: "LLM Usage", url: "/llm-usage", icon: Coins },
   { title: "Storage", url: "/storage", icon: Database },
   { title: "Backtest", url: "/backtest", icon: FlaskConical },

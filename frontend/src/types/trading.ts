@@ -540,3 +540,14 @@ export interface RiskSettings {
   rate_limit_window_hours: number;
   hedging_allowed: boolean;
 }
+
+// ── Scheduler ─────────────────────────────────────────────────────────────────
+
+export interface ScheduledJob {
+  id: string;
+  name: string;
+  trigger_type: "cron" | "interval" | "date" | "unknown";
+  trigger_description: string;
+  next_run_time: string | null;
+  category: "strategy" | "system";
+}
