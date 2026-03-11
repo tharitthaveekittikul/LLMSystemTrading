@@ -282,6 +282,7 @@ export interface CreateStrategyPayload {
   sl_pips?: number;
   tp_pips?: number;
   news_filter?: boolean;
+  maintenance_enabled?: boolean;
   custom_prompt?: string;
   module_path?: string;
   class_name?: string;
@@ -378,6 +379,7 @@ export interface PipelineRunSummary {
   journal_id: number | null;
   trade_id: number | null;
   task_type?: "signal" | "maintenance";
+  strategy_name?: string | null;
   created_at: string;
 }
 
@@ -395,6 +397,7 @@ export interface PipelineRunCompleteData {
   total_duration_ms: number;
   step_count: number;
   task_type?: "signal" | "maintenance";
+  strategy_name?: string | null;
 }
 
 // ── Backtest ──────────────────────────────────────────────────────────────────

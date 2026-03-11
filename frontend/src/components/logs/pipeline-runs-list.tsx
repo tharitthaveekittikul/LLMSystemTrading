@@ -90,6 +90,7 @@ export function PipelineRunsList({
         journal_id: null,
         trade_id: null,
         task_type: data.task_type,
+        strategy_name: data.strategy_name,
         created_at: new Date().toISOString(),
       };
       setNewRunIds((prev) => new Set(prev).add(data.run_id));
@@ -178,6 +179,11 @@ export function PipelineRunsList({
                   <span className="text-sm font-medium flex-1 truncate">
                     {run.symbol} {run.timeframe}
                   </span>
+                  {run.strategy_name && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 max-w-[100px] truncate shrink-0">
+                      {run.strategy_name}
+                    </Badge>
+                  )}
                   <Badge
                     variant="outline"
                     className={`text-xs shrink-0 ${STATUS_STYLES[run.status] ?? ""}`}

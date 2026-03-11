@@ -34,7 +34,7 @@ async def run_abstract_strategy_pipeline(
     strategy_instance: AbstractStrategy,
 ) -> tuple[StrategyResult | None, int | None]:
     """Execute an AbstractStrategy within a PipelineTracer context."""
-    async with PipelineTracer(account_id, symbol, timeframe) as tracer:
+    async with PipelineTracer(account_id, symbol, timeframe, strategy_id=strategy_id) as tracer:
         return await _run_pipeline(
             tracer, account_id, symbol, timeframe, db, strategy_id, strategy_overrides, strategy_instance
         )

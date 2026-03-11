@@ -309,7 +309,7 @@ class PositionMaintenanceService:
         timeframe = strategy.timeframe or "H1"
 
         async with PipelineTracer(
-            account.id, symbol, timeframe, task_type="maintenance"
+            account.id, symbol, timeframe, task_type="maintenance", strategy_id=strategy.id
         ) as tracer:
             # Step 1: Fetch OHLCV
             t0 = time.monotonic()

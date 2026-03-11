@@ -185,6 +185,9 @@ class PipelineRun(Base):
     trade_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("trades.id"), nullable=True
     )
+    strategy_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("strategies.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )
@@ -193,6 +196,7 @@ class PipelineRun(Base):
         "PipelineStep", back_populates="run", cascade="all, delete-orphan",
         order_by="PipelineStep.seq",
     )
+    strategy: Mapped["Strategy | None"] = relationship("Strategy")
 
 
 class PipelineStep(Base):

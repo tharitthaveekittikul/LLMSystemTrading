@@ -186,7 +186,7 @@ class AITradingService:
         strategy_instance: object | None = None,
     ) -> AnalysisResult:
         """Run the full AI analysis -> optional trade execution pipeline."""
-        async with PipelineTracer(account_id, symbol, timeframe) as tracer:
+        async with PipelineTracer(account_id, symbol, timeframe, strategy_id=strategy_id) as tracer:
             return await self._run_pipeline(
                 tracer, account_id, symbol, timeframe, db, strategy_id, strategy_overrides,
                 strategy_instance,
@@ -676,9 +676,16 @@ class AITradingService:
                 role: str,
                 input_summary: dict,
             ) -> None:
+                input_payload = input_summary
+                if getattr(role_result, "prompt", None):
+                    input_payload = {
+                        "summary": input_summary,
+                        "prompt": role_result.prompt
+                    }
+
                 step_id = await tracer.record(
                     step_name,
-                    input_data=input_summary,
+                    input_data=input_payload,
                     output_data={
                         "model":         role_result.model,
                         "provider":      role_result.provider,

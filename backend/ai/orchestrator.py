@@ -51,6 +51,7 @@ class LLMRoleResult:
     provider: str
     duration_ms: int
     raw_text: str = ""                    # raw text response before parsing
+    prompt: Any = None                    # Payload sent to the LLM
 
 
 @dataclass
@@ -221,6 +222,27 @@ async def _call_llm_for_role(
     except Exception:
         content = raw_text
 
+    prompt_payload = []
+    for m in messages:
+        if isinstance(m.content, list):
+            content_parts = []
+            for item in m.content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    content_parts.append(str(item.get("text")))
+                elif isinstance(item, dict) and item.get("type") == "image_url":
+                    content_parts.append("[IMAGE BASE64 OMITTED]")
+                else:
+                    content_parts.append(str(item))
+            content_str = "\n".join(content_parts)
+        else:
+            content_str = str(m.content)
+            
+        role_type = type(m).__name__.replace("Message", "").lower()
+        prompt_payload.append({
+            "role": role_type,
+            "content": content_str
+        })
+
     logger.info(
         "LLM role=%s provider=%s model=%s input=%s output=%s total=%s duration=%dms",
         role, provider, model, inp, out, total, duration_ms,
@@ -234,6 +256,7 @@ async def _call_llm_for_role(
         provider=provider,
         duration_ms=duration_ms,
         raw_text=raw_text,
+        prompt=prompt_payload,
     )
 
 

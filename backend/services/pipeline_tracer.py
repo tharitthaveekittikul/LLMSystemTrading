@@ -32,11 +32,13 @@ class PipelineTracer:
         symbol: str,
         timeframe: str,
         task_type: str = "signal",
+        strategy_id: int | None = None,
     ) -> None:
         self._account_id = account_id
         self._symbol = symbol
         self._timeframe = timeframe
         self._task_type = task_type
+        self._strategy_id = strategy_id
         self._run: PipelineRun | None = None
         self._seq = 0
         self._start_ms = 0.0
@@ -56,6 +58,7 @@ class PipelineTracer:
             symbol=self._symbol,
             timeframe=self._timeframe,
             task_type=self._task_type,
+            strategy_id=self._strategy_id,
             status="running",
         )
         self._db.add(self._run)
@@ -156,6 +159,13 @@ class PipelineTracer:
             run_id = self._run.id
             if not exc_type:
                 try:
+                    strategy_name = None
+                    if self._strategy_id is not None:
+                        from db.models import Strategy
+                        strat = await self._db.get(Strategy, self._strategy_id)
+                        if strat:
+                            strategy_name = strat.name
+
                     from api.routes.ws import broadcast
                     await broadcast(self._account_id, "pipeline_run_complete", {
                         "run_id": run_id,
@@ -166,6 +176,7 @@ class PipelineTracer:
                         "total_duration_ms": total_ms,
                         "step_count": self._seq,
                         "task_type": self._task_type,
+                        "strategy_name": strategy_name,
                     })
                 except Exception as exc:
                     logger.debug("WS broadcast failed (non-critical): %s", exc)

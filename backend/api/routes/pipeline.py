@@ -38,6 +38,7 @@ class PipelineRunSummary(BaseModel):
     journal_id: int | None
     trade_id: int | None
     task_type: str
+    strategy_name: str | None = None
     created_at: str
 
     model_config = {"from_attributes": True}
@@ -55,6 +56,7 @@ class PipelineRunSummary(BaseModel):
             journal_id=run.journal_id,
             trade_id=run.trade_id,
             task_type=run.task_type or "signal",
+            strategy_name=run.strategy.name if getattr(run, "strategy", None) else None,
             created_at=run.created_at.isoformat(),
         )
 
@@ -74,7 +76,8 @@ async def list_runs(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> list[PipelineRunSummary]:
-    q = select(PipelineRun).order_by(desc(PipelineRun.created_at))
+    from sqlalchemy.orm import joinedload
+    q = select(PipelineRun).options(joinedload(PipelineRun.strategy)).order_by(desc(PipelineRun.created_at))
     if account_id is not None:
         q = q.where(PipelineRun.account_id == account_id)
     if symbol:
@@ -90,7 +93,8 @@ async def list_runs(
 
 @router.get("/runs/{run_id}", response_model=PipelineRunDetail)
 async def get_run(run_id: int, db: AsyncSession = Depends(get_db)) -> PipelineRunDetail:
-    run = await db.get(PipelineRun, run_id)
+    from sqlalchemy.orm import joinedload
+    run = await db.get(PipelineRun, run_id, options=[joinedload(PipelineRun.strategy)])
     if not run:
         raise HTTPException(status_code=404, detail="Pipeline run not found")
     steps_q = (
