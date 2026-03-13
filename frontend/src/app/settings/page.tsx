@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useTheme } from "next-themes";
 import {
   Monitor,
@@ -36,6 +36,14 @@ import type { GlobalSettings, RiskSettings } from "@/types/trading";
 import { accountsApi } from "@/lib/api/accounts";
 import { useSettings } from "@/hooks/use-settings";
 import type { Account } from "@/types/trading";
+import {
+  Combobox,
+  ComboboxInput,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxEmpty,
+} from "@/components/ui/combobox";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -265,6 +273,61 @@ interface TaskAssignmentsProps {
   providers: ProviderStatus[];
 }
 
+function ModelSelector({
+  value,
+  onValueChange,
+  models,
+  isLoading,
+  disabled,
+}: {
+  value: string;
+  onValueChange: (v: string) => void;
+  models: string[];
+  isLoading: boolean;
+  disabled: boolean;
+}) {
+  const [search, setSearch] = useState(value);
+
+  useEffect(() => {
+    setSearch(value);
+  }, [value]);
+
+  const filteredModels = useMemo(() => {
+    if (!search || search === value) return models;
+    return models.filter((m) => m.toLowerCase().includes(search.toLowerCase()));
+  }, [models, search, value]);
+
+  return (
+    <Combobox
+      value={value}
+      onValueChange={(v) => {
+        const next = v ?? "";
+        onValueChange(next);
+        setSearch(next);
+      }}
+    >
+      <ComboboxInput
+        placeholder={isLoading ? "Loading models…" : "Select model"}
+        className="font-mono text-sm w-full"
+        showClear={true}
+        disabled={disabled || isLoading}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      <ComboboxContent className="min-w-[200px]">
+        <ComboboxList>
+          {filteredModels.map((m) => (
+            <ComboboxItem key={m} value={m}>
+              {m}
+            </ComboboxItem>
+          ))}
+        </ComboboxList>
+        <ComboboxEmpty>No models found</ComboboxEmpty>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
 function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
   const [saving, setSaving] = useState(false);
@@ -378,27 +441,13 @@ function TaskAssignmentsSection({ providers }: TaskAssignmentsProps) {
                 </SelectContent>
               </Select>
               {models.length > 0 ? (
-                <Select
-                  value={a.model_name || "none"}
-                  onValueChange={(v) =>
-                    update(key, "model_name", v === "none" ? "" : v)
-                  }
-                >
-                  <SelectTrigger className="font-mono text-sm w-full min-w-0 overflow-hidden">
-                    <SelectValue
-                      placeholder="Select model"
-                      className="truncate"
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— Select model —</SelectItem>
-                    {models.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ModelSelector
+                  value={a.model_name || ""}
+                  onValueChange={(v) => update(key, "model_name", v)}
+                  models={models}
+                  isLoading={isLoadingModel}
+                  disabled={!a.provider}
+                />
               ) : (
                 <Input
                   placeholder={
