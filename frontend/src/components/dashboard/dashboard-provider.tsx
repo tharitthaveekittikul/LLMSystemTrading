@@ -3,14 +3,14 @@
 import { useCallback } from "react";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import { useWebSocket } from "@/hooks/use-websocket";
-import type { EquityPoint, EquityUpdateData, PositionsUpdateData } from "@/types/trading";
+import type { EquityPoint, EquityUpdateData, PendingOrdersUpdateData, PositionsUpdateData } from "@/types/trading";
 
 interface DashboardProviderProps {
   onEquityUpdate?: (point: EquityPoint) => void;
 }
 
 export function DashboardProvider({ onEquityUpdate }: DashboardProviderProps) {
-  const { activeAccountId, setBalance, setOpenPositions, setKillSwitch } =
+  const { activeAccountId, setBalance, setOpenPositions, setPendingOrders, setKillSwitch } =
     useTradingStore();
 
   const handleEquityUpdate = useCallback(
@@ -38,6 +38,10 @@ export function DashboardProvider({ onEquityUpdate }: DashboardProviderProps) {
     positions_update: (data) => {
       const d = data as PositionsUpdateData;
       setOpenPositions(d.positions);
+    },
+    pending_orders_update: (data) => {
+      const d = data as PendingOrdersUpdateData;
+      setPendingOrders(d.orders);
     },
     kill_switch_triggered: (data) => {
       const d = data as { reason: string };

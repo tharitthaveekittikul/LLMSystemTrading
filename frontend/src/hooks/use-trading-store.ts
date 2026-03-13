@@ -4,6 +4,7 @@ import type {
   AccountBalance,
   AISignal,
   KillSwitchStatus,
+  PendingOrder,
   Position,
 } from "@/types/trading";
 
@@ -13,6 +14,7 @@ interface TradingState {
   activeAccountId: number | null;
   balance: AccountBalance | null;
   openPositions: Position[];
+  pendingOrders: PendingOrder[];
   recentSignals: AISignal[];
   killSwitch: KillSwitchStatus;
 
@@ -23,6 +25,7 @@ interface TradingState {
   removeAccount: (id: number) => void;
   setBalance: (balance: AccountBalance) => void;
   setOpenPositions: (positions: Position[]) => void;
+  setPendingOrders: (orders: PendingOrder[]) => void;
   addSignal: (signal: AISignal) => void;
   setKillSwitch: (status: KillSwitchStatus) => void;
 }
@@ -32,6 +35,7 @@ export const useTradingStore = create<TradingState>((set) => ({
   activeAccountId: null,
   balance: null,
   openPositions: [],
+  pendingOrders: [],
   recentSignals: [],
   killSwitch: { is_active: false, reason: null, activated_at: null },
 
@@ -48,6 +52,7 @@ export const useTradingStore = create<TradingState>((set) => ({
     })),
   setBalance: (balance) => set({ balance }),
   setOpenPositions: (positions) => set({ openPositions: positions }),
+  setPendingOrders: (orders) => set({ pendingOrders: orders }),
   addSignal: (signal) =>
     set((state) => ({
       recentSignals: [signal, ...state.recentSignals].slice(0, 50),

@@ -146,6 +146,7 @@ export interface KillSwitchStatus {
 export type WSEventType =
   | "equity_update"
   | "positions_update"
+  | "pending_orders_update"
   | "trade_opened"
   | "trade_closed"
   | "ai_signal"
@@ -172,6 +173,22 @@ export interface EquityUpdateData {
 export interface PositionsUpdateData {
   account_id: number;
   positions: Position[];
+}
+
+export interface PendingOrder {
+  ticket: number;
+  symbol: string;
+  type: "buy_limit" | "sell_limit" | "buy_stop" | "sell_stop" | "buy_stop_limit" | "sell_stop_limit" | "unknown";
+  volume: number;
+  price: number;
+  sl: number | null;
+  tp: number | null;
+  placed_time: string;
+}
+
+export interface PendingOrdersUpdateData {
+  account_id: number;
+  orders: PendingOrder[];
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────

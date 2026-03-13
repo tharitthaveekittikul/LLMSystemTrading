@@ -137,6 +137,7 @@ async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState)
 
     info = await bridge.get_account_info()
     positions = await bridge.get_positions()
+    pending_orders = await bridge.get_orders()
 
     if info:
         await broadcast(account_id, "equity_update", {
@@ -155,8 +156,16 @@ async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState)
         "positions": [_normalize_position(p) for p in positions],
     })
 
+    await broadcast(account_id, "pending_orders_update", {
+        "account_id": account_id,
+        "orders": [_normalize_order(o) for o in pending_orders],
+    })
+
     state.last_polled_at = datetime.now(UTC)
-    logger.debug("Polled | account_id=%s positions=%d", account_id, len(positions))
+    logger.debug(
+        "Polled | account_id=%s positions=%d pending_orders=%d",
+        account_id, len(positions), len(pending_orders),
+    )
 
 
 def _normalize_position(pos: dict) -> dict:
@@ -172,4 +181,30 @@ def _normalize_position(pos: dict) -> dict:
         "profit":        pos.get("profit"),
         "swap":          pos.get("swap"),
         "open_time":     datetime.fromtimestamp(pos.get("time", 0), UTC).isoformat(),
+    }
+
+
+# MT5 ORDER_TYPE_* constants for pending orders:
+#   2 = BUY_LIMIT, 3 = SELL_LIMIT, 4 = BUY_STOP, 5 = SELL_STOP
+#   6 = BUY_STOP_LIMIT, 7 = SELL_STOP_LIMIT
+_ORDER_TYPE_NAMES: dict[int, str] = {
+    2: "buy_limit",
+    3: "sell_limit",
+    4: "buy_stop",
+    5: "sell_stop",
+    6: "buy_stop_limit",
+    7: "sell_stop_limit",
+}
+
+
+def _normalize_order(order: dict) -> dict:
+    return {
+        "ticket":       order.get("ticket"),
+        "symbol":       order.get("symbol"),
+        "type":         _ORDER_TYPE_NAMES.get(order.get("type", -1), "unknown"),
+        "volume":       order.get("volume_current"),
+        "price":        order.get("price_open"),
+        "sl":           order.get("sl") or None,
+        "tp":           order.get("tp") or None,
+        "placed_time":  datetime.fromtimestamp(order.get("time_setup", 0), UTC).isoformat(),
     }
