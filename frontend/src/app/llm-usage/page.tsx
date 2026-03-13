@@ -97,6 +97,11 @@ export default function LLMUsagePage() {
             Gemini <ExternalLink className="h-3 w-3" />
           </a>
         </Button>
+        <Button variant="outline" size="sm" className="h-8 px-3 text-xs gap-1.5 text-muted-foreground hover:text-foreground" asChild>
+          <a href="https://openrouter.ai/activity?api_key_id=15256216" target="_blank" rel="noopener noreferrer">
+            OpenRouter <ExternalLink className="h-3 w-3" />
+          </a>
+        </Button>
       </div>
       <div className="flex items-center gap-1 rounded-lg border p-1">
         {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (

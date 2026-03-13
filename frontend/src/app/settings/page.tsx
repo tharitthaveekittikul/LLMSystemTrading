@@ -39,7 +39,7 @@ import type { Account } from "@/types/trading";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const PROVIDERS = ["openai", "gemini", "anthropic"] as const;
+const PROVIDERS = ["openai", "gemini", "anthropic", "openrouter"] as const;
 type Provider = (typeof PROVIDERS)[number];
 
 const TASKS: { key: string; label: string }[] = [
@@ -55,6 +55,7 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   openai: "OpenAI",
   gemini: "Gemini",
   anthropic: "Anthropic",
+  openrouter: "OpenRouter",
 };
 
 // ── Section 1: Theme ──────────────────────────────────────────────────────────
@@ -495,7 +496,9 @@ function MaintenanceSection() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="maintenance-interval">Maintenance Interval (minutes)</Label>
+          <Label htmlFor="maintenance-interval">
+            Maintenance Interval (minutes)
+          </Label>
           <Input
             id="maintenance-interval"
             type="number"
@@ -540,7 +543,12 @@ function RiskManagerSection() {
     }, 800);
   };
 
-  if (!risk) return <div className="text-sm text-muted-foreground">Loading risk settings…</div>;
+  if (!risk)
+    return (
+      <div className="text-sm text-muted-foreground">
+        Loading risk settings…
+      </div>
+    );
 
   return (
     <div className="space-y-4">
@@ -568,7 +576,11 @@ function RiskManagerSection() {
               min={0.1}
               max={100}
               step={0.5}
-              onChange={(e) => handleChange({ max_drawdown_pct: parseFloat(e.target.value) || 10 })}
+              onChange={(e) =>
+                handleChange({
+                  max_drawdown_pct: parseFloat(e.target.value) || 10,
+                })
+              }
             />
           </div>
         )}
@@ -597,7 +609,11 @@ function RiskManagerSection() {
               value={risk.max_open_positions}
               min={1}
               step={1}
-              onChange={(e) => handleChange({ max_open_positions: parseInt(e.target.value) || 5 })}
+              onChange={(e) =>
+                handleChange({
+                  max_open_positions: parseInt(e.target.value) || 5,
+                })
+              }
             />
           </div>
         )}
@@ -628,7 +644,9 @@ function RiskManagerSection() {
                 min={1}
                 step={1}
                 onChange={(e) =>
-                  handleChange({ rate_limit_max_trades: parseInt(e.target.value) || 3 })
+                  handleChange({
+                    rate_limit_max_trades: parseInt(e.target.value) || 3,
+                  })
                 }
               />
             </div>
@@ -641,7 +659,9 @@ function RiskManagerSection() {
                 min={0.5}
                 step={0.5}
                 onChange={(e) =>
-                  handleChange({ rate_limit_window_hours: parseFloat(e.target.value) || 4 })
+                  handleChange({
+                    rate_limit_window_hours: parseFloat(e.target.value) || 4,
+                  })
                 }
               />
             </div>
@@ -694,7 +714,7 @@ export default function SettingsPage() {
         showAccountSelector={false}
         showConnectionStatus={false}
       />
-      <div className="flex flex-1 flex-col gap-6 p-6 max-w-4xl">
+      <div className="flex flex-1 flex-col gap-6 p-6 max-w-6xl">
         <ThemeSection />
         <DisplaySection />
 
@@ -702,7 +722,7 @@ export default function SettingsPage() {
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
             LLM Providers
           </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {PROVIDERS.map((p) => (
               <ProviderCard
                 key={p}
@@ -715,12 +735,13 @@ export default function SettingsPage() {
         </div>
 
         <MaintenanceSection />
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Risk Manager</CardTitle>
             <CardDescription>
-              Configure and toggle individual risk rules. Changes are saved instantly.
+              Configure and toggle individual risk rules. Changes are saved
+              instantly.
             </CardDescription>
           </CardHeader>
           <CardContent>

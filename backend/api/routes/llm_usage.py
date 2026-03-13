@@ -38,6 +38,7 @@ class LLMTimeseriesPoint(BaseModel):
     google: float
     anthropic: float
     openai: float
+    openrouter: float
 
 
 class LLMModelUsage(BaseModel):
@@ -88,9 +89,10 @@ async def get_summary(
     active_models = sorted({r.model for r in rows})
 
     by_provider: dict[str, ProviderStats] = {
-        "google":    ProviderStats(cost_usd=0.0, tokens=0, calls=0),
-        "anthropic": ProviderStats(cost_usd=0.0, tokens=0, calls=0),
-        "openai":    ProviderStats(cost_usd=0.0, tokens=0, calls=0),
+        "google":      ProviderStats(cost_usd=0.0, tokens=0, calls=0),
+        "anthropic":   ProviderStats(cost_usd=0.0, tokens=0, calls=0),
+        "openai":      ProviderStats(cost_usd=0.0, tokens=0, calls=0),
+        "openrouter":  ProviderStats(cost_usd=0.0, tokens=0, calls=0),
     }
     for r in rows:
         p = r.provider if r.provider in by_provider else "openai"
@@ -129,7 +131,7 @@ async def get_timeseries(
             else r.created_at.strftime("%Y-%m-%d")
         )
         if key not in buckets:
-            buckets[key] = {"google": 0.0, "anthropic": 0.0, "openai": 0.0}
+            buckets[key] = {"google": 0.0, "anthropic": 0.0, "openai": 0.0, "openrouter": 0.0}
         provider = r.provider if r.provider in buckets[key] else "openai"
         buckets[key][provider] += float(r.cost_usd or 0)
 
@@ -139,6 +141,7 @@ async def get_timeseries(
             google=round(v["google"], 8),
             anthropic=round(v["anthropic"], 8),
             openai=round(v["openai"], 8),
+            openrouter=round(v["openrouter"], 8),
         )
         for k, v in sorted(buckets.items())
     ]

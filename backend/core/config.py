@@ -27,12 +27,13 @@ class Settings(BaseSettings):
     jwt_secret: str = _DEV_JWT_SECRET
 
     # ── LLM ───────────────────────────────────────────────────────────────────
-    llm_provider: str = "openai"  # openai | gemini | anthropic
+    llm_provider: str = "openai"  # openai | gemini | anthropic | openrouter
     llm_confidence_threshold: float = 0.70
     openai_api_key: str = ""
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"  # override with GEMINI_MODEL in .env
     anthropic_api_key: str = ""
+    openrouter_api_key: str = ""
 
     # ── MetaTrader 5 ──────────────────────────────────────────────────────────
     mt5_path: str = ""  # leave empty to use default MT5 installation path
@@ -75,7 +76,7 @@ class Settings(BaseSettings):
     @field_validator("llm_provider")
     @classmethod
     def validate_llm_provider(cls, v: str) -> str:
-        allowed = {"openai", "gemini", "anthropic"}
+        allowed = {"openai", "gemini", "anthropic", "openrouter"}
         if v not in allowed:
             raise ValueError(f"llm_provider must be one of {allowed}, got '{v}'")
         return v
@@ -154,6 +155,7 @@ class Settings(BaseSettings):
             "openai": ("openai_api_key", "OPENAI_API_KEY"),
             "gemini": ("gemini_api_key", "GEMINI_API_KEY"),
             "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+            "openrouter": ("openrouter_api_key", "OPENROUTER_API_KEY"),
         }
         attr, env_var = _provider_key_map[self.llm_provider]
         if not getattr(self, attr):

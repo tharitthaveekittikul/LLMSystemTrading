@@ -499,6 +499,7 @@ export interface LLMTimeseriesPoint {
   google: number
   anthropic: number
   openai: number
+  openrouter: number
 }
 
 export interface LLMModelUsage {

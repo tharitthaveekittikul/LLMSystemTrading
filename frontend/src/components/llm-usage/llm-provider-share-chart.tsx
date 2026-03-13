@@ -8,9 +8,10 @@ import type { LLMUsageSummary } from "@/types/trading"
 
 // Minimal, harmonious muted palette — one distinct hue per provider
 const COLORS: Record<string, string> = {
-  google:    "#6366f1", // indigo
-  anthropic: "#f59e0b", // amber
-  openai:    "#10b981", // emerald
+  google:     "#6366f1", // indigo
+  anthropic:  "#f59e0b", // amber
+  openai:     "#10b981", // emerald
+  openrouter: "#ec4899", // pink
 }
 
 const DEFAULT_COLOR = "#94a3b8" // slate-400 for unknown providers

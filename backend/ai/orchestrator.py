@@ -125,11 +125,24 @@ def _build_llm(
             temperature=0,
         )
 
+    if resolved_provider == "openrouter":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=model or "openai/gpt-4o",
+            api_key=api_key or settings.openrouter_api_key,
+            base_url="https://openrouter.ai/api/v1",
+            temperature=0,
+        )
+
     raise ValueError(f"Unknown llm_provider: {resolved_provider!r}")
 
 
 def _provider_from_llm(llm: BaseChatModel) -> str:
     """Derive short provider name from LangChain model class."""
+    # Check for openrouter first — uses ChatOpenAI with a custom base_url
+    base_url = str(getattr(llm, "openai_api_base", "") or "")
+    if "openrouter" in base_url:
+        return "openrouter"
     mod = type(llm).__module__
     if "openai" in mod:
         return "openai"

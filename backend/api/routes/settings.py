@@ -15,7 +15,7 @@ from db.postgres import get_db
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-_VALID_PROVIDERS = {"openai", "gemini", "anthropic"}
+_VALID_PROVIDERS = {"openai", "gemini", "anthropic", "openrouter"}
 _VALID_TASKS = {
     "market_analysis", "vision", "execution_decision",
     "maintenance_technical", "maintenance_sentiment", "maintenance_decision",
@@ -87,6 +87,15 @@ async def _fetch_provider_models(provider: str, api_key: str) -> list[str]:
             response = await client.models.list()
             return [m.id for m in response.data]
 
+        if provider == "openrouter":
+            import openai  # noqa: PLC0415
+            client = openai.AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://openrouter.ai/api/v1",
+            )
+            response = await client.models.list()
+            return sorted(m.id for m in response.data)
+
     except Exception as exc:
         logger.warning("Failed to fetch models for %s: %s", provider, exc)
     return []
@@ -114,6 +123,15 @@ async def _test_provider_connection(provider: str, api_key: str) -> tuple[bool, 
             await client.models.list()
             return True, "Connected to Anthropic"
 
+        if provider == "openrouter":
+            import openai  # noqa: PLC0415
+            client = openai.AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://openrouter.ai/api/v1",
+            )
+            await client.models.list()
+            return True, "Connected to OpenRouter"
+
         return False, f"Unknown provider: {provider}"
 
     except Exception as exc:
@@ -129,7 +147,7 @@ async def list_providers(db: AsyncSession = Depends(get_db)) -> list[ProviderSta
     configs = {row.provider: row for row in rows}
 
     result: list[ProviderStatus] = []
-    for provider in ["openai", "gemini", "anthropic"]:
+    for provider in ["openai", "gemini", "anthropic", "openrouter"]:
         row = configs.get(provider)
         if row:
             result.append(ProviderStatus(

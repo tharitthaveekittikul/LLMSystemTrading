@@ -9,9 +9,10 @@ import type { LLMTimeseriesPoint } from "@/types/trading"
 
 // Minimal, harmonious muted palette — matches provider-share chart
 const PROVIDER_COLORS: Record<string, string> = {
-  google:    "#6366f1", // indigo
-  anthropic: "#f59e0b", // amber
-  openai:    "#10b981", // emerald
+  google:     "#6366f1", // indigo
+  anthropic:  "#f59e0b", // amber
+  openai:     "#10b981", // emerald
+  openrouter: "#ec4899", // pink
 }
 
 interface TimeseriesChartProps {
@@ -116,8 +117,8 @@ export function LLMUsageTimeseriesChart({
             />
             <Tooltip content={<CustomTooltip granularity={granularity} />} />
             <Legend content={<CustomLegend />} />
-            {(["google", "anthropic", "openai"] as const).map(p => (
-              <Bar key={p} dataKey={p} stackId="a" fill={PROVIDER_COLORS[p]} name={p} radius={p === "openai" ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
+            {(["google", "anthropic", "openai", "openrouter"] as const).map(p => (
+              <Bar key={p} dataKey={p} stackId="a" fill={PROVIDER_COLORS[p]} name={p} radius={p === "openrouter" ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
             ))}
           </BarChart>
         </ResponsiveContainer>
