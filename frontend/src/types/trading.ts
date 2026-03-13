@@ -542,6 +542,15 @@ export interface RiskSettings {
   hedging_allowed: boolean;
 }
 
+// ── Telegram Settings ─────────────────────────────────────────────────────────
+
+export interface TelegramSettings {
+  is_configured: boolean;
+  is_enabled: boolean;
+  chat_id: string;
+  token_hint: string | null;
+}
+
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 export interface ScheduledJob {

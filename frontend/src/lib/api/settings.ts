@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import type { GlobalSettings, RiskSettings } from "@/types/trading";
+import type { GlobalSettings, RiskSettings, TelegramSettings } from "@/types/trading";
 
 export interface ProviderStatus {
   provider: string;
@@ -59,6 +59,27 @@ export const settingsApi = {
 
   patchRisk: (body: Partial<RiskSettings>) =>
     apiRequest<RiskSettings>("/settings/risk", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  getTelegram: () =>
+    apiRequest<TelegramSettings>("/settings/telegram"),
+
+  saveTelegram: (bot_token: string, chat_id: string) =>
+    apiRequest<TelegramSettings>("/settings/telegram", {
+      method: "PUT",
+      body: JSON.stringify({ bot_token, chat_id }),
+    }),
+
+  testTelegram: (bot_token: string, chat_id: string) =>
+    apiRequest<{ success: boolean; message: string }>("/settings/telegram/test", {
+      method: "POST",
+      body: JSON.stringify({ bot_token, chat_id }),
+    }),
+
+  patchTelegram: (body: { is_enabled?: boolean }) =>
+    apiRequest<TelegramSettings>("/settings/telegram", {
       method: "PATCH",
       body: JSON.stringify(body),
     }),

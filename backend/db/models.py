@@ -379,6 +379,21 @@ class BacktestTrade(Base):
     run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="trades")
 
 
+class TelegramSettings(Base):
+    __tablename__ = "telegram_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bot_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bot_token_hint: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    chat_id: Mapped[str] = mapped_column(String(100), default="")
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
 class HMMModelRegistry(Base):
     __tablename__ = "hmm_model_registry"
 

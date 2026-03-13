@@ -40,8 +40,9 @@ async def lifespan(app: FastAPI):
 
     # ── Load persisted global settings from DB ────────────────────────────────
     from db.postgres import AsyncSessionLocal
-    from db.models import GlobalSettings as GlobalSettingsModel
+    from db.models import GlobalSettings as GlobalSettingsModel, TelegramSettings as TelegramSettingsModel
     from sqlalchemy import select as sa_select
+    from core.security import decrypt as _decrypt
     async with AsyncSessionLocal() as _db:
         _row = (await _db.execute(
             sa_select(GlobalSettingsModel).where(GlobalSettingsModel.id == 1)
@@ -56,6 +57,14 @@ async def lifespan(app: FastAPI):
                 _row.maintenance_interval_minutes,
                 _row.maintenance_task_enabled,
             )
+
+        _tg = (await _db.execute(
+            sa_select(TelegramSettingsModel).where(TelegramSettingsModel.id == 1)
+        )).scalar_one_or_none()
+        if _tg and _tg.is_enabled and _tg.bot_token_encrypted and _tg.chat_id:
+            settings.telegram_bot_token = _decrypt(_tg.bot_token_encrypted)
+            settings.telegram_chat_id = _tg.chat_id
+            logger.info("Telegram settings loaded from DB | chat_id=%s", _tg.chat_id)
 
     from services.equity_poller import run_equity_poller
     poller_task = asyncio.create_task(run_equity_poller())
