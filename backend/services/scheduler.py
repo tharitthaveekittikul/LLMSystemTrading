@@ -2,7 +2,9 @@ from __future__ import annotations
 import importlib
 import json
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -101,6 +103,27 @@ async def _run_strategy_job(
 ) -> None:
     from db.postgres import AsyncSessionLocal
     from services.ai_trading import AITradingService
+
+    # ── Skip-hour guard ───────────────────────────────────────────────────────
+    if strategy_id:
+        from db.models import Strategy as _Strategy
+        async with AsyncSessionLocal() as _db:
+            _s = await _db.get(_Strategy, strategy_id)
+        if _s and _s.skip_hours:
+            _skip: list[int] = json.loads(_s.skip_hours)
+            _tz_str = _s.skip_hours_timezone or "UTC"
+            try:
+                _tz = ZoneInfo(_tz_str)
+            except ZoneInfoNotFoundError:
+                _tz = ZoneInfo("UTC")
+            _now_hour = datetime.now(_tz).hour
+            if _now_hour in _skip:
+                logger.info(
+                    "Skip hour %02d (%s): strategy_id=%s symbol=%s — candle skipped",
+                    _now_hour, _tz_str, strategy_id, symbol,
+                )
+                return
+    # ─────────────────────────────────────────────────────────────────────────
 
     # Load code strategy instance fresh each run.
     strategy_instance = None

@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { strategiesApi } from "@/lib/api/strategies";
 import type { Strategy } from "@/types/trading";
 import { X } from "lucide-react";
+import { SkipHoursGrid } from "@/components/strategies/skip-hours-grid";
 
 type ExecMode =
   | "llm_only"
@@ -85,6 +86,8 @@ export default function EditStrategyPage() {
           custom_prompt: s.custom_prompt ?? undefined,
           module_path: s.module_path ?? undefined,
           class_name: s.class_name ?? undefined,
+          skip_hours: s.skip_hours ?? [],
+          skip_hours_timezone: s.skip_hours_timezone ?? "Asia/Bangkok",
         });
       } catch (err) {
         console.error(err);
@@ -133,6 +136,8 @@ export default function EditStrategyPage() {
         custom_prompt: form.custom_prompt ?? undefined,
         module_path: form.module_path ?? undefined,
         class_name: form.class_name ?? undefined,
+        skip_hours: form.skip_hours,
+        skip_hours_timezone: form.skip_hours_timezone ?? undefined,
       });
       router.push(`/strategies/${strategyId}`);
     } catch (err) {
@@ -384,6 +389,26 @@ export default function EditStrategyPage() {
                     </span>
                   </div>
                 )}
+              </div>
+              {/* Skip Hours */}
+              <div className="space-y-2">
+                <Label>
+                  Skip Hours{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (candle closes at these hours will be ignored)
+                  </span>
+                </Label>
+                <SkipHoursGrid
+                  hours={form.skip_hours ?? []}
+                  timezone={form.skip_hours_timezone ?? "Asia/Bangkok"}
+                  onChange={(h, tz) =>
+                    setForm((f) => ({
+                      ...f,
+                      skip_hours: h,
+                      skip_hours_timezone: tz,
+                    }))
+                  }
+                />
               </div>
             </>
           )}

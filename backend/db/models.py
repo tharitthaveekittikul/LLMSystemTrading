@@ -126,6 +126,8 @@ class Strategy(Base):
     class_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     maintenance_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    skip_hours: Mapped[str | None] = mapped_column(Text, nullable=True)          # JSON list of ints, e.g. [4,6,7]
+    skip_hours_timezone: Mapped[str | None] = mapped_column(String(60), nullable=True)  # IANA, e.g. "Asia/Bangkok"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     account_bindings: Mapped[list["AccountStrategy"]] = relationship(
@@ -148,6 +150,8 @@ def _strategy_init_defaults(_target: Strategy, _args: tuple, kwargs: dict) -> No
     kwargs.setdefault("news_filter", True)
     kwargs.setdefault("is_active", True)
     kwargs.setdefault("maintenance_enabled", True)
+    kwargs.setdefault("skip_hours", None)
+    kwargs.setdefault("skip_hours_timezone", None)
     kwargs.setdefault("created_at", datetime.now(UTC))
 
 

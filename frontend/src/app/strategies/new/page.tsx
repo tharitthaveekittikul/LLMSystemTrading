@@ -16,6 +16,7 @@ import { strategiesApi } from "@/lib/api/strategies";
 import { accountsApi } from "@/lib/api/accounts";
 import type { Account, CreateStrategyPayload } from "@/types/trading";
 import { X } from "lucide-react";
+import { SkipHoursGrid } from "../../../components/strategies/skip-hours-grid";
 
 const STEP_LABELS = [
   "Basics",
@@ -24,7 +25,12 @@ const STEP_LABELS = [
   "Bind Accounts",
 ];
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
-type ExecMode = "llm_only" | "rule_then_llm" | "rule_only" | "hybrid_validator" | "multi_agent";
+type ExecMode =
+  | "llm_only"
+  | "rule_then_llm"
+  | "rule_only"
+  | "hybrid_validator"
+  | "multi_agent";
 type TrigType = "candle_close" | "interval";
 
 export default function NewStrategyPage() {
@@ -43,6 +49,8 @@ export default function NewStrategyPage() {
     primary_tf: "M15",
     context_tfs: [],
     news_filter: true,
+    skip_hours: [],
+    skip_hours_timezone: "Asia/Bangkok",
   });
 
   useEffect(() => {
@@ -141,17 +149,41 @@ export default function NewStrategyPage() {
               <div className="space-y-2">
                 <Label>Execution Mode</Label>
                 <div className="grid grid-cols-1 gap-2">
-                  {([
-                    ["llm_only", "LLM Only", "LLM analyzes every candle. Requires custom_prompt."],
-                    ["rule_then_llm", "Rule → LLM", "Rule pre-filters; LLM validates triggered signals. Requires Python class."],
-                    ["rule_only", "Rule Only", "Fully deterministic rules. Zero LLM cost. Requires Python class."],
-                    ["hybrid_validator", "Hybrid Validator", "Rules open the trade; LLM validates post-entry. Requires Python class."],
-                    ["multi_agent", "Multi-Agent", "Rules + LLM run in parallel; consensus required. Requires Python class."],
-                  ] as [ExecMode, string, string][]).map(([mode, label, desc]) => (
+                  {(
+                    [
+                      [
+                        "llm_only",
+                        "LLM Only",
+                        "LLM analyzes every candle. Requires custom_prompt.",
+                      ],
+                      [
+                        "rule_then_llm",
+                        "Rule → LLM",
+                        "Rule pre-filters; LLM validates triggered signals. Requires Python class.",
+                      ],
+                      [
+                        "rule_only",
+                        "Rule Only",
+                        "Fully deterministic rules. Zero LLM cost. Requires Python class.",
+                      ],
+                      [
+                        "hybrid_validator",
+                        "Hybrid Validator",
+                        "Rules open the trade; LLM validates post-entry. Requires Python class.",
+                      ],
+                      [
+                        "multi_agent",
+                        "Multi-Agent",
+                        "Rules + LLM run in parallel; consensus required. Requires Python class.",
+                      ],
+                    ] as [ExecMode, string, string][]
+                  ).map(([mode, label, desc]) => (
                     <button
                       key={mode}
                       type="button"
-                      onClick={() => setForm((f) => ({ ...f, execution_mode: mode }))}
+                      onClick={() =>
+                        setForm((f) => ({ ...f, execution_mode: mode }))
+                      }
                       className={`text-left rounded-lg border px-3 py-2 transition-colors ${
                         form.execution_mode === mode
                           ? "bg-primary text-primary-foreground border-primary"
@@ -159,7 +191,9 @@ export default function NewStrategyPage() {
                       }`}
                     >
                       <p className="text-sm font-medium">{label}</p>
-                      <p className={`text-xs mt-0.5 ${form.execution_mode === mode ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                      <p
+                        className={`text-xs mt-0.5 ${form.execution_mode === mode ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                      >
                         {desc}
                       </p>
                     </button>
@@ -230,7 +264,9 @@ export default function NewStrategyPage() {
                         setForm((f) => ({
                           ...f,
                           primary_tf: tf,
-                          context_tfs: (f.context_tfs ?? []).filter((t) => t !== tf),
+                          context_tfs: (f.context_tfs ?? []).filter(
+                            (t) => t !== tf,
+                          ),
                         }))
                       }
                       className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${
@@ -252,33 +288,35 @@ export default function NewStrategyPage() {
                   </span>
                 </Label>
                 <div className="flex gap-2 flex-wrap">
-                  {TIMEFRAMES.filter((tf) => tf !== form.primary_tf).map((tf) => {
-                    const selected = (form.context_tfs ?? []).includes(tf);
-                    return (
-                      <button
-                        key={tf}
-                        type="button"
-                        onClick={() =>
-                          setForm((f) => {
-                            const cur = f.context_tfs ?? [];
-                            return {
-                              ...f,
-                              context_tfs: selected
-                                ? cur.filter((t) => t !== tf)
-                                : [...cur, tf],
-                            };
-                          })
-                        }
-                        className={`rounded-lg border-2 px-2 py-2 text-sm font-medium transition-colors ${
-                          selected
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border bg-background hover:bg-muted"
-                        }`}
-                      >
-                        {tf}
-                      </button>
-                    );
-                  })}
+                  {TIMEFRAMES.filter((tf) => tf !== form.primary_tf).map(
+                    (tf) => {
+                      const selected = (form.context_tfs ?? []).includes(tf);
+                      return (
+                        <button
+                          key={tf}
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => {
+                              const cur = f.context_tfs ?? [];
+                              return {
+                                ...f,
+                                context_tfs: selected
+                                  ? cur.filter((t) => t !== tf)
+                                  : [...cur, tf],
+                              };
+                            })
+                          }
+                          className={`rounded-lg border-2 px-2 py-2 text-sm font-medium transition-colors ${
+                            selected
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-background hover:bg-muted"
+                          }`}
+                        >
+                          {tf}
+                        </button>
+                      );
+                    },
+                  )}
                 </div>
               </div>
               <div className="space-y-2">
@@ -316,6 +354,26 @@ export default function NewStrategyPage() {
                   </div>
                 )}
               </div>
+              {/* Skip Hours */}
+              <div className="space-y-2">
+                <Label>
+                  Skip Hours{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (candle closes at these hours will be ignored)
+                  </span>
+                </Label>
+                <SkipHoursGrid
+                  hours={form.skip_hours ?? []}
+                  timezone={form.skip_hours_timezone ?? "Asia/Bangkok"}
+                  onChange={(h, tz) =>
+                    setForm((f) => ({
+                      ...f,
+                      skip_hours: h,
+                      skip_hours_timezone: tz,
+                    }))
+                  }
+                />
+              </div>
             </>
           )}
 
@@ -329,7 +387,12 @@ export default function NewStrategyPage() {
                   <Label>Custom LLM System Prompt</Label>
                   <Textarea
                     value={form.custom_prompt ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, custom_prompt: e.target.value || undefined }))}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        custom_prompt: e.target.value || undefined,
+                      }))
+                    }
                     className="font-mono text-sm"
                     rows={10}
                     placeholder="You are a forex trading expert specializing in..."
@@ -344,7 +407,12 @@ export default function NewStrategyPage() {
                     <Label>Module Path</Label>
                     <Input
                       value={form.module_path ?? ""}
-                      onChange={(e) => setForm((f) => ({ ...f, module_path: e.target.value || undefined }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          module_path: e.target.value || undefined,
+                        }))
+                      }
                       placeholder="strategies.harmonic.harmonic_strategy"
                     />
                   </div>
@@ -352,15 +420,34 @@ export default function NewStrategyPage() {
                     <Label>Class Name</Label>
                     <Input
                       value={form.class_name ?? ""}
-                      onChange={(e) => setForm((f) => ({ ...f, class_name: e.target.value || undefined }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          class_name: e.target.value || undefined,
+                        }))
+                      }
                       placeholder="HarmonicStrategy"
                     />
                   </div>
                   <div className="rounded-lg bg-muted p-4 text-sm text-muted-foreground space-y-2">
-                    <p className="font-medium text-foreground">How to add a code strategy:</p>
+                    <p className="font-medium text-foreground">
+                      How to add a code strategy:
+                    </p>
                     <ol className="list-decimal list-inside space-y-1">
-                      <li>Create <code className="font-mono">backend/strategies/your_strategy.py</code></li>
-                      <li>Extend <code className="font-mono">RuleOnlyStrategy</code> (or the relevant base class) and implement <code className="font-mono">generate_rule_signal()</code></li>
+                      <li>
+                        Create{" "}
+                        <code className="font-mono">
+                          backend/strategies/your_strategy.py
+                        </code>
+                      </li>
+                      <li>
+                        Extend{" "}
+                        <code className="font-mono">RuleOnlyStrategy</code> (or
+                        the relevant base class) and implement{" "}
+                        <code className="font-mono">
+                          generate_rule_signal()
+                        </code>
+                      </li>
                       <li>Restart the backend once</li>
                       <li>Enter module path and class name above</li>
                     </ol>

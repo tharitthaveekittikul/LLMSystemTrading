@@ -37,6 +37,8 @@ class StrategyCreate(BaseModel):
     custom_prompt: str | None = None
     module_path: str | None = None
     class_name: str | None = None
+    skip_hours: list[int] = []
+    skip_hours_timezone: str = "Asia/Bangkok"
 
 
 class StrategyUpdate(BaseModel):
@@ -59,6 +61,8 @@ class StrategyUpdate(BaseModel):
     class_name: str | None = None
     is_active: bool | None = None
     maintenance_enabled: bool | None = None
+    skip_hours: list[int] | None = None
+    skip_hours_timezone: str | None = None
 
 
 class StrategyResponse(BaseModel):
@@ -82,6 +86,8 @@ class StrategyResponse(BaseModel):
     class_name: str | None
     is_active: bool
     maintenance_enabled: bool
+    skip_hours: list[int]
+    skip_hours_timezone: str | None
     binding_count: int = 0
     model_config = {"from_attributes": True}
 
@@ -124,6 +130,8 @@ def _to_response(strategy: Strategy, binding_count: int = 0) -> StrategyResponse
         class_name=strategy.class_name,
         is_active=strategy.is_active,
         maintenance_enabled=strategy.maintenance_enabled,
+        skip_hours=json.loads(strategy.skip_hours) if strategy.skip_hours else [],
+        skip_hours_timezone=strategy.skip_hours_timezone,
         binding_count=binding_count,
     )
 
@@ -173,6 +181,8 @@ async def create_strategy(body: StrategyCreate, db: AsyncSession = Depends(get_d
         custom_prompt=body.custom_prompt,
         module_path=body.module_path,
         class_name=body.class_name,
+        skip_hours=json.dumps(body.skip_hours) if body.skip_hours else None,
+        skip_hours_timezone=body.skip_hours_timezone or None,
     )
     db.add(strategy)
     try:
@@ -210,6 +220,8 @@ async def update_strategy(
         data["symbols"] = json.dumps(data["symbols"])
     if "context_tfs" in data:
         data["context_tfs"] = json.dumps(data["context_tfs"])
+    if "skip_hours" in data:
+        data["skip_hours"] = json.dumps(data["skip_hours"]) if data["skip_hours"] else None
     for key, value in data.items():
         setattr(strategy, key, value)
     if body.execution_mode is not None:

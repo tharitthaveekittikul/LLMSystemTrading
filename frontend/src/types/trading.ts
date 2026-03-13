@@ -257,6 +257,8 @@ export interface Strategy {
   class_name: string | null;
   is_active: boolean;
   maintenance_enabled: boolean;
+  skip_hours: number[];
+  skip_hours_timezone: string | null;
   binding_count: number;
 }
 
@@ -286,6 +288,8 @@ export interface CreateStrategyPayload {
   custom_prompt?: string;
   module_path?: string;
   class_name?: string;
+  skip_hours?: number[];
+  skip_hours_timezone?: string;
 }
 
 export interface StrategyRun {
