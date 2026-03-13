@@ -68,6 +68,17 @@ class PipelineTracer:
             "PipelineTracer started | run_id=%s account_id=%s symbol=%s",
             self._run.id, self._account_id, self._symbol,
         )
+        try:
+            from api.routes.ws import broadcast
+            await broadcast(self._account_id, "pipeline_run_started", {
+                "run_id": self._run.id,
+                "symbol": self._symbol,
+                "timeframe": self._timeframe,
+                "task_type": self._task_type,
+                "strategy_id": self._strategy_id,
+            })
+        except Exception as exc:
+            logger.debug("WS broadcast failed (non-critical): %s", exc)
         return self
 
     async def record(
@@ -97,6 +108,21 @@ class PipelineTracer:
         self._db.add(step)
         await self._db.commit()
         await self._db.refresh(step)
+        try:
+            from api.routes.ws import broadcast
+            await broadcast(self._account_id, "pipeline_step", {
+                "run_id": self._run.id,
+                "id": step.id,
+                "seq": step.seq,
+                "step_name": step.step_name,
+                "status": step.status,
+                "input_json": step.input_json,
+                "output_json": step.output_json,
+                "error": step.error,
+                "duration_ms": step.duration_ms,
+            })
+        except Exception as exc:
+            logger.debug("WS broadcast failed (non-critical): %s", exc)
         return step.id
 
     async def record_llm_call(

@@ -16,6 +16,7 @@ import { logsApi } from "@/lib/api";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import type {
   PipelineRunCompleteData,
+  PipelineRunStartedData,
   PipelineRunSummary,
 } from "@/types/trading";
 
@@ -37,12 +38,14 @@ interface PipelineRunsListProps {
   selectedRunId: number | null;
   onSelect: (run: PipelineRunSummary) => void;
   onNewRun: (handler: (data: PipelineRunCompleteData) => void) => void;
+  onRunStarted?: (handler: (data: PipelineRunStartedData) => void) => void;
 }
 
 export function PipelineRunsList({
   selectedRunId,
   onSelect,
   onNewRun,
+  onRunStarted,
 }: PipelineRunsListProps) {
   const { activeAccountId } = useTradingStore();
   const [runs, setRuns] = useState<PipelineRunSummary[]>([]);
@@ -76,10 +79,31 @@ export function PipelineRunsList({
     fetchRuns();
   }, [fetchRuns]);
 
-  // Register the new-run handler with parent so WS events flow in
+  // Register the run-started handler: prepend a "running" placeholder
+  useEffect(() => {
+    onRunStarted?.((data: PipelineRunStartedData) => {
+      const runningSummary: PipelineRunSummary = {
+        id: data.run_id,
+        account_id: activeAccountId ?? 0,
+        symbol: data.symbol,
+        timeframe: data.timeframe,
+        status: "running",
+        final_action: null,
+        total_duration_ms: null,
+        journal_id: null,
+        trade_id: null,
+        task_type: data.task_type,
+        strategy_name: null,
+        created_at: new Date().toISOString(),
+      };
+      setRuns((prev) => [runningSummary, ...prev.slice(0, 99)]);
+    });
+  }, [onRunStarted, activeAccountId]);
+
+  // Register the new-run handler: update existing "running" entry or prepend
   useEffect(() => {
     onNewRun((data: PipelineRunCompleteData) => {
-      const newSummary: PipelineRunSummary = {
+      const completedSummary: PipelineRunSummary = {
         id: data.run_id,
         account_id: activeAccountId ?? 0,
         symbol: data.symbol,
@@ -94,7 +118,16 @@ export function PipelineRunsList({
         created_at: new Date().toISOString(),
       };
       setNewRunIds((prev) => new Set(prev).add(data.run_id));
-      setRuns((prev) => [newSummary, ...prev.slice(0, 99)]);
+      setRuns((prev) => {
+        const idx = prev.findIndex((r) => r.id === data.run_id);
+        if (idx !== -1) {
+          // Update the existing "running" entry in place
+          const next = [...prev];
+          next[idx] = completedSummary;
+          return next;
+        }
+        return [completedSummary, ...prev.slice(0, 99)];
+      });
       setTimeout(() => {
         setNewRunIds((prev) => {
           const next = new Set(prev);

@@ -10,18 +10,25 @@ import { PipelineRunDetailPanel } from "@/components/logs/pipeline-run-detail";
 import { llmUsageApi } from "@/lib/api";
 import type {
   PipelineRunCompleteData,
+  PipelineRunStartedData,
+  PipelineStep,
+  PipelineStepData,
   PipelineRunSummary,
   LLMPricingEntry,
 } from "@/types/trading";
 
 export default function LogsPage() {
   const { activeAccountId } = useTradingStore();
-  const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(
-    null,
-  );
-  const newRunHandlerRef = useRef<
-    ((data: PipelineRunCompleteData) => void) | null
-  >(null);
+  const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(null);
+
+  // Live pipeline tracking
+  const liveRunIdRef = useRef<number | null>(null);
+  const [liveRunId, setLiveRunId] = useState<number | null>(null);
+  const [liveSteps, setLiveSteps] = useState<PipelineStep[]>([]);
+
+  // Callbacks registered by child list component
+  const newRunHandlerRef = useRef<((data: PipelineRunCompleteData) => void) | null>(null);
+  const runStartedHandlerRef = useRef<((data: PipelineRunStartedData) => void) | null>(null);
 
   const [pricing, setPricing] = useState<LLMPricingEntry[]>([]);
   const [usdThbRate, setUsdThbRate] = useState<number>(36.0);
@@ -45,11 +52,51 @@ export default function LogsPage() {
     [],
   );
 
+  const registerRunStartedHandler = useCallback(
+    (handler: (data: PipelineRunStartedData) => void) => {
+      runStartedHandlerRef.current = handler;
+    },
+    [],
+  );
+
   useWebSocket(activeAccountId, {
+    pipeline_run_started: (data) => {
+      const d = data as PipelineRunStartedData;
+      liveRunIdRef.current = d.run_id;
+      setLiveRunId(d.run_id);
+      setLiveSteps([]);
+      runStartedHandlerRef.current?.(d);
+    },
+    pipeline_step: (data) => {
+      const d = data as PipelineStepData;
+      if (liveRunIdRef.current === d.run_id) {
+        setLiveSteps((prev) => [
+          ...prev,
+          {
+            id: d.id,
+            run_id: d.run_id,
+            seq: d.seq,
+            step_name: d.step_name,
+            status: d.status,
+            input_json: d.input_json,
+            output_json: d.output_json,
+            error: d.error,
+            duration_ms: d.duration_ms,
+          },
+        ]);
+      }
+    },
     pipeline_run_complete: (data) => {
-      newRunHandlerRef.current?.(data as PipelineRunCompleteData);
+      const d = data as PipelineRunCompleteData;
+      if (liveRunIdRef.current === d.run_id) {
+        liveRunIdRef.current = null;
+        setLiveRunId(null);
+      }
+      newRunHandlerRef.current?.(d);
     },
   });
+
+  const isLiveRun = selectedRun?.id === liveRunId;
 
   return (
     <SidebarInset>
@@ -69,6 +116,7 @@ export default function LogsPage() {
             selectedRunId={selectedRun?.id ?? null}
             onSelect={setSelectedRun}
             onNewRun={registerNewRunHandler}
+            onRunStarted={registerRunStartedHandler}
           />
         </div>
 
@@ -79,6 +127,8 @@ export default function LogsPage() {
               run={selectedRun}
               pricing={pricing}
               usdThbRate={usdThbRate}
+              liveSteps={isLiveRun ? liveSteps : []}
+              isLiveRun={isLiveRun}
             />
           ) : (
             <div className="h-full flex items-center justify-center">

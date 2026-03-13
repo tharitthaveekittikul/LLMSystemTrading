@@ -151,7 +151,9 @@ export type WSEventType =
   | "trade_closed"
   | "ai_signal"
   | "kill_switch_triggered"
-  | "pipeline_run_complete";
+  | "pipeline_run_complete"
+  | "pipeline_run_started"
+  | "pipeline_step";
 
 export interface WSEvent<T = unknown> {
   event: WSEventType;
@@ -419,6 +421,26 @@ export interface PipelineRunCompleteData {
   step_count: number;
   task_type?: "signal" | "maintenance";
   strategy_name?: string | null;
+}
+
+export interface PipelineRunStartedData {
+  run_id: number;
+  symbol: string;
+  timeframe: string;
+  task_type: "signal" | "maintenance";
+  strategy_id: number | null;
+}
+
+export interface PipelineStepData {
+  run_id: number;
+  id: number;
+  seq: number;
+  step_name: string;
+  status: "ok" | "skip" | "error";
+  input_json: string | null;
+  output_json: string | null;
+  error: string | null;
+  duration_ms: number;
 }
 
 // ── Backtest ──────────────────────────────────────────────────────────────────
