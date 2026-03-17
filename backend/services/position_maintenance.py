@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.orchestrator import review_position
 from core.config import settings
-from core.llm_pricing import compute_cost
+from core.llm_pricing import compute_cost, fetch_openrouter_pricing
 from core.security import decrypt
 from db.models import Account, AccountStrategy, Strategy, Trade
 from db.redis import get_candle_cache, set_candle_cache
@@ -197,6 +197,8 @@ class PositionMaintenanceService:
         if not settings.maintenance_task_enabled:
             logger.info("Maintenance task globally disabled — skipping sweep")
             return
+
+        await fetch_openrouter_pricing()  # warm cache so compute_cost resolves OR model prices
 
         result = await db.execute(
             select(Account).where(Account.is_active.is_(True))

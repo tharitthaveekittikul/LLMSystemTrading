@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.currency import get_usd_thb_rate
-from core.llm_pricing import get_pricing_list
-from db.models import LLMCall
+from core.llm_pricing import fetch_openrouter_pricing, get_pricing_list
+from db.models import LLMCall, TaskLLMAssignment
 from db.postgres import get_db
 
 router = APIRouter()
@@ -179,5 +179,19 @@ async def get_by_model(
 
 
 @router.get("/pricing", response_model=list[LLMPricingEntry])
-async def get_pricing() -> list[LLMPricingEntry]:
-    return [LLMPricingEntry(**p) for p in get_pricing_list()]
+async def get_pricing(db: AsyncSession = Depends(get_db)) -> list[LLMPricingEntry]:
+    task_rows = (await db.execute(select(TaskLLMAssignment))).scalars().all()
+
+    seen: set[tuple[str, str]] = set()
+    active: list[tuple[str, str]] = []
+    for row in task_rows:
+        key = (row.provider, row.model_name)
+        if key not in seen and row.model_name:
+            seen.add(key)
+            active.append(key)
+
+    or_prices = None
+    if any(p == "openrouter" for p, _ in active):
+        or_prices = await fetch_openrouter_pricing()
+
+    return [LLMPricingEntry(**p) for p in get_pricing_list(active, or_prices)]
