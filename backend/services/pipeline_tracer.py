@@ -175,6 +175,21 @@ class PipelineTracer:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._run and self._db:
             total_ms = int((time.monotonic() - self._start_ms) * 1000)
+
+            # Auto-record the unhandled exception as the final step so the UI
+            # shows WHY the pipeline failed — no manual try/except needed in callers.
+            if exc_type is not None:
+                import traceback as _tb
+                try:
+                    await self.record(
+                        "pipeline_error",
+                        status="error",
+                        error=f"{exc_type.__name__}: {exc_val}",
+                        output_data={"traceback": _tb.format_exc()[-2000:]},
+                    )
+                except Exception:
+                    pass  # never block __aexit__ itself
+
             self._run.status = "failed" if exc_type else self._final_status
             self._run.final_action = self._final_action
             self._run.total_duration_ms = total_ms

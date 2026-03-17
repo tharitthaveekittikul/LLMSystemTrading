@@ -269,6 +269,11 @@ class AITradingService:
         tf_upper = timeframe.upper()
         tf_int = _TIMEFRAME_MAP.get(tf_upper)
         if tf_int is None:
+            await tracer.record(
+                "timeframe_check", status="error",
+                error=f"Unknown timeframe '{timeframe}'",
+                output_data={"timeframe": timeframe, "supported": list(_TIMEFRAME_MAP)},
+            )
             tracer.finalize(status="failed")
             raise HTTPException(
                 status_code=422,
@@ -845,6 +850,12 @@ class AITradingService:
 
         # ── 13. Auto-trade disabled check ────────────────────────────────────
         if not account.auto_trade_enabled:
+            await tracer.record(
+                "auto_trade_check",
+                status="skipped",
+                output_data={"auto_trade_enabled": False},
+                error="Auto-trade is disabled on this account — signal saved but no order placed",
+            )
             logger.info(
                 "Auto-trade disabled — signal saved but order skipped | account_id=%s",
                 account_id,

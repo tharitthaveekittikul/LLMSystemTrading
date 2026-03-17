@@ -362,6 +362,23 @@ class PositionMaintenanceService:
                     strategy = strategies_by_id.get(trade.strategy_id)
 
                     if not mt5_pos or not strategy:
+                        skip_reason = (
+                            f"Ticket {trade.ticket} not found in live MT5 positions/orders"
+                            if not mt5_pos
+                            else f"Strategy {trade.strategy_id} not found or not maintenance-enabled"
+                        )
+                        tf = strategy.timeframe if strategy else "H1"
+                        async with PipelineTracer(
+                            account.id, trade.symbol, tf,
+                            task_type="maintenance", strategy_id=trade.strategy_id,
+                        ) as _skip_tracer:
+                            await _skip_tracer.record(
+                                "position_skip",
+                                status="skipped",
+                                error=skip_reason,
+                                output_data={"ticket": trade.ticket, "strategy_id": trade.strategy_id},
+                            )
+                            _skip_tracer.finalize(status="skipped", final_action="SKIP")
                         counts["skip"] += 1
                         continue
 
@@ -426,6 +443,12 @@ class PositionMaintenanceService:
             )
 
             if not ohlcv:
+                await tracer.record(
+                    "ohlcv_skip",
+                    status="skipped",
+                    error="No OHLCV data returned from MT5 or cache — cannot run maintenance",
+                    output_data={"symbol": symbol, "timeframe": timeframe},
+                )
                 tracer.finalize(status="skipped", final_action="HOLD")
                 return "HOLD"
 
