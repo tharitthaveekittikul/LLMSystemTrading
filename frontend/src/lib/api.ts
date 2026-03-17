@@ -302,4 +302,13 @@ export const llmUsageApi = {
 export const schedulerApi = {
   getJobs: () =>
     apiRequest<import("@/types/trading").ScheduledJob[]>("/scheduler/jobs"),
+
+  runMaintenanceAll: () =>
+    apiRequest<{ status: string; detail: string }>("/scheduler/run-maintenance", { method: "POST" }),
+
+  runMaintenanceForAccount: (accountId: number) =>
+    apiRequest<{ status: string; detail: string }>(`/scheduler/run-maintenance/${accountId}`, { method: "POST" }),
+
+  runMaintenanceForTicket: (accountId: number, ticket: number) =>
+    apiRequest<{ status: string; detail: string }>(`/scheduler/run-maintenance/${accountId}/ticket/${ticket}`, { method: "POST" }),
 };

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"  # override with GEMINI_MODEL in .env
     anthropic_api_key: str = ""
     openrouter_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4o"  # override with OPENROUTER_MODEL in .env
 
     # ── MetaTrader 5 ──────────────────────────────────────────────────────────
     mt5_path: str = ""  # leave empty to use default MT5 installation path

@@ -149,6 +149,40 @@ def validate_modify(
     return ConstraintResult(passed=True)
 
 
+# ── Task LLM loader ────────────────────────────────────────────────────────────
+
+async def _get_task_llm(task: str, db: AsyncSession):
+    """Load task-specific LLM from DB assignments. Returns None to use env-var default."""
+    from sqlalchemy import select as _select
+    from db.models import LLMProviderConfig, TaskLLMAssignment
+    from core.security import decrypt as _decrypt
+    from ai.orchestrator import _build_llm
+
+    assignment = (await db.execute(
+        _select(TaskLLMAssignment).where(TaskLLMAssignment.task == task)
+    )).scalar_one_or_none()
+
+    if not assignment or not assignment.provider:
+        return None
+
+    provider_row = (await db.execute(
+        _select(LLMProviderConfig).where(
+            LLMProviderConfig.provider == assignment.provider,
+            LLMProviderConfig.is_active.is_(True),
+        )
+    )).scalar_one_or_none()
+
+    if not provider_row:
+        return None
+
+    api_key = _decrypt(provider_row.encrypted_api_key)
+    return _build_llm(
+        provider=assignment.provider,
+        api_key=api_key,
+        model=assignment.model_name or None,
+    )
+
+
 # ── PositionMaintenanceService ─────────────────────────────────────────────────
 
 class PositionMaintenanceService:
@@ -185,6 +219,69 @@ class PositionMaintenanceService:
             totals["hold"], totals["close"], totals["modify"],
             totals["skip"], totals["error"],
         )
+
+    async def run_for_account(self, account_id: int, db: AsyncSession) -> dict[str, int]:
+        """Manually trigger maintenance sweep for a single account."""
+        result = await db.execute(
+            select(Account).where(Account.id == account_id, Account.is_active.is_(True))
+        )
+        account = result.scalar_one_or_none()
+        if account is None:
+            raise ValueError(f"Account {account_id} not found or inactive")
+        return await self._process_account(account, db)
+
+    async def run_for_ticket(self, account_id: int, ticket: int, db: AsyncSession) -> str:
+        """Manually trigger maintenance for one specific position by ticket number."""
+        account = (await db.execute(
+            select(Account).where(Account.id == account_id, Account.is_active.is_(True))
+        )).scalar_one_or_none()
+        if account is None:
+            raise ValueError(f"Account {account_id} not found or inactive")
+
+        if kill_switch_active():
+            raise ValueError("Kill switch is active")
+
+        trade = (await db.execute(
+            select(Trade).where(
+                Trade.account_id == account_id,
+                Trade.ticket == ticket,
+                Trade.closed_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if trade is None:
+            raise ValueError(f"Open trade with ticket {ticket} not found for account {account_id}")
+
+        if trade.strategy_id is None:
+            raise ValueError(f"Trade {ticket} has no associated strategy")
+        strategy = await db.get(Strategy, trade.strategy_id)
+        if strategy is None:
+            raise ValueError(f"Strategy {trade.strategy_id} not found")
+
+        password = decrypt(account.password_encrypted)
+        creds = AccountCredentials(
+            login=account.login,
+            password=password,
+            server=account.server,
+            path=account.mt5_path or settings.mt5_path,
+        )
+        async with MT5Bridge(creds) as bridge:
+            mt5_positions = await bridge.get_positions()
+            mt5_orders = await bridge.get_orders()
+            mt5_by_ticket = {p["ticket"]: p for p in mt5_positions + mt5_orders}
+            mt5_pos = mt5_by_ticket.get(ticket)
+            if not mt5_pos:
+                raise ValueError(f"Ticket {ticket} not found in MT5 positions/orders")
+            account_info = await bridge.get_account_info()
+            balance = account_info["balance"] if account_info else 10000.0
+            return await self._run_single_maintenance(
+                trade=trade,
+                mt5_pos=mt5_pos,
+                strategy=strategy,
+                bridge=bridge,
+                balance=balance,
+                account=account,
+                db=db,
+            )
 
     async def _process_account(
         self, account: Account, db: AsyncSession
@@ -314,14 +411,13 @@ class PositionMaintenanceService:
             # Step 1: Fetch OHLCV
             t0 = time.monotonic()
             tf_int = _TIMEFRAME_MAP.get(timeframe, 16385)
-            cache_key = f"ohlcv:{symbol}:{timeframe}"
             cache_ttl = _CACHE_TTL.get(timeframe, 300)
 
-            ohlcv = await get_candle_cache(cache_key)
+            ohlcv = await get_candle_cache(account.id, symbol, timeframe)
             if not ohlcv:
                 ohlcv = await bridge.get_rates(symbol, tf_int, 50)
                 if ohlcv:
-                    await set_candle_cache(cache_key, ohlcv, cache_ttl)
+                    await set_candle_cache(account.id, symbol, timeframe, ohlcv, cache_ttl)
 
             await tracer.record(
                 "ohlcv_fetch",
@@ -393,6 +489,9 @@ class PositionMaintenanceService:
 
             # Step 4: 3-role LLM pipeline
             t0 = time.monotonic()
+            tech_llm = await _get_task_llm("maintenance_technical", db)
+            sent_llm = await _get_task_llm("maintenance_sentiment", db)
+            dec_llm  = await _get_task_llm("maintenance_decision", db)
             result = await review_position(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -402,24 +501,52 @@ class PositionMaintenanceService:
                 strategy_params=strategy_params,
                 news_context=news_ctx,
                 trade_history_context=history_ctx,
+                technical_llm=tech_llm,
+                sentiment_llm=sent_llm,
+                decision_llm=dec_llm,
             )
 
             # Record each LLM role
+            _role_input_summaries = {
+                "maintenance_technical": {"symbol": symbol, "timeframe": timeframe, "ticket": trade.ticket},
+                "maintenance_sentiment": {"symbol": symbol, "ticket": trade.ticket},
+                "maintenance_decision": {"symbol": symbol, "ticket": trade.ticket},
+            }
             for role_result, role_name in [
                 (result.technical_analysis, "maintenance_technical"),
                 (result.sentiment_analysis, "maintenance_sentiment"),
                 (result.maintenance_decision, "maintenance_decision"),
             ]:
+                input_summary = _role_input_summaries[role_name]
+                input_payload = input_summary
+                if getattr(role_result, "prompt", None):
+                    input_payload = {"summary": input_summary, "prompt": role_result.prompt}
+
                 step_id = await tracer.record(
                     role_name,
-                    output_data={"content": role_result.content},
+                    input_data=input_payload,
+                    output_data={
+                        "model":         role_result.model,
+                        "provider":      role_result.provider,
+                        "input_tokens":  role_result.input_tokens,
+                        "output_tokens": role_result.output_tokens,
+                        "total_tokens":  role_result.total_tokens,
+                        "content": (
+                            role_result.content
+                            if isinstance(role_result.content, dict)
+                            else str(role_result.content)[:500]
+                        ),
+                    },
                     duration_ms=role_result.duration_ms,
                 )
-                cost = compute_cost(
-                    role_result.provider,
-                    role_result.model,
-                    role_result.input_tokens or 0,
-                    role_result.output_tokens or 0,
+                cost = (
+                    compute_cost(
+                        role_result.model,
+                        role_result.input_tokens or 0,
+                        role_result.output_tokens or 0,
+                    )
+                    if role_result.input_tokens is not None
+                    else None
                 )
                 await tracer.record_llm_call(
                     role=role_name,

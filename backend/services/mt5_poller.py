@@ -153,7 +153,7 @@ async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState)
 
     await broadcast(account_id, "positions_update", {
         "account_id": account_id,
-        "positions": [_normalize_position(p) for p in positions],
+        "positions": [{**_normalize_position(p), "account_id": account_id} for p in positions],
     })
 
     await broadcast(account_id, "pending_orders_update", {

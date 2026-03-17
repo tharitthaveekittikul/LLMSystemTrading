@@ -29,6 +29,13 @@ const STEP_LABELS: Record<string, string> = {
   lot_size_calculated:     "Lot Size Calculated",
   journal_saved:           "Journal Saved",
   kill_switch_check:       "Kill Switch Check",
+  maintenance_technical:   "Maintenance Technical (LLM)",
+  maintenance_sentiment:   "Maintenance Sentiment (LLM)",
+  maintenance_decision:    "Maintenance Decision (LLM)",
+  maintenance_hold:        "Maintenance Hold",
+  constraint_rejected:     "Constraint Rejected",
+  mt5_close:               "MT5 Close",
+  mt5_modify:              "MT5 Modify",
   order_built:             "Order Built",
   mt5_executed:            "MT5 Order Executed",
   telegram_sent:           "Telegram Alert Sent",
@@ -39,6 +46,9 @@ const LLM_STEP_NAMES = new Set([
   "chart_vision_llm",
   "execution_decision_llm",
   "llm_analyzed",
+  "maintenance_technical",
+  "maintenance_sentiment",
+  "maintenance_decision",
 ])
 
 interface TokenInfo {

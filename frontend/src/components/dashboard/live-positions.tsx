@@ -1,7 +1,10 @@
 "use client";
 
-import { Inbox } from "lucide-react";
+import { useState } from "react";
+import { Inbox, Wrench } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -11,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { schedulerApi } from "@/lib/api";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import { cn } from "@/lib/utils";
 
@@ -32,9 +36,22 @@ function orderTypeLabel(type: string): string {
 export function LivePositions() {
   const positions = useTradingStore((s) => s.openPositions);
   const pendingOrders = useTradingStore((s) => s.pendingOrders);
+  const [runningTicket, setRunningTicket] = useState<number | null>(null);
 
   const totalCount = positions.length + pendingOrders.length;
   const isEmpty = totalCount === 0;
+
+  async function handleRunMaintenance(accountId: number, ticket: number) {
+    setRunningTicket(ticket);
+    try {
+      await schedulerApi.runMaintenanceForTicket(accountId, ticket);
+      toast.success(`Maintenance started for ticket #${ticket}`);
+    } catch {
+      toast.error("Failed to trigger maintenance");
+    } finally {
+      setRunningTicket(null);
+    }
+  }
 
   return (
     <Card className="shadow-sm">
@@ -61,6 +78,7 @@ export function LivePositions() {
                 <TableHead>Type</TableHead>
                 <TableHead>Volume</TableHead>
                 <TableHead className="text-right">Price / P&amp;L</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -89,6 +107,18 @@ export function LivePositions() {
                     {pos.profit >= 0 ? "+" : ""}
                     {pos.profit.toFixed(2)}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Run maintenance for this position"
+                      disabled={runningTicket === pos.ticket}
+                      onClick={() => handleRunMaintenance(pos.account_id, pos.ticket)}
+                    >
+                      <Wrench className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               {pendingOrders.map((order) => (
@@ -108,6 +138,7 @@ export function LivePositions() {
                   <TableCell className="text-right tabular-nums text-muted-foreground">
                     @ {order.price}
                   </TableCell>
+                  <TableCell />
                 </TableRow>
               ))}
             </TableBody>

@@ -85,6 +85,7 @@ export interface AccountBalance {
 
 export interface Position {
   ticket: number;
+  account_id: number;
   symbol: string;
   type: "buy" | "sell";
   volume: number;

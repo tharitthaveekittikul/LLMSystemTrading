@@ -128,7 +128,7 @@ def _build_llm(
     if resolved_provider == "openrouter":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
-            model=model or "openai/gpt-4o",
+            model=model or settings.openrouter_model,
             api_key=api_key or settings.openrouter_api_key,
             base_url="https://openrouter.ai/api/v1",
             temperature=0,

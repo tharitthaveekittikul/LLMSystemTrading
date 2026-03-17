@@ -4,8 +4,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter
-
+from fastapi import APIRouter, BackgroundTasks
+from db.postgres import AsyncSessionLocal
+from services.position_maintenance import PositionMaintenanceService
 from services.scheduler import get_scheduler
 
 router = APIRouter()
@@ -117,3 +118,49 @@ async def list_scheduler_jobs() -> list[dict[str, Any]]:
         )
     )
     return result
+
+
+_maintenance_svc = PositionMaintenanceService()
+
+
+async def _bg_maintenance_all() -> None:
+    async with AsyncSessionLocal() as db:
+        await _maintenance_svc.run_maintenance_sweep(db)
+
+
+async def _bg_maintenance_for_account(account_id: int) -> None:
+    async with AsyncSessionLocal() as db:
+        await _maintenance_svc.run_for_account(account_id, db)
+
+
+@router.post("/run-maintenance", status_code=202)
+async def run_maintenance_all(background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Manually trigger a full maintenance sweep across all active accounts."""
+    background_tasks.add_task(_bg_maintenance_all)
+    return {"status": "accepted", "detail": "Maintenance sweep started for all accounts"}
+
+
+@router.post("/run-maintenance/{account_id}", status_code=202)
+async def run_maintenance_for_account(
+    account_id: int,
+    background_tasks: BackgroundTasks,
+) -> dict[str, str]:
+    """Manually trigger a maintenance sweep for a single account."""
+    background_tasks.add_task(_bg_maintenance_for_account, account_id)
+    return {"status": "accepted", "detail": f"Maintenance sweep started for account {account_id}"}
+
+
+async def _bg_maintenance_for_ticket(account_id: int, ticket: int) -> None:
+    async with AsyncSessionLocal() as db:
+        await _maintenance_svc.run_for_ticket(account_id, ticket, db)
+
+
+@router.post("/run-maintenance/{account_id}/ticket/{ticket}", status_code=202)
+async def run_maintenance_for_ticket(
+    account_id: int,
+    ticket: int,
+    background_tasks: BackgroundTasks,
+) -> dict[str, str]:
+    """Manually trigger maintenance for a single position by ticket."""
+    background_tasks.add_task(_bg_maintenance_for_ticket, account_id, ticket)
+    return {"status": "accepted", "detail": f"Maintenance started for ticket {ticket}"}
