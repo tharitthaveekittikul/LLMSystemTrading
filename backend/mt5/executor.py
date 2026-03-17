@@ -201,7 +201,9 @@ class MT5Executor:
         logger.info("Closing position | ticket=%s symbol=%s volume=%s", ticket, symbol, volume)
 
         # Fetch current position to determine close direction
-        positions = await self._bridge.get_positions(symbol=symbol)
+        # Use ticket-based lookup across all positions (more reliable than symbol filter
+        # which can return None when MT5 has the symbol unselected or an internal error)
+        positions = await self._bridge.get_positions()
         pos = next((p for p in positions if p["ticket"] == ticket), None)
         if not pos:
             logger.error("Position not found | ticket=%s symbol=%s", ticket, symbol)
