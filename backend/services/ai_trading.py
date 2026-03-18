@@ -25,7 +25,14 @@ from pydantic import BaseModel as PydanticBase
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.orchestrator import LLMAnalysisResult, LLMRoleResult, TradingSignal, analyze_market
+from ai.orchestrator import (
+    LLMAnalysisResult,
+    LLMRoleResult,
+    NewsAnalysisResult,
+    TradingSignal,
+    analyze_market,
+    analyze_news_impact,
+)
 from core.llm_pricing import compute_cost
 from api.routes.ws import broadcast
 from core.config import settings
@@ -153,6 +160,16 @@ async def _get_task_llm(task: str, db: AsyncSession):
         api_key=api_key,
         model=assignment.model_name or None,
     )
+
+
+def _news_direction(action: str) -> str:
+    """Map a TradingSignal action to a simple BUY/SELL/HOLD direction for news gate comparison."""
+    a = action.upper()
+    if a.startswith("BUY"):
+        return "BUY"
+    if a.startswith("SELL"):
+        return "SELL"
+    return "HOLD"
 
 
 class StrategyOverrides(PydanticBase):
@@ -616,6 +633,49 @@ class AITradingService:
             ma_llm  = await _get_task_llm("market_analysis", db)
             cv_llm  = await _get_task_llm("chart_vision", db)
             ed_llm  = await _get_task_llm("execution_decision", db)
+            na_llm  = (
+                await _get_task_llm("news_analysis", db)
+                if strategy_overrides and strategy_overrides.news_filter
+                else None
+            )
+
+            # ── News analysis gate (fires only on imminent High-impact events) ──
+            news_signal: str | None = None
+            if strategy_overrides and strategy_overrides.news_filter:
+                from services.market_context import fetch_high_impact_events
+                news_events = await fetch_high_impact_events([symbol], minutes=60)
+                if news_events:
+                    t0_news = time.monotonic()
+                    news_result: NewsAnalysisResult = await analyze_news_impact(
+                        events=news_events, symbol=symbol, llm=na_llm
+                    )
+                    dur_news = int((time.monotonic() - t0_news) * 1000)
+                    news_signal = news_result.signal
+                    step_id_news = await tracer.record(
+                        "news_analysis",
+                        output_data={
+                            "signal": news_result.signal,
+                            "reasoning": news_result.reasoning,
+                            "events_count": len(news_events),
+                        },
+                        duration_ms=dur_news,
+                    )
+                    if news_result.role_result is not None:
+                        rr = news_result.role_result
+                        await tracer.record_llm_call(
+                            role="news_analysis",
+                            provider=rr.provider,
+                            model=rr.model,
+                            input_tokens=rr.input_tokens,
+                            output_tokens=rr.output_tokens,
+                            total_tokens=rr.total_tokens,
+                            cost_usd=compute_cost(
+                                rr.provider, rr.model,
+                                rr.input_tokens or 0, rr.output_tokens or 0,
+                            ),
+                            duration_ms=rr.duration_ms,
+                            pipeline_step_id=step_id_news,
+                        )
 
             # ── Fetch Context Timeframe Candles ─────────────────────────
             context_ohlcv: dict[str, list[dict]] = {}
@@ -673,6 +733,27 @@ class AITradingService:
                 context_ohlcv=context_ohlcv if context_ohlcv else None,
             )
             signal = llm_result.signal
+
+            # ── News filter gate — skip execution if signals contradict ──
+            if news_signal and news_signal != "HOLD":
+                market_dir = _news_direction(llm_result.signal.action)
+                if market_dir != "HOLD" and market_dir != news_signal:
+                    await tracer.record(
+                        "news_filter_blocked",
+                        output_data={
+                            "news_signal": news_signal,
+                            "market_signal": llm_result.signal.action,
+                            "reason": (
+                                f"News analysis ({news_signal}) contradicts "
+                                f"market analysis ({market_dir}) — trade skipped"
+                            ),
+                        },
+                    )
+                    logger.info(
+                        "News filter blocked trade | symbol=%s news=%s market=%s",
+                        symbol, news_signal, market_dir,
+                    )
+                    return AnalysisResult(signal=signal, order_placed=False)
 
             # ── Record 3 LLM pipeline steps + llm_calls rows ─────────────
             async def _record_llm_role(

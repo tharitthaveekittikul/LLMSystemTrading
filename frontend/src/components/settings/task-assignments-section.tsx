@@ -31,6 +31,7 @@ const TASKS: { key: string; label: string }[] = [
   { key: "maintenance_technical", label: "Maintenance — Technical" },
   { key: "maintenance_sentiment", label: "Maintenance — Sentiment" },
   { key: "maintenance_decision", label: "Maintenance — Decision" },
+  { key: "news_analysis", label: "News Analysis (Gate)" },
 ];
 
 interface TaskAssignmentsSectionProps {

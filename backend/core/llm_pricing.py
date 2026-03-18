@@ -21,10 +21,34 @@ _OR_TTL = timedelta(hours=1)
 LLM_PRICING: dict[str, dict[str, float]] = {
     # Google Gemini (Standard pricing for prompts <= 200k)
     # Note: Prices double for context > 200k.
-    "gemini-2.5-pro":            {"input": 1.25,   "output": 10.00},
-    "gemini-2.5-flash":          {"input": 0.30,   "output": 2.50},
-    "gemini-2.5-flash-lite":     {"input": 0.10,   "output": 0.40},
-    "gemini-3-flash-preview":    {"input": 0.50,   "output": 3.00},
+    "gemini-2.0-flash":                          {"input": 0.10,   "output": 0.40},
+    "gemini-2.0-flash-001":                      {"input": 0.15,   "output": 0.60},
+    "gemini-2.0-flash-lite":                     {"input": 0.075,  "output": 0.30},
+    "gemini-2.0-flash-lite-001":                 {"input": 0.075,  "output": 0.30},
+    "gemini-2.5-computer-use-preview-10-2025":   {"input": 1.25,   "output": 10.00},
+    "gemini-2.5-flash":                          {"input": 0.30,   "output": 2.50},
+    "gemini-2.5-flash-image":                    {"input": 0.30,   "output": 2.50},
+    "gemini-2.5-flash-lite":                     {"input": 0.10,   "output": 0.40},
+    "gemini-2.5-flash-lite-preview-09-2025":     {"input": 0.10,   "output": 0.40},
+    "gemini-2.5-flash-native-audio-latest":      {"input": 0.30,   "output": 2.50},
+    "gemini-2.5-flash-native-audio-preview-09-2025": {"input": 0.30, "output": 2.50},
+    "gemini-2.5-flash-native-audio-preview-12-2025": {"input": 0.30, "output": 2.50},
+    "gemini-2.5-flash-preview-tts":              {"input": 0.30,   "output": 2.50},
+    "gemini-2.5-pro":                            {"input": 1.25,   "output": 10.00},
+    "gemini-2.5-pro-preview-tts":                {"input": 1.25,   "output": 10.00},
+    "gemini-3-flash-preview":                    {"input": 0.50,   "output": 3.00},
+    "gemini-3-pro-image-preview":                {"input": 2.00,   "output": 12.00},
+    "gemini-3-pro-preview":                      {"input": 2.00,   "output": 12.00},
+    "gemini-3.1-flash-image-preview":            {"input": 0.25,   "output": 1.50},
+    "gemini-3.1-flash-lite-preview":             {"input": 0.25,   "output": 1.50},
+    "gemini-3.1-pro-preview":                    {"input": 2.00,   "output": 12.00},
+    "gemini-3.1-pro-preview-customtools":        {"input": 2.00,   "output": 12.00},
+    "gemini-embedding-001":                      {"input": 0.10,   "output": 0.00},
+    "gemini-embedding-2-preview":                {"input": 0.15,   "output": 0.00},
+    "gemini-flash-latest":                       {"input": 0.30,   "output": 2.50},
+    "gemini-flash-lite-latest":                  {"input": 0.10,   "output": 0.40},
+    "gemini-pro-latest":                         {"input": 1.25,   "output": 10.00},
+    "gemini-robotics-er-1.5-preview":            {"input": 0.30,   "output": 2.50},
 
     # Anthropic Claude (Standard pricing for prompts <= 200k)
     # Note: Prices increase/double for context > 200k.

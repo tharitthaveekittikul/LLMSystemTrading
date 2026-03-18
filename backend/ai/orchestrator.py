@@ -91,6 +91,14 @@ class MaintenanceResult:
     maintenance_decision: LLMRoleResult
 
 
+@dataclass
+class NewsAnalysisResult:
+    """Result from the news analysis gate step."""
+    signal: str          # "BUY" | "SELL" | "HOLD"
+    reasoning: str
+    role_result: LLMRoleResult | None = None  # None if LLM was skipped/errored
+
+
 # ── LLM factory ───────────────────────────────────────────────────────────────
 
 def _build_llm(
@@ -598,6 +606,74 @@ async def _run_maintenance_decision(
         HumanMessage(content=human),
     ]
     return await _call_llm_for_role(llm, messages, "maintenance_decision")
+
+
+# ── News analysis gate ────────────────────────────────────────────────────────
+
+_NEWS_ANALYSIS_SYSTEM = """\
+You are a forex news impact analyst. Given upcoming High-impact economic events,
+predict the likely short-term price direction for the specified symbol.
+
+Respond with valid JSON only — no markdown fences:
+{"signal": "BUY" | "SELL" | "HOLD", "reasoning": "<1-2 sentences>"}
+
+Rules:
+- BUY  = news likely to push price UP (e.g. strong jobs data for USD → EURUSD falls → SELL EUR, BUY USD)
+- SELL = news likely to push price DOWN
+- HOLD = news impact unclear / mixed / not directly affecting this symbol
+- When in doubt, respond HOLD.
+"""
+
+
+async def analyze_news_impact(
+    events: list[dict[str, Any]],
+    symbol: str,
+    llm: "BaseChatModel | None" = None,
+) -> NewsAnalysisResult:
+    """Ask a lightweight LLM to predict price direction from upcoming High-impact news.
+
+    Returns NewsAnalysisResult(signal="HOLD") on any error — never raises.
+    Used as a pre-execution gate in the trading pipeline.
+    """
+    _llm = llm or _build_llm()
+
+    now_utc = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    event_lines = []
+    for e in events:
+        mins_until = int(
+            (__import__("datetime").datetime.fromisoformat(e["time"]) - now_utc).total_seconds() / 60
+        )
+        line = f"  - {e['currency']} | {e['title']} | in {mins_until} min"
+        if e.get("forecast"):
+            line += f" | Forecast: {e['forecast']}"
+        if e.get("previous"):
+            line += f" | Previous: {e['previous']}"
+        event_lines.append(line)
+
+    human = (
+        f"Symbol: {symbol}\n"
+        f"Upcoming High-Impact Events:\n" + "\n".join(event_lines) + "\n\n"
+        f"What is the likely short-term price direction for {symbol}?"
+    )
+
+    try:
+        result = await _call_llm_for_role(
+            _llm,
+            [SystemMessage(content=_NEWS_ANALYSIS_SYSTEM), HumanMessage(content=human)],
+            "news_analysis",
+        )
+        raw = result.content if isinstance(result.content, dict) else {}
+        signal = str(raw.get("signal", "HOLD")).upper()
+        if signal not in ("BUY", "SELL", "HOLD"):
+            signal = "HOLD"
+        return NewsAnalysisResult(
+            signal=signal,
+            reasoning=str(raw.get("reasoning", "")),
+            role_result=result,
+        )
+    except Exception as exc:
+        logger.warning("News analysis LLM failed for %s: %s", symbol, exc)
+        return NewsAnalysisResult(signal="HOLD", reasoning=f"error: {exc}")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

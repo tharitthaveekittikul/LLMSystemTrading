@@ -64,6 +64,22 @@ async def fetch_upcoming_events(
     return filtered
 
 
+async def fetch_high_impact_events(
+    symbols: list[str], minutes: int = 60
+) -> list[dict[str, Any]]:
+    """Return only High-impact (Red) events within `minutes` window for symbol currencies.
+
+    Used by the news filter gate — never raises.
+    """
+    events = await fetch_upcoming_events(symbols, hours_ahead=24)
+    cutoff = datetime.now(UTC) + timedelta(minutes=minutes)
+    return [
+        e for e in events
+        if e["impact"] == "High"
+        and datetime.fromisoformat(e["time"]) <= cutoff
+    ]
+
+
 def format_news_context(events: list[dict[str, Any]]) -> str:
     """Format events list into a string suitable for the LLM prompt."""
     if not events:
