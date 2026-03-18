@@ -19,11 +19,11 @@ const RANGES = [
   { label: "6h", hours: 6 },
   { label: "24h", hours: 24 },
   { label: "7d", hours: 168 },
-  // { label: "30d", hours: 720 },
-  // { label: "90d", hours: 2160 },
-  // { label: "180d", hours: 4320 },
-  // { label: "365d", hours: 8760 },
-  // { label: "All", hours: 0 },
+  { label: "30d", hours: 720 },
+  { label: "90d", hours: 2160 },
+  { label: "180d", hours: 4320 },
+  { label: "365d", hours: 8760 },
+  { label: "All", hours: 0 },
 ] as const;
 
 interface EquityChartProps {

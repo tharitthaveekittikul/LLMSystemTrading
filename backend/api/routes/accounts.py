@@ -459,7 +459,7 @@ class EquityPoint(BaseModel):
 @router.get("/{account_id}/equity-history", response_model=list[EquityPoint])
 async def get_equity_history(
     account_id: int,
-    hours: int = Query(24, ge=0, le=720),
+    hours: int = Query(24, ge=0, le=8760),
     db: AsyncSession = Depends(get_db),
 ):
     """Return equity snapshots for the last N hours (default 24). Empty list if QuestDB unavailable."""

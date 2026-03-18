@@ -80,21 +80,32 @@ async def insert_equity_snapshot(
 
 
 async def get_equity_history(account_id: int, hours: int = 24) -> list[dict]:
-    """Return equity snapshots for the last N hours. Returns [] if table is empty or missing."""
-    cutoff = (datetime.now(UTC) - timedelta(hours=hours)).replace(tzinfo=None)
+    """Return equity snapshots for the last N hours. hours=0 returns all data. Returns [] if table is empty or missing."""
     conn = await _get_conn()
     try:
-        rows = await conn.fetch(
-            """
-            SELECT ts, equity, balance
-            FROM equity_snapshots
-            WHERE account_id = $1
-              AND ts >= $2
-            ORDER BY ts ASC
-            """,
-            account_id,
-            cutoff,
-        )
+        if hours == 0:
+            rows = await conn.fetch(
+                """
+                SELECT ts, equity, balance
+                FROM equity_snapshots
+                WHERE account_id = $1
+                ORDER BY ts ASC
+                """,
+                account_id,
+            )
+        else:
+            cutoff = (datetime.now(UTC) - timedelta(hours=hours)).replace(tzinfo=None)
+            rows = await conn.fetch(
+                """
+                SELECT ts, equity, balance
+                FROM equity_snapshots
+                WHERE account_id = $1
+                  AND ts >= $2
+                ORDER BY ts ASC
+                """,
+                account_id,
+                cutoff,
+            )
         logger.debug("get_equity_history | account_id=%s hours=%s rows=%s", account_id, hours, len(rows))
         return [
             {"ts": r["ts"].strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z", "equity": float(r["equity"]), "balance": float(r["balance"])}
