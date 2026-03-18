@@ -297,6 +297,31 @@ export const llmUsageApi = {
     apiRequest<import("@/types/trading").LLMPricingEntry[]>("/llm-usage/pricing"),
 };
 
+// ── LLM Analytics ─────────────────────────────────────────────────────────────
+
+export const llmAnalyticsApi = {
+  getSummary: (days = 30) =>
+    apiRequest<import("@/types/trading").LLMAnalyticsSummary>(
+      `/llm-analytics/summary?days=${days}`
+    ),
+  getModelPerformance: (days = 30) =>
+    apiRequest<import("@/types/trading").ModelPerformanceRow[]>(
+      `/llm-analytics/model-performance?days=${days}`
+    ),
+  getHeatmap: (days = 30) =>
+    apiRequest<import("@/types/trading").LLMHeatmapResponse>(
+      `/llm-analytics/heatmap?days=${days}`
+    ),
+  getPnlTimeline: (days = 30) =>
+    apiRequest<import("@/types/trading").LLMTimelinePoint[]>(
+      `/llm-analytics/pnl-timeline?days=${days}`
+    ),
+  getCostTrend: (days = 30) =>
+    apiRequest<import("@/types/trading").LLMTimelinePoint[]>(
+      `/llm-analytics/cost-trend?days=${days}`
+    ),
+}
+
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 export const schedulerApi = {

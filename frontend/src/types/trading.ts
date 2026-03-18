@@ -563,6 +563,47 @@ export interface LLMPricingEntry {
   output_per_1m_usd: number | null
 }
 
+// ── LLM Analytics ─────────────────────────────────────────────────────────────
+
+export interface ModelPerformanceRow {
+  model: string
+  provider: string
+  runs_participated: number
+  trades_triggered: number
+  profitable_trades: number
+  win_rate: number
+  avg_profit_usd: number
+  total_pnl_usd: number
+  total_cost_usd: number
+  avg_cost_usd: number
+  profit_per_dollar: number
+  avg_latency_ms: number
+  action_dist: Record<string, number>
+}
+
+export interface LLMAnalyticsSummary {
+  best_win_rate_model: string
+  best_win_rate: number
+  best_roi_model: string
+  best_roi: number
+  fastest_model: string
+  fastest_ms: number
+  total_cost_usd: number
+  total_trades_triggered: number
+  period_days: number
+}
+
+export interface LLMHeatmapResponse {
+  models: string[]
+  symbols: string[]
+  values: (number | null)[][]
+}
+
+export interface LLMTimelinePoint {
+  date: string
+  by_model: Record<string, number>
+}
+
 // ── Global Settings ───────────────────────────────────────────────────────────
 
 export interface GlobalSettings {

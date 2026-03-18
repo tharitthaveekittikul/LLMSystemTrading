@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   BarChart3,
   Brain,
   Coins,
@@ -40,6 +41,7 @@ const navItems = [
   { title: "Pipeline Logs", url: "/logs", icon: ScrollText },
   { title: "Schedule", url: "/schedule", icon: Timer },
   { title: "LLM Usage", url: "/llm-usage", icon: Coins },
+  { title: "LLM Analytics", url: "/llm-analytics", icon: Activity },
   { title: "Storage", url: "/storage", icon: Database },
   { title: "Backtest", url: "/backtest", icon: FlaskConical },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
