@@ -283,6 +283,28 @@ class MT5Bridge:
         info = await self._run(mt5.symbol_info, symbol)
         return info._asdict() if info else None
 
+    async def is_market_open(self, symbol: str) -> tuple[bool, str]:
+        """Return (is_open, trade_mode_name) based on the symbol's current trade_mode.
+
+        trade_mode values (MT5 constants):
+            0  SYMBOL_TRADE_MODE_DISABLED   — trading disabled
+            1  SYMBOL_TRADE_MODE_LONGONLY   — buy orders only
+            2  SYMBOL_TRADE_MODE_SHORTONLY  — sell orders only
+            3  SYMBOL_TRADE_MODE_CLOSEONLY  — only closing existing positions
+            4  SYMBOL_TRADE_MODE_FULL       — full two-way trading (market open)
+
+        Returns True only for FULL (4) since only that mode allows opening new positions.
+        """
+        self._require_mt5()
+        await self._run(mt5.symbol_select, symbol, True)
+        info = await self._run(mt5.symbol_info, symbol)
+        if info is None:
+            return False, "unavailable"
+        _MODE_NAMES = {0: "disabled", 1: "long_only", 2: "short_only", 3: "close_only", 4: "full"}
+        trade_mode = info.trade_mode
+        mode_name = _MODE_NAMES.get(trade_mode, f"unknown({trade_mode})")
+        return trade_mode == mt5.SYMBOL_TRADE_MODE_FULL, mode_name
+
     # ── Order operations (used by executor.py only) ───────────────────────────
 
     async def get_filling_mode(self, symbol: str) -> int:

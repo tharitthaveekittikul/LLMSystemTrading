@@ -297,50 +297,75 @@ class AITradingService:
                 detail=f"Unknown timeframe '{timeframe}'. Supported: {list(_TIMEFRAME_MAP)}",
             )
 
-        # ── 4. Fetch / cache OHLCV ───────────────────────────────────────────
+        # ── 4. Market open check + OHLCV fetch ───────────────────────────────
+        # Always connect to MT5 first to verify trading is allowed before spending
+        # LLM tokens. Reuse the same bridge connection for OHLCV on cache miss.
         t0 = time.monotonic()
         candles = await get_candle_cache(account_id, symbol, tf_upper)
         current_price: float | None = None
         ohlcv_source = "cache"
-        # mt5_symbol is the broker-specific name (e.g. 'EURUSD.s') resolved at
-        # fetch time. Start with the bare strategy symbol; updated on cache miss.
         mt5_symbol: str = symbol
+        tick: dict | None = None
 
-        if candles is None:
-            ohlcv_source = "mt5"
-            logger.info("OHLCV cache miss | account_id=%s symbol=%s tf=%s", account_id, symbol, tf_upper)
-            password = decrypt(account.password_encrypted)
-            creds = AccountCredentials(
-                login=account.login, password=password,
-                server=account.server, path=account.mt5_path or settings.mt5_path,
-            )
-            try:
-                async with MT5Bridge(creds) as bridge:
-                    # Resolve broker-specific symbol name (e.g. EURUSD → EURUSD.s)
-                    # so that symbol_select and copy_rates_from_pos receive the
-                    # exact name the broker exposes after login.
-                    mt5_symbol = await bridge.get_broker_symbol(symbol)
+        password = decrypt(account.password_encrypted)
+        creds = AccountCredentials(
+            login=account.login, password=password,
+            server=account.server, path=account.mt5_path or settings.mt5_path,
+        )
+        try:
+            async with MT5Bridge(creds) as bridge:
+                # Resolve broker-specific symbol name (e.g. EURUSD → EURUSD.s)
+                mt5_symbol = await bridge.get_broker_symbol(symbol)
+
+                # ── Market open check (fail-fast before any LLM cost) ────────
+                t_market = time.monotonic()
+                is_open, trade_mode_name = await bridge.is_market_open(mt5_symbol)
+                await tracer.record(
+                    "market_open_check",
+                    output_data={"trade_mode": trade_mode_name, "is_open": is_open},
+                    status="ok" if is_open else "skipped",
+                    duration_ms=int((time.monotonic() - t_market) * 1000),
+                )
+                if not is_open:
+                    logger.info(
+                        "Market closed (%s) — skipping LLM pipeline | account_id=%s symbol=%s",
+                        trade_mode_name, account_id, mt5_symbol,
+                    )
+                    tracer.finalize(status="skipped")
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"Market is closed for {symbol} (trade_mode={trade_mode_name})",
+                    )
+
+                # ── OHLCV fetch (reuses open bridge; skipped on cache hit) ───
+                if candles is None:
+                    ohlcv_source = "mt5"
+                    logger.info("OHLCV cache miss | account_id=%s symbol=%s tf=%s", account_id, symbol, tf_upper)
                     candles = await bridge.get_rates(mt5_symbol, tf_int, 250)
                     tick = await bridge.get_tick(mt5_symbol)
-            except RuntimeError as exc:
-                await tracer.record(
-                    "ohlcv_fetch", status="error",
-                    input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframe": tf_upper},
-                    error=str(exc),
-                    duration_ms=int((time.monotonic() - t0) * 1000),
-                )
-                tracer.finalize(status="failed")
-                raise HTTPException(status_code=503, detail=str(exc))
-            except ConnectionError as exc:
-                await tracer.record(
-                    "ohlcv_fetch", status="error",
-                    input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframe": tf_upper},
-                    error=str(exc),
-                    duration_ms=int((time.monotonic() - t0) * 1000),
-                )
-                tracer.finalize(status="failed")
-                raise HTTPException(status_code=502, detail=str(exc))
 
+        except HTTPException:
+            raise
+        except RuntimeError as exc:
+            await tracer.record(
+                "ohlcv_fetch", status="error",
+                input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframe": tf_upper},
+                error=str(exc),
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
+            tracer.finalize(status="failed")
+            raise HTTPException(status_code=503, detail=str(exc))
+        except ConnectionError as exc:
+            await tracer.record(
+                "ohlcv_fetch", status="error",
+                input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframe": tf_upper},
+                error=str(exc),
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
+            tracer.finalize(status="failed")
+            raise HTTPException(status_code=502, detail=str(exc))
+
+        if ohlcv_source == "mt5":
             if not candles:
                 await tracer.record(
                     "ohlcv_fetch", status="error",
@@ -353,10 +378,8 @@ class AITradingService:
                     status_code=502,
                     detail=f"MT5 returned no candles for {mt5_symbol} {timeframe}",
                 )
-
             ttl = _CACHE_TTL.get(tf_upper, 60)
             await set_candle_cache(account_id, symbol, tf_upper, candles, ttl)
-
             if tick:
                 current_price = (tick.get("ask", 0) + tick.get("bid", 0)) / 2
 
