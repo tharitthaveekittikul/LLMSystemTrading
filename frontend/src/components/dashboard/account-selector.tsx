@@ -24,6 +24,11 @@ export function AccountSelector() {
         try {
           const data = await accountsApi.list();
           setAccounts(data);
+          // Only auto-select if exactly one account exists — avoids wrong selection
+          // when multiple accounts are configured (user should choose explicitly).
+          if (data.length === 1 && activeAccountId === null) {
+            setActiveAccount(data[0].id);
+          }
         } catch (err) {
           console.error("[AccountSelector] Failed to load accounts:", err);
         } finally {
@@ -31,7 +36,7 @@ export function AccountSelector() {
         }
       })();
     }
-  }, [accounts.length, setAccounts]);
+  }, [accounts.length, activeAccountId, setAccounts, setActiveAccount]);
 
   if (accounts.length === 0) {
     return <span className="text-xs text-muted-foreground">No accounts</span>;

@@ -20,6 +20,7 @@ export default function DashboardPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [equityData, setEquityData] = useState<EquityPoint[]>([]);
   const [equityLoading, setEquityLoading] = useState(false);
+  const [equityHours, setEquityHours] = useState(24);
   const [autoTradeEnabled, setAutoTradeEnabled] = useState(true);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export default function DashboardPage() {
       try {
         const [stats, equity, account] = await Promise.all([
           accountsApi.getStats(activeAccountId),
-          accountsApi.getEquityHistory(activeAccountId, 24),
+          accountsApi.getEquityHistory(activeAccountId, equityHours),
           accountsApi.get(activeAccountId),
         ]);
         setStats(stats);
@@ -49,11 +50,13 @@ export default function DashboardPage() {
         setEquityLoading(false);
       }
     })();
-  }, [activeAccountId]);
+  }, [activeAccountId, equityHours]);
 
   const handleEquityUpdate = useCallback((point: EquityPoint) => {
     setEquityData((prev) => {
-      const next = [...prev.slice(-199), point];
+      const seen = new Set(prev.map((p) => p.ts));
+      if (seen.has(point.ts)) return prev;
+      const next = [...prev.slice(-299), point];
       next.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
       return next;
     });
@@ -86,7 +89,12 @@ export default function DashboardPage() {
           autoTradeEnabled={autoTradeEnabled}
           onAutoTradeToggle={handleAutoTradeToggle}
         />
-        <EquityChart data={equityData} loading={equityLoading} />
+        <EquityChart
+          data={equityData}
+          loading={equityLoading}
+          hours={equityHours}
+          onHoursChange={setEquityHours}
+        />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
           <LivePositions />
           <RecentTrades accountId={activeAccountId} />

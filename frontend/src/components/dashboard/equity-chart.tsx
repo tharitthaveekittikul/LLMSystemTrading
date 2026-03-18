@@ -14,12 +14,21 @@ import {
 } from "recharts";
 import type { EquityPoint } from "@/types/trading";
 
+const RANGES = [
+  { label: "1h", hours: 1 },
+  { label: "6h", hours: 6 },
+  { label: "24h", hours: 24 },
+  { label: "7d", hours: 168 },
+] as const;
+
 interface EquityChartProps {
   data: EquityPoint[];
   loading: boolean;
+  hours: number;
+  onHoursChange: (hours: number) => void;
 }
 
-export function EquityChart({ data, loading }: EquityChartProps) {
+export function EquityChart({ data, loading, hours, onHoursChange }: EquityChartProps) {
   const formatted = useMemo(
     () =>
       data.map((p) => ({
@@ -30,22 +39,50 @@ export function EquityChart({ data, loading }: EquityChartProps) {
     [data],
   );
 
+  const rangeBar = (
+    <div className="flex rounded-md border overflow-hidden">
+      {RANGES.map((r) => (
+        <button
+          key={r.hours}
+          onClick={() => onHoursChange(r.hours)}
+          className={`px-2 py-0.5 text-xs transition-colors ${
+            hours === r.hours
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="rounded-lg border bg-card p-4 h-56 flex items-center justify-center">
-        <span className="text-sm text-muted-foreground">
-          Loading equity history…
-        </span>
+      <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium">Equity Curve</h3>
+          {rangeBar}
+        </div>
+        <div className="h-[220px] flex items-center justify-center">
+          <span className="text-sm text-muted-foreground">Loading equity history…</span>
+        </div>
       </div>
     );
   }
 
   if (data.length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-4 h-56 flex items-center justify-center">
-        <span className="text-sm text-muted-foreground">
-          No equity data yet — starts after first MT5 poll (60s).
-        </span>
+      <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium">Equity Curve</h3>
+          {rangeBar}
+        </div>
+        <div className="h-[220px] flex items-center justify-center">
+          <span className="text-sm text-muted-foreground">
+            No equity data yet — starts after first MT5 poll (60s).
+          </span>
+        </div>
       </div>
     );
   }
@@ -59,12 +96,15 @@ export function EquityChart({ data, loading }: EquityChartProps) {
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium">Equity Curve (24h)</h3>
-        {balanceValue != null && (
-          <span className="text-xs text-muted-foreground">
-            Balance: {balanceValue.toLocaleString()}
-          </span>
-        )}
+        <h3 className="text-sm font-medium">Equity Curve</h3>
+        <div className="flex items-center gap-3">
+          {balanceValue != null && (
+            <span className="text-xs text-muted-foreground">
+              Balance: {balanceValue.toLocaleString()}
+            </span>
+          )}
+          {rangeBar}
+        </div>
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={formatted}>

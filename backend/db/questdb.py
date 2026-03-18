@@ -6,7 +6,7 @@ QuestDB is append-only — never UPDATE or DELETE rows.
 import asyncio
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
 
@@ -81,6 +81,7 @@ async def insert_equity_snapshot(
 
 async def get_equity_history(account_id: int, hours: int = 24) -> list[dict]:
     """Return equity snapshots for the last N hours. Returns [] if table is empty or missing."""
+    cutoff = (datetime.now(UTC) - timedelta(hours=hours)).replace(tzinfo=None)
     conn = await _get_conn()
     try:
         rows = await conn.fetch(
@@ -88,12 +89,13 @@ async def get_equity_history(account_id: int, hours: int = 24) -> list[dict]:
             SELECT ts, equity, balance
             FROM equity_snapshots
             WHERE account_id = $1
-              AND ts >= dateadd('h', -$2, now())
+              AND ts >= $2
             ORDER BY ts ASC
             """,
             account_id,
-            hours,
+            cutoff,
         )
+        logger.debug("get_equity_history | account_id=%s hours=%s rows=%s", account_id, hours, len(rows))
         return [
             {"ts": str(r["ts"]), "equity": float(r["equity"]), "balance": float(r["balance"])}
             for r in rows

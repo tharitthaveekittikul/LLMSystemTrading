@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type {
   Account,
   AccountBalance,
@@ -30,7 +31,9 @@ interface TradingState {
   setKillSwitch: (status: KillSwitchStatus) => void;
 }
 
-export const useTradingStore = create<TradingState>((set) => ({
+export const useTradingStore = create<TradingState>()(
+  persist(
+    (set) => ({
   accounts: [],
   activeAccountId: null,
   balance: null,
@@ -58,4 +61,10 @@ export const useTradingStore = create<TradingState>((set) => ({
       recentSignals: [signal, ...state.recentSignals].slice(0, 50),
     })),
   setKillSwitch: (status) => set({ killSwitch: status }),
-}));
+    }),
+    {
+      name: "trading-store",
+      partialize: (state) => ({ activeAccountId: state.activeAccountId }),
+    }
+  )
+);
