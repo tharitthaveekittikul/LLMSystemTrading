@@ -29,7 +29,9 @@ PURGEABLE_TABLES: dict[str, str] = {
     "backtest_runs": "created_at",
     "kill_switch_log": "created_at",
     "llm_calls": "created_at",
-    "risk_settings": "created_at"
+    "risk_settings": "created_at",
+    "global_settings": "created_at",
+    "telegram_settings": "created_at",
 }
 
 ALL_KNOWN_TABLES: frozenset[str] = PROTECTED_TABLES | frozenset(PURGEABLE_TABLES)
