@@ -99,19 +99,16 @@ export default function LogsPage() {
   const isLiveRun = selectedRun?.id === liveRunId;
 
   return (
-    <SidebarInset>
+    <SidebarInset className="h-screen overflow-hidden">
       <AppHeader
         title="Pipeline Logs"
         subtitle="Every AI analysis run, step by step"
         showAccountSelector={true}
         showConnectionStatus={false}
       />
-      <div
-        className="flex flex-1 min-h-0 overflow-hidden"
-        style={{ height: "calc(100vh - 3rem)" }}
-      >
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left — runs list */}
-        <div className="w-72 shrink-0 border-r flex flex-col">
+        <div className="w-72 shrink-0 border-r flex flex-col overflow-hidden">
           <PipelineRunsList
             selectedRunId={selectedRun?.id ?? null}
             onSelect={setSelectedRun}
