@@ -91,7 +91,7 @@ async def _persist(action: str, reason: str | None, triggered_by: str) -> None:
             session.add(log)
             await session.commit()
     except Exception as exc:
-        logger.error("Failed to persist kill switch log: %s", exc)
+        logger.exception("Failed to persist kill switch log: %s", exc)
 
 
 async def _broadcast_kill_switch(reason: str) -> None:
@@ -101,7 +101,7 @@ async def _broadcast_kill_switch(reason: str) -> None:
 
         await broadcast_all("kill_switch_triggered", {"reason": reason})
     except Exception as exc:
-        logger.error("Failed to broadcast kill switch event: %s", exc)
+        logger.exception("Failed to broadcast kill switch event: %s", exc)
 
 
 async def _send_kill_switch_alert(reason: str) -> None:
@@ -111,7 +111,7 @@ async def _send_kill_switch_alert(reason: str) -> None:
 
         await send_alert(f"*KILL SWITCH ACTIVATED*\nReason: {reason}")
     except Exception as exc:
-        logger.error("Failed to send kill switch Telegram alert: %s", exc)
+        logger.exception("Failed to send kill switch Telegram alert: %s", exc)
 
 
 async def _send_deactivation_alert() -> None:
@@ -121,4 +121,4 @@ async def _send_deactivation_alert() -> None:
 
         await send_alert("*Kill switch DEACTIVATED* — trading resumed")
     except Exception as exc:
-        logger.error("Failed to send deactivation Telegram alert: %s", exc)
+        logger.exception("Failed to send deactivation Telegram alert: %s", exc)

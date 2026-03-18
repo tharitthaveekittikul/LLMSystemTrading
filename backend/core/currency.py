@@ -41,7 +41,7 @@ async def get_usd_thb_rate() -> float:
             
             logger.warning("Currency API response did not contain THB rate. Using fallback.")
     except Exception as e:
-        logger.error(f"Failed to fetch exchange rate: {e}. Using fallback.")
+        logger.exception(f"Failed to fetch exchange rate: {e}. Using fallback.")
     
     # Update last_updated even on failure to avoid spamming the API on every call
     # when it's down, but keep the old rate.

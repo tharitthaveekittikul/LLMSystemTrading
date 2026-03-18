@@ -99,7 +99,7 @@ async def get_equity_history(account_id: int, hours: int = 24) -> list[dict]:
             for r in rows
         ]
     except Exception as exc:
-        logger.error("get_equity_history failed | account_id=%s | %s", account_id, exc)
+        logger.exception("get_equity_history failed | account_id=%s | %s", account_id, exc)
         return []
     finally:
         await conn.close()
@@ -142,7 +142,7 @@ async def get_ohlcv(
         )
         return [dict(r) for r in reversed(rows)]
     except Exception as exc:
-        logger.error("get_ohlcv failed for table=%s: %s", table, exc)
+        logger.exception("get_ohlcv failed for table=%s: %s", table, exc)
         return []
     finally:
         await conn.close()

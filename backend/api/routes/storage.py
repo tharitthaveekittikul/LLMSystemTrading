@@ -320,5 +320,5 @@ async def redis_flush() -> FlushResult:
         logger.warning("Redis FLUSHDB executed — %d keys deleted", key_count)
         return FlushResult(message="Redis DB flushed", keys_flushed=int(key_count))
     except Exception as exc:
-        logger.error("Redis flush failed: %s", exc)
+        logger.exception("Redis flush failed: %s", exc)
         raise HTTPException(status_code=503, detail=f"Redis flush failed: {exc}")

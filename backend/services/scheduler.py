@@ -175,7 +175,7 @@ async def _run_strategy_job(
                 logger.info("Job done: account=%d symbol=%s action=%s order=%s",
                             account_id, symbol, result.signal.action, result.order_placed)
     except Exception as exc:
-        logger.error(
+        logger.exception(
             "Scheduled job failed | account=%d symbol=%s strategy_id=%s: %s",
             account_id, symbol, strategy_id, exc,
         )
@@ -300,4 +300,4 @@ def trigger_binding_manually(binding) -> None:
             )
             logger.info("Manually triggered %s", one_off_id)
         except Exception as e:
-            logger.error("Failed to trigger job manually %s: %s", one_off_id, e)
+            logger.exception("Failed to trigger job manually %s: %s", one_off_id, e)

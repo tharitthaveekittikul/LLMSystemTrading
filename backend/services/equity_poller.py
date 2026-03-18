@@ -46,7 +46,7 @@ async def run_equity_poller() -> None:
             try:
                 await _poll_all_accounts()
             except Exception as exc:
-                logger.error("Equity poller cycle error: %s", exc)
+                logger.exception("Equity poller cycle error: %s", exc)
         else:
             logger.debug(
                 "Equity poller skipped — market closed | weekday=%d hour=%d UTC",
@@ -139,4 +139,4 @@ async def _poll_account(account, insert_fn, broadcast_fn) -> None:
 
         logger.debug("Equity polled | account_id=%s equity=%.2f", account["id"], equity)
     except Exception as exc:
-        logger.error("Equity poller failed for account_id=%s: %s", account["id"], exc)
+        logger.exception("Equity poller failed for account_id=%s: %s", account["id"], exc)

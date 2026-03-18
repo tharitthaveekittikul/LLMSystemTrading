@@ -430,7 +430,7 @@ class AITradingService:
                 "candle_count": len(candles),
             }
         except Exception as e:
-            logger.error(f"Error computing advanced indicators: {e}")
+            logger.exception(f"Error computing advanced indicators: {e}")
             closes = [float(c.get("close", 0)) for c in candles[-20:]]
             indicators = {
                 "sma_20": round(sum(closes) / len(closes), 5) if closes else 0,
@@ -558,7 +558,7 @@ class AITradingService:
             try:
                 rule_result = strategy_instance.generate_signal(market_data)
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "generate_signal raised | strategy=%s | %s",
                     type(strategy_instance).__name__, exc,
                 )
@@ -1012,7 +1012,7 @@ class AITradingService:
                     order_req, dry_run=account.paper_trade_enabled
                 )
         except (RuntimeError, ConnectionError) as exc:
-            logger.error("MT5 error during order execution | account_id=%s | %s", account_id, exc)
+            logger.exception("MT5 error during order execution | account_id=%s | %s", account_id, exc)
             await tracer.record(
                 "mt5_executed", status="error",
                 error=str(exc),

@@ -77,7 +77,7 @@ async def _poll_loop(account_id: int) -> None:
             if state:
                 state.is_connected = False
                 state.last_error = str(exc)
-            logger.error(
+            logger.exception(
                 "Poll session ended | account_id=%s | retry in %.0fs | %s",
                 account_id, RETRY_DELAY, exc,
             )

@@ -88,7 +88,7 @@ async def main():
                 if result.signal.action != "HOLD":
                     logger.info(f"Rationale: {result.signal.rationale}")
             except Exception as e:
-                logger.error(f"Error executing strategy for {symbol}: {e}")
+                logger.exception(f"Error executing strategy for {symbol}: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
