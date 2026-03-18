@@ -644,6 +644,22 @@ class AITradingService:
             if strategy_overrides and strategy_overrides.news_filter:
                 from services.market_context import fetch_high_impact_events
                 news_events = await fetch_high_impact_events([symbol], minutes=60)
+                await tracer.record(
+                    "news_fetch",
+                    output_data={
+                        "events_found": len(news_events),
+                        "events": [
+                            {
+                                "time": e["time"],
+                                "currency": e["currency"],
+                                "title": e["title"],
+                                "impact": e["impact"],
+                            }
+                            for e in news_events
+                        ],
+                        "llm_will_run": bool(news_events),
+                    },
+                )
                 if news_events:
                     t0_news = time.monotonic()
                     news_result: NewsAnalysisResult = await analyze_news_impact(
