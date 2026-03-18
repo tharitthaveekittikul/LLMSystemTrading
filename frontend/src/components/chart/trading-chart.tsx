@@ -122,7 +122,7 @@ export function TradingChart({
       if (pos.symbol !== symbol) continue;
       const isLong = pos.type === "buy";
       const pnlSign = pos.profit >= 0 ? "+" : "";
-      const entryLabel = `${pos.type.toUpperCase()} ${pos.volume} ${pnlSign}${pos.profit.toFixed(2)} $`;
+      const entryLabel = `${pos.type.toUpperCase()} ${pos.volume} ${pnlSign}${pos.profit.toFixed(2)} USD`;
 
       lines.push(
         series.createPriceLine({

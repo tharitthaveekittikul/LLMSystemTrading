@@ -97,7 +97,7 @@ async def get_equity_history(account_id: int, hours: int = 24) -> list[dict]:
         )
         logger.debug("get_equity_history | account_id=%s hours=%s rows=%s", account_id, hours, len(rows))
         return [
-            {"ts": str(r["ts"]), "equity": float(r["equity"]), "balance": float(r["balance"])}
+            {"ts": r["ts"].strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z", "equity": float(r["equity"]), "balance": float(r["balance"])}
             for r in rows
         ]
     except Exception as exc:

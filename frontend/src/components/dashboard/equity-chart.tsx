@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { formatTime } from "@/lib/date";
+import { formatTime, formatDateTime } from "@/lib/date";
 import {
   ResponsiveContainer,
   LineChart,
@@ -32,7 +32,7 @@ export function EquityChart({ data, loading, hours, onHoursChange }: EquityChart
   const formatted = useMemo(
     () =>
       data.map((p) => ({
-        ts: formatTime(p.ts),
+        ts: p.ts,
         equity: p.equity,
         balance: p.balance,
       })),
@@ -111,6 +111,7 @@ export function EquityChart({ data, loading, hours, onHoursChange }: EquityChart
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
           <XAxis
             dataKey="ts"
+            tickFormatter={(v: string) => formatTime(v)}
             tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
             interval="preserveStartEnd"
           />
@@ -129,7 +130,7 @@ export function EquityChart({ data, loading, hours, onHoursChange }: EquityChart
             }}
             labelStyle={{ color: "var(--color-muted-foreground)" }}
             formatter={(value: number) => [value.toLocaleString(), "Equity"]}
-            labelFormatter={(label: string) => `Time: ${label}`}
+            labelFormatter={(label: string) => formatDateTime(label)}
           />
           {balanceValue != null && (
             <ReferenceLine
