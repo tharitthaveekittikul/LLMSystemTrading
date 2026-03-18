@@ -1,0 +1,77 @@
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.security import decrypt
+from db.models import Account
+from db.postgres import get_db
+from mt5.bridge import AccountCredentials, MT5Bridge
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+TIMEFRAME_MAP: dict[str, int] = {
+    "M1":  1,
+    "M5":  5,
+    "M15": 15,
+    "M30": 30,
+    "H1":  16385,
+    "H4":  16388,
+    "D1":  16408,
+    "W1":  32769,
+}
+
+
+@router.get("/{symbol}/{timeframe}")
+async def get_ohlcv(
+    symbol: str = Path(..., description="e.g. XAUUSD"),
+    timeframe: str = Path(..., description="M1 M5 M15 M30 H1 H4 D1 W1"),
+    account_id: int = Query(..., description="Account to fetch data from"),
+    count: int = Query(300, ge=50, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    tf_int = TIMEFRAME_MAP.get(timeframe.upper())
+    if tf_int is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown timeframe '{timeframe}'. Valid: {list(TIMEFRAME_MAP)}",
+        )
+
+    row = (
+        await db.execute(select(Account).where(Account.id == account_id))
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    creds = AccountCredentials(
+        login=row.login,
+        password=decrypt(row.password_encrypted),
+        server=row.server,
+        path=row.mt5_path or "",
+    )
+
+    try:
+        async with MT5Bridge(creds) as bridge:
+            candles = await bridge.get_rates(symbol, tf_int, count, require_connected=False)
+    except Exception as exc:
+        logger.error("get_rates(%s, %s) failed: %s", symbol, timeframe, exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    result = []
+    for c in candles:
+        t = c["time"]
+        ts = int(t.timestamp()) if hasattr(t, "timestamp") else int(t)
+        result.append({
+            "time": ts,
+            "open": float(c["open"]),
+            "high": float(c["high"]),
+            "low":  float(c["low"]),
+            "close": float(c["close"]),
+            "volume": int(c.get("tick_volume", 0)),
+        })
+
+    logger.debug("get_ohlcv(%s, %s, account=%d) -> %d candles", symbol, timeframe.upper(), account_id, len(result))
+    return result

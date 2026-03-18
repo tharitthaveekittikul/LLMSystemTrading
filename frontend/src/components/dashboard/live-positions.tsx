@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Inbox, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,7 +85,14 @@ export function LivePositions() {
             <TableBody>
               {positions.map((pos) => (
                 <TableRow key={`pos-${pos.ticket}`}>
-                  <TableCell className="font-medium">{pos.symbol}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link
+                      href={`/chart/${pos.symbol}`}
+                      className="hover:underline hover:text-primary"
+                    >
+                      {pos.symbol}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     <Badge
                       className={cn(
@@ -123,7 +131,14 @@ export function LivePositions() {
               ))}
               {pendingOrders.map((order) => (
                 <TableRow key={`order-${order.ticket}`} className="opacity-70">
-                  <TableCell className="font-medium">{order.symbol}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link
+                      href={`/chart/${order.symbol}`}
+                      className="hover:underline hover:text-primary"
+                    >
+                      {order.symbol}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     <Badge
                       className={cn(

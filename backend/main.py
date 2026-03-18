@@ -17,6 +17,7 @@ from api.routes import storage as storage_routes
 from api.routes import llm_usage as llm_usage_routes
 from api.routes import llm_analytics as llm_analytics_routes
 from api.routes import scheduler as scheduler_routes
+from api.routes import market_data as market_data_routes
 from core.config import settings
 from core.logging import setup_logging
 from db.postgres import init_db
@@ -119,6 +120,7 @@ app.include_router(storage_routes.router, prefix="/api/v1/storage", tags=["stora
 app.include_router(llm_usage_routes.router, prefix="/api/v1/llm-usage", tags=["llm-usage"])
 app.include_router(llm_analytics_routes.router, prefix="/api/v1/llm-analytics", tags=["llm-analytics"])
 app.include_router(scheduler_routes.router, prefix="/api/v1/scheduler", tags=["scheduler"])
+app.include_router(market_data_routes.router, prefix="/api/v1/market-data", tags=["market-data"])
 
 
 @app.get("/health", tags=["system"])

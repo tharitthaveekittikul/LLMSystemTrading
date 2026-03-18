@@ -6,6 +6,7 @@ import {
   Activity,
   BarChart3,
   Brain,
+  CandlestickChart,
   Coins,
   Cpu,
   Database,
@@ -34,6 +35,7 @@ import {
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Chart", url: "/chart", icon: CandlestickChart },
   { title: "Accounts", url: "/accounts", icon: Users },
   { title: "Strategies", url: "/strategies", icon: Cpu },
   { title: "Trades", url: "/trades", icon: TrendingUp },
@@ -78,7 +80,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
-                    isActive={pathname === item.url}
+                    isActive={item.url === "/" ? pathname === "/" : pathname.startsWith(item.url)}
                     tooltip={item.title}
                   >
                     <Link href={item.url}>

@@ -207,13 +207,18 @@ class MT5Bridge:
 
     # ── OHLCV ─────────────────────────────────────────────────────────────────
 
-    async def get_rates(self, symbol: str, timeframe: int, count: int) -> list[dict]:
-        """Fetch OHLCV candles. timeframe uses MT5 TIMEFRAME_* constants."""
+    async def get_rates(self, symbol: str, timeframe: int, count: int, require_connected: bool = True) -> list[dict]:
+        """Fetch OHLCV candles. timeframe uses MT5 TIMEFRAME_* constants.
+
+        Set require_connected=False to allow fetching from local MT5 cache even when
+        the terminal reports connected=False (e.g. fresh per-request connections for charts).
+        """
         self._require_mt5()
-        info = await self._run(mt5.terminal_info)
-        if info and not info.connected:
-            logger.warning("MT5 not connected to broker — skipping get_rates(%s, tf=%s)", symbol, timeframe)
-            return []
+        if require_connected:
+            info = await self._run(mt5.terminal_info)
+            if info and not info.connected:
+                logger.warning("MT5 not connected to broker — skipping get_rates(%s, tf=%s)", symbol, timeframe)
+                return []
         selected = await self._run(mt5.symbol_select, symbol, True)  # ensure symbol is in Market Watch
         if not selected:
             err = await self.get_last_error()
