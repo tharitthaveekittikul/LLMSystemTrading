@@ -10,10 +10,27 @@ import { cn } from "@/lib/utils";
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 
+const COUNTS = [200, 500, 1000] as const;
+export type CandleCount = (typeof COUNTS)[number];
+
+const TIMEZONES = [
+  { label: "Local", value: "" },
+  { label: "Bangkok", value: "Asia/Bangkok" },
+  { label: "Singapore", value: "Asia/Singapore" },
+  { label: "Tokyo", value: "Asia/Tokyo" },
+  { label: "London", value: "Europe/London" },
+  { label: "New York", value: "America/New_York" },
+  { label: "UTC", value: "UTC" },
+] as const;
+
 interface ChartToolbarProps {
   symbol: string;
   timeframe: Timeframe;
   onTimeframeChange: (tf: Timeframe) => void;
+  count: CandleCount;
+  onCountChange: (n: CandleCount) => void;
+  timezone?: string;
+  onTimezoneChange?: (tz: string) => void;
   onRefresh?: () => void;
   isLoading?: boolean;
 }
@@ -22,6 +39,10 @@ export function ChartToolbar({
   symbol,
   timeframe,
   onTimeframeChange,
+  count,
+  onCountChange,
+  timezone,
+  onTimezoneChange,
   onRefresh,
   isLoading,
 }: ChartToolbarProps) {
@@ -70,13 +91,51 @@ export function ChartToolbar({
               "h-7 px-2.5 text-xs font-medium rounded transition-all",
               timeframe === tf
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50",
             )}
           >
             {tf}
           </button>
         ))}
       </div>
+
+      <div className="h-5 w-px bg-border" />
+
+      {/* Candle count */}
+      <div className="flex items-center bg-muted rounded-md p-0.5">
+        {COUNTS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onCountChange(n)}
+            className={cn(
+              "h-7 px-2.5 text-xs font-medium rounded transition-all",
+              count === n
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+            )}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+
+      {onTimezoneChange && (
+        <>
+          <div className="h-5 w-px bg-border" />
+          <select
+            className="h-7 px-2 text-xs font-medium rounded bg-muted text-muted-foreground hover:text-foreground cursor-pointer border-0 outline-none"
+            value={timezone ?? ""}
+            onChange={(e) => onTimezoneChange(e.target.value)}
+          >
+            {TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
 
       <div className="flex-1" />
 
@@ -86,7 +145,7 @@ export function ChartToolbar({
           size="sm"
           variant="ghost"
           className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-          onClick={onRefresh}
+          onClick={() => onRefresh()}
           disabled={isLoading}
           title="Refresh chart data"
         >
