@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 PROTECTED_TABLES: frozenset[str] = frozenset({
     "accounts", "trades", "strategies", "account_strategies",
     "ai_journal", "llm_provider_configs", "task_llm_assignments",
-    "hmm_model_registry", "alembic_version",
+    "alembic_version",
     "pipeline_steps", "backtest_trades",  # child tables — cascade-only, no direct management
 })
 

@@ -195,17 +195,6 @@ async def start_scheduler(db: "AsyncSession") -> None:
     for binding in bindings:
         _add_binding_jobs(_scheduler, binding)
 
-    # Weekly HMM retrain — every Sunday 01:00 UTC
-    from services.hmm_retrain import retrain_all_hmm_models
-    _scheduler.add_job(
-        retrain_all_hmm_models,
-        trigger=CronTrigger(day_of_week="sun", hour=1, minute=0, timezone="UTC"),
-        id="hmm_weekly_retrain",
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
-    logger.info("HMM weekly retrain job registered (Sunday 01:00 UTC)")
-
     # Position maintenance sweep — runs every maintenance_interval_minutes
     from core.config import settings
     from services.position_maintenance import PositionMaintenanceService

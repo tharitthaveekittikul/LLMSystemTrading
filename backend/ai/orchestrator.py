@@ -418,7 +418,6 @@ async def _run_market_analysis(
     recent_signals: list[dict],
     news_context: str | None,
     trade_history_context: str | None,
-    regime_context: str | None,
     context_ohlcv: dict[str, list[dict]] | None = None,
 ) -> LLMRoleResult:
     """LLM Role 1: Analyze market conditions and produce a context summary."""
@@ -435,8 +434,6 @@ async def _run_market_analysis(
         f"Symbol: {symbol}\nPrimary Timeframe: {timeframe}\nCurrent Price: {current_price}",
         f"\nIndicators (Primary {timeframe}):\n{json.dumps(indicators, indent=2)}",
     ]
-    if regime_context:
-        human_parts.append(f"\nMarket Regime (HMM):\n{regime_context}")
     human_parts.append(f"\nLast 20 OHLCV candles ({timeframe}) (oldest → newest):\n{json.dumps(ohlcv[-20:], indent=2, default=str)}")
     
     if context_ohlcv:
@@ -689,7 +686,6 @@ async def analyze_market(
     recent_signals: list[dict[str, Any]] | None = None,
     news_context: str | None = None,
     trade_history_context: str | None = None,
-    regime_context: str | None = None,
     system_prompt_override: str | None = None,
     llm_override: BaseChatModel | None = None,
     # Per-role LLM overrides
@@ -718,7 +714,7 @@ async def analyze_market(
     ma_result = await _run_market_analysis(
         ma_llm, symbol, timeframe, current_price,
         indicators, ohlcv, open_positions or [], recent_signals or [],
-        news_context, trade_history_context, regime_context, context_ohlcv,
+        news_context, trade_history_context, context_ohlcv,
     )
     market_context = ma_result.content if isinstance(ma_result.content, dict) else {}
 

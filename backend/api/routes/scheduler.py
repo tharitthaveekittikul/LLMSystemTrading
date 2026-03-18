@@ -71,7 +71,6 @@ def _job_category(job_id: str) -> str:
 
 def _job_name(job_id: str) -> str:
     known = {
-        "hmm_weekly_retrain": "HMM Model Weekly Retrain",
         "position_maintenance_sweep": "Position Maintenance Sweep",
     }
     if job_id in known:

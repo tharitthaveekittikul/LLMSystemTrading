@@ -61,14 +61,6 @@ _CACHE_TTL: dict[str, int] = {
     "H1": 300, "H4": 600, "D1": 1800, "W1": 3600,
 }
 
-_REGIME_SIGNAL_FILTER: dict[str, set[str]] = {
-    "trending_bullish":  {"BUY"},
-    "trending_bearish":  {"SELL"},
-    "ranging":           {"BUY", "SELL"},
-    "high_volatility":   set(),
-    "unknown":           {"BUY", "SELL"},
-}
-
 # Minimum lot step for MT5 (universal across brokers)
 _MT5_MIN_LOT = 0.01
 
@@ -99,23 +91,6 @@ def _calculate_lot_size(
     raw = (balance * risk_pct) / (sl_pips * pip_value_per_lot)
     raw = round(raw / min_lot) * min_lot  # round to lot step
     return max(min_lot, min(raw, max_lot))
-
-
-def _apply_regime_filter(signal: TradingSignal, regime: str) -> TradingSignal:
-    """Return a new TradingSignal with action=HOLD if regime blocks the direction."""
-    allowed = _REGIME_SIGNAL_FILTER.get(regime, {"BUY", "SELL"})
-    if direction_from_action(signal.action) not in allowed:
-        logger.info("Signal %s blocked by HMM regime '%s'", signal.action, regime)
-        return TradingSignal(
-            action="HOLD",
-            entry=signal.entry,
-            stop_loss=signal.stop_loss,
-            take_profit=signal.take_profit,
-            confidence=signal.confidence,
-            rationale=f"{signal.rationale} [HMM regime '{regime}' blocks {signal.action}]",
-            timeframe=signal.timeframe,
-        )
-    return signal
 
 
 def _provider_name(llm: object) -> str:
@@ -190,8 +165,6 @@ class AnalysisResult:
 
 
 class AITradingService:
-    _hmm_cache: dict[str, "HMMService"] = {}  # keyed by "SYMBOL_TF"
-
     async def analyze_and_trade(
         self,
         account_id: int,
@@ -476,34 +449,6 @@ class AITradingService:
             duration_ms=int((time.monotonic() - t0) * 1000),
         )
 
-        # ── 5.5 HMM Regime detection ──────────────────────────────────────────
-        t0 = time.monotonic()
-        regime_info: dict = {"state": -1, "regime": "unknown", "confidence": 0.0}
-        regime_context_str: str | None = None
-        try:
-            from services.hmm_service import HMMService
-            cache_key = f"{symbol}_{tf_upper}"
-            if cache_key not in AITradingService._hmm_cache:
-                AITradingService._hmm_cache[cache_key] = HMMService(
-                    symbol=symbol, timeframe=tf_upper
-                )
-            hmm_svc = AITradingService._hmm_cache[cache_key]
-            if len(candles) >= 50:
-                regime_info = hmm_svc.predict(candles)
-                if regime_info['regime'] != 'unknown':
-                    regime_context_str = (
-                        f"Current market regime: **{regime_info['regime']}** "
-                        f"(confidence: {regime_info['confidence']:.0%}). "
-                        "Align your signal with this regime."
-                    )
-        except Exception as exc:
-            logger.warning("HMM predict failed | symbol=%s: %s", symbol, exc)
-        await tracer.record(
-            "hmm_regime",
-            output_data=regime_info,
-            duration_ms=int((time.monotonic() - t0) * 1000),
-        )
-
         # ── 6. Fetch position context and recent signals ─────────────────────
         t0 = time.monotonic()
         open_positions: list[dict] = []
@@ -764,7 +709,6 @@ class AITradingService:
                 recent_signals=recent_signals,
                 news_context=news_context_str,
                 trade_history_context=trade_history_context,
-                regime_context=regime_context_str,
                 system_prompt_override=strategy_overrides.custom_prompt if strategy_overrides else None,
                 market_analysis_llm=ma_llm,
                 chart_vision_llm=cv_llm,
@@ -885,15 +829,6 @@ class AITradingService:
                 "threshold": settings.llm_confidence_threshold,
             },
             output_data={"action_before": action_before, "action_after": signal.action},
-        )
-
-        # ── 9b. Regime gate ────────────────────────────────────────────────────
-        action_before_regime = signal.action
-        signal = _apply_regime_filter(signal, regime_info["regime"])
-        await tracer.record(
-            "regime_gate",
-            input_data={"regime": regime_info["regime"], "action_in": action_before_regime},
-            output_data={"action_out": signal.action},
         )
 
         logger.info(
