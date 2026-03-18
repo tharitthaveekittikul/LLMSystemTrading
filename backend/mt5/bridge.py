@@ -210,6 +210,10 @@ class MT5Bridge:
     async def get_rates(self, symbol: str, timeframe: int, count: int) -> list[dict]:
         """Fetch OHLCV candles. timeframe uses MT5 TIMEFRAME_* constants."""
         self._require_mt5()
+        info = await self._run(mt5.terminal_info)
+        if info and not info.connected:
+            logger.warning("MT5 not connected to broker — skipping get_rates(%s, tf=%s)", symbol, timeframe)
+            return []
         selected = await self._run(mt5.symbol_select, symbol, True)  # ensure symbol is in Market Watch
         if not selected:
             err = await self.get_last_error()
