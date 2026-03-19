@@ -46,6 +46,21 @@ services:
       - "19009:9009"  # InfluxDB line protocol (bulk insert) — host 19009 avoids Windows WSL2 reservation
       - "8812:8812"   # PostgreSQL wire protocol (asyncpg queries)
 
+  nginx:
+    image: nginx:alpine
+    container_name: trading_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+      - questdb
+      - redis
+
 volumes:
   postgres_data:
   questdb_data:

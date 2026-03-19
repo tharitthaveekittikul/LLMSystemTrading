@@ -1,12 +1,18 @@
-/** Root host — used for health ping and WebSocket */
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+/** Root host — empty string means use relative URLs (routed via nginx or Next.js rewrites) */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 /** Versioned REST prefix for all API calls */
 export const API_V1 = `${API_BASE_URL}/api/v1`;
 
-const WS_BASE_URL =
-  process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+/** Derive WebSocket base URL from the current page host when not explicitly set. */
+function getWsBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  if (typeof window !== "undefined") {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}`;
+  }
+  return "ws://localhost:8000";
+}
 
 export async function apiRequest<T>(
   path: string,
@@ -36,7 +42,7 @@ export async function apiRequest<T>(
 }
 
 export function createWebSocket(accountId: number): WebSocket {
-  return new WebSocket(`${WS_BASE_URL}/ws/dashboard/${accountId}`);
+  return new WebSocket(`${getWsBaseUrl()}/ws/dashboard/${accountId}`);
 }
 
 // ── Trades ────────────────────────────────────────────────────────────────────
