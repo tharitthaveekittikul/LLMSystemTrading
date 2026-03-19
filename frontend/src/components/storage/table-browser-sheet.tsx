@@ -261,7 +261,7 @@ export function TableBrowserSheet({
             )}
             {searchBar}
           </DrawerHeader>
-          <div className="flex-1 overflow-auto">{tableContent}</div>
+          <div className="flex-1 min-h-0 flex flex-col">{tableContent}</div>
           <div className="border-t px-4 py-3 shrink-0">{footerContent}</div>
         </DrawerContent>
       </Drawer>
@@ -280,7 +280,7 @@ export function TableBrowserSheet({
           )}
           <div>{searchBar}</div>
         </SheetHeader>
-        <SheetBody className="p-0 overflow-auto flex-1 min-h-0">
+        <SheetBody className="p-0 flex-1 min-h-0 flex flex-col">
           {tableContent}
         </SheetBody>
         <SheetFooter className="shrink-0">{footerContent}</SheetFooter>
@@ -346,7 +346,7 @@ function TableBrowserBody({
 
   if (rows.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
         <Database className="h-10 w-10 opacity-20" />
         <p className="text-sm">
           {isFiltered && totalLoaded > 0
@@ -358,10 +358,11 @@ function TableBrowserBody({
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow className="bg-muted/40 hover:bg-muted/40 sticky top-0">
-          {columns.map((col, i) => (
+    <div className="flex-1 min-h-0 relative [&>div]:h-full [&>div]:overflow-auto">
+      <Table>
+        <TableHeader className="sticky top-0 z-10 bg-muted">
+          <TableRow className="hover:bg-muted/50">
+            {columns.map((col, i) => (
             <TableHead
               key={col}
               className="whitespace-nowrap text-xs font-semibold cursor-pointer select-none"
@@ -415,6 +416,7 @@ function TableBrowserBody({
         ))}
       </TableBody>
     </Table>
+    </div>
   );
 }
 
