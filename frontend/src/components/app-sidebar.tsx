@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Activity,
@@ -63,7 +64,7 @@ export function AppSidebar() {
         <div className="flex h-12 items-center justify-between px-2">
           <Link href="/">
             <div className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden">
-              <TrendingUp className="w-5 shrink-0 text-primary" />
+              <Image src="/logo.png" alt="LLM Trading Logo" width={24} height={24} className="shrink-0 rounded-sm" />
               <span className="text-sm font-semibold">LLM Trading</span>
             </div>
           </Link>
