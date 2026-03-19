@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
+import { SidebarInset } from "@/components/ui/sidebar"
+import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import { AnalyticsKPIBar } from "@/components/analytics/analytics-kpi-bar"
@@ -91,42 +93,60 @@ export default function AnalyticsPage() {
 
   const DetailPanel = summary?.panel_type ? PANEL_MAP[summary.panel_type] : null
 
-  if (loading) return <div className="p-6 text-muted-foreground">Loading analytics...</div>
-  if (error) return <div className="p-6 text-red-500">{error}</div>
+  const backAction = (
+    <Button variant="ghost" size="sm" asChild>
+      <Link href="/backtest"><ArrowLeft className="h-4 w-4 mr-1" />Back</Link>
+    </Button>
+  )
+
+  if (loading) return (
+    <SidebarInset>
+      <AppHeader title="Backtest Analytics" subtitle={`Run #${runId}`} actions={backAction} showAccountSelector={false} showConnectionStatus={false} />
+      <div className="p-6 text-muted-foreground">Loading analytics...</div>
+    </SidebarInset>
+  )
+  if (error) return (
+    <SidebarInset>
+      <AppHeader title="Backtest Analytics" subtitle={`Run #${runId}`} actions={backAction} showAccountSelector={false} showConnectionStatus={false} />
+      <div className="p-6 text-red-500">{error}</div>
+    </SidebarInset>
+  )
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/backtest"><ArrowLeft className="h-4 w-4 mr-1" />Back</Link>
-        </Button>
-        <h1 className="text-xl font-semibold">Backtest Analytics — Run #{runId}</h1>
-      </div>
-
-      <AnalyticsKPIBar
-        totalTrades={summary?.total_trades ?? null}
-        winRate={summary?.win_rate ?? null}
-        profitFactor={summary?.profit_factor ?? null}
-        maxDrawdown={summary?.max_drawdown_pct ?? null}
-        sharpe={summary?.sharpe_ratio ?? null}
-        totalReturn={summary?.total_return_pct ?? null}
+    <SidebarInset>
+      <AppHeader
+        title="Backtest Analytics"
+        subtitle={`Run #${runId}`}
+        actions={backAction}
+        showAccountSelector={false}
+        showConnectionStatus={false}
       />
-
-      <AnalyticsHeatmap data={heatmap} onMetricChange={handleMetricChange} />
-
-      {combinations && (
-        <AnalyticsCombinations
-          top={combinations.top}
-          worst={combinations.worst}
-          recommendations={combinations.recommendations}
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+        <AnalyticsKPIBar
+          totalTrades={summary?.total_trades ?? null}
+          winRate={summary?.win_rate ?? null}
+          profitFactor={summary?.profit_factor ?? null}
+          maxDrawdown={summary?.max_drawdown_pct ?? null}
+          sharpe={summary?.sharpe_ratio ?? null}
+          totalReturn={summary?.total_return_pct ?? null}
         />
-      )}
 
-      {DetailPanel && (
-        <div className="border rounded-lg p-4">
-          <DetailPanel groups={groups} />
-        </div>
-      )}
-    </div>
+        <AnalyticsHeatmap data={heatmap} onMetricChange={handleMetricChange} />
+
+        {combinations && (
+          <AnalyticsCombinations
+            top={combinations.top}
+            worst={combinations.worst}
+            recommendations={combinations.recommendations}
+          />
+        )}
+
+        {DetailPanel && (
+          <div className="border rounded-lg p-4">
+            <DetailPanel groups={groups} />
+          </div>
+        )}
+      </div>
+    </SidebarInset>
   )
 }

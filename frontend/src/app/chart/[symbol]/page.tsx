@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { AlertCircle, BarChart2, Loader2 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
 import {
   ChartToolbar,
@@ -148,7 +149,7 @@ function ChartPageContent() {
   const symbolOrders = pendingOrders.filter((o) => o.symbol === symbol);
 
   return (
-    <div className="flex flex-col w-full h-screen overflow-hidden">
+    <SidebarInset className="flex flex-col h-screen overflow-hidden">
       <AppHeader title="Chart" subtitle={symbol} />
 
       <ChartToolbar
@@ -312,7 +313,7 @@ function ChartPageContent() {
           />
         )}
       </div>
-    </div>
+    </SidebarInset>
   );
 }
 

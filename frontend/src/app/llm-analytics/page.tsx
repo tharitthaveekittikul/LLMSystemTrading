@@ -7,6 +7,8 @@ import type {
   LLMHeatmapResponse,
   LLMTimelinePoint,
 } from "@/types/trading"
+import { SidebarInset } from "@/components/ui/sidebar"
+import { AppHeader } from "@/components/app-header"
 import { SummaryKpiCards } from "@/components/llm-analytics/summary-kpi-cards"
 import { ModelPerformanceTable } from "@/components/llm-analytics/model-performance-table"
 import { ModelSymbolHeatmap } from "@/components/llm-analytics/model-symbol-heatmap"
@@ -55,61 +57,53 @@ export default function LLMAnalyticsPage() {
 
   useEffect(() => { fetchAll(days) }, [days])
 
-  return (
-    <div className="flex flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">LLM Model Analytics</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Performance, cost, and profitability per model
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Period selector */}
-          <div className="flex rounded-md border overflow-hidden">
-            {PERIODS.map(p => (
-              <button
-                key={p.days}
-                onClick={() => setDays(p.days)}
-                className={`px-3 py-1.5 text-sm transition-colors ${
-                  days === p.days
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchAll(days)}
-            disabled={loading}
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <div className="flex rounded-md border overflow-hidden">
+        {PERIODS.map(p => (
+          <button
+            key={p.days}
+            onClick={() => setDays(p.days)}
+            className={`px-3 py-1.5 text-sm transition-colors ${
+              days === p.days
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
+            }`}
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
+            {p.label}
+          </button>
+        ))}
       </div>
-
-      {/* Section 1: KPI Cards */}
-      <SummaryKpiCards data={summary} />
-
-      {/* Section 2: Model Performance Table */}
-      <ModelPerformanceTable data={performance} />
-
-      {/* Section 3: Heatmap + Scatter */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ModelSymbolHeatmap data={heatmap} />
-        <CostVsWinrateScatter data={performance} />
-      </div>
-
-      {/* Section 4: Action Distribution */}
-      <ActionDistributionChart data={performance} />
-
-      {/* Section 5: P&L Timeline + Cost Trend */}
-      <PnlTimelineChart pnlData={pnlTimeline} costData={costTrend} />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => fetchAll(days)}
+        disabled={loading}
+      >
+        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+      </Button>
     </div>
+  )
+
+  return (
+    <SidebarInset>
+      <AppHeader
+        title="LLM Analytics"
+        subtitle="Performance, cost, and profitability per model"
+        actions={headerActions}
+        showAccountSelector={false}
+        showConnectionStatus={false}
+      />
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+        <SummaryKpiCards data={summary} />
+        <ModelPerformanceTable data={performance} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ModelSymbolHeatmap data={heatmap} />
+          <CostVsWinrateScatter data={performance} />
+        </div>
+        <ActionDistributionChart data={performance} />
+        <PnlTimelineChart pnlData={pnlTimeline} costData={costTrend} />
+      </div>
+    </SidebarInset>
   )
 }
