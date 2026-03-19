@@ -19,7 +19,9 @@ import type {
 
 export default function LogsPage() {
   const { activeAccountId } = useTradingStore();
-  const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(null);
+  const [selectedRun, setSelectedRun] = useState<PipelineRunSummary | null>(
+    null,
+  );
 
   // Live pipeline tracking
   const liveRunIdRef = useRef<number | null>(null);
@@ -27,8 +29,12 @@ export default function LogsPage() {
   const [liveSteps, setLiveSteps] = useState<PipelineStep[]>([]);
 
   // Callbacks registered by child list component
-  const newRunHandlerRef = useRef<((data: PipelineRunCompleteData) => void) | null>(null);
-  const runStartedHandlerRef = useRef<((data: PipelineRunStartedData) => void) | null>(null);
+  const newRunHandlerRef = useRef<
+    ((data: PipelineRunCompleteData) => void) | null
+  >(null);
+  const runStartedHandlerRef = useRef<
+    ((data: PipelineRunStartedData) => void) | null
+  >(null);
 
   const [pricing, setPricing] = useState<LLMPricingEntry[]>([]);
   const [usdThbRate, setUsdThbRate] = useState<number>(36.0);
@@ -106,9 +112,9 @@ export default function LogsPage() {
         showAccountSelector={true}
         showConnectionStatus={false}
       />
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
         {/* Left — runs list */}
-        <div className="w-72 shrink-0 border-r flex flex-col overflow-hidden">
+        <div className="w-full md:w-72 md:shrink-0 border-b md:border-b-0 md:border-r flex flex-col overflow-hidden h-96 md:h-auto">
           <PipelineRunsList
             selectedRunId={selectedRun?.id ?? null}
             onSelect={setSelectedRun}

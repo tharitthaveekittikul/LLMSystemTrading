@@ -43,7 +43,7 @@ export default function SettingsPage() {
         showAccountSelector={false}
         showConnectionStatus={false}
       />
-      <div className="flex flex-1 flex-col gap-6 p-6 max-w-6xl">
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 max-w-6xl w-full">
         <ThemeSection />
         <DisplaySection />
 

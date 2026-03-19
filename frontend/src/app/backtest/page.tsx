@@ -78,9 +78,9 @@ export default function BacktestPage() {
         showAccountSelector={false}
         showConnectionStatus={false}
       />
-      <div className="flex flex-1 min-h-0 overflow-hidden" style={{ height: "calc(100vh - 3rem)" }}>
+      <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
         {/* ── Left panel: Config + History ── */}
-        <div className="w-72 shrink-0 border-r flex flex-col h-full overflow-hidden">
+        <div className="w-full md:w-72 md:shrink-0 border-b md:border-b-0 md:border-r flex flex-col overflow-hidden max-h-72 md:max-h-none">
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
             <BacktestConfigForm
               strategies={strategies}

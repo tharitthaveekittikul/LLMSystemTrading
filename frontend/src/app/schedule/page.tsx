@@ -66,7 +66,7 @@ export default function SchedulePage() {
         showConnectionStatus={false}
       />
 
-      <div className="flex-1 overflow-auto p-6 space-y-8">
+      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-8">
         {/* Toolbar */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
