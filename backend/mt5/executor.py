@@ -194,6 +194,13 @@ class MT5Executor:
             logger.warning("Close rejected — kill switch active | ticket=%s symbol=%s", ticket, symbol)
             return OrderResult(success=False, error="Kill switch is active")
 
+        if not await self._bridge.is_autotrading_enabled():
+            logger.error(
+                "Close rejected — AutoTrading is disabled in the MT5 terminal | ticket=%s symbol=%s",
+                ticket, symbol,
+            )
+            return OrderResult(success=False, error="AutoTrading disabled by client — enable it in the MT5 terminal")
+
         if dry_run:
             logger.info("DRY RUN close | ticket=%s symbol=%s volume=%s", ticket, symbol, volume)
             return OrderResult(success=True, ticket=ticket, retcode=10009)
@@ -273,6 +280,13 @@ class MT5Executor:
                 ticket, symbol,
             )
             return OrderResult(success=False, error="Kill switch is active")
+
+        if not await self._bridge.is_autotrading_enabled():
+            logger.error(
+                "Modify rejected — AutoTrading is disabled in the MT5 terminal | ticket=%s symbol=%s",
+                ticket, symbol,
+            )
+            return OrderResult(success=False, error="AutoTrading disabled by client — enable it in the MT5 terminal")
 
         if dry_run:
             logger.info(

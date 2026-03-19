@@ -512,6 +512,28 @@ class PositionMaintenanceService:
             except Exception as exc:
                 logger.debug("History context fetch failed (non-critical): %s", exc)
 
+            # Step 3b: Market open check — skip LLM when market is fully disabled
+            is_open, trade_mode_name = await bridge.is_market_open(symbol)
+            if trade_mode_name == "disabled":
+                await tracer.record(
+                    "market_closed_skip",
+                    status="skipped",
+                    output_data={"trade_mode": trade_mode_name, "is_open": is_open},
+                )
+                logger.info(
+                    "Maintenance HOLD (market disabled) | account=%d ticket=%d symbol=%s trade_mode=%s",
+                    account.id, trade.ticket, symbol, trade_mode_name,
+                )
+                tracer.finalize(status="skipped", final_action="HOLD")
+                return "HOLD"
+
+            if not is_open:
+                logger.info(
+                    "Market not fully open (trade_mode=%s) | account=%d ticket=%d symbol=%s — "
+                    "continuing maintenance (CLOSE and SL/TP modify still allowed)",
+                    trade_mode_name, account.id, trade.ticket, symbol,
+                )
+
             # Step 4: 3-role LLM pipeline
             t0 = time.monotonic()
             tech_llm = await _get_task_llm("maintenance_technical", db)
