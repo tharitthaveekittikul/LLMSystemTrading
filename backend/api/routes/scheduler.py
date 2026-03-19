@@ -1,8 +1,11 @@
 """Scheduler jobs — expose APScheduler job list via REST."""
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, BackgroundTasks
 from db.postgres import AsyncSessionLocal
@@ -63,6 +66,27 @@ def _describe_trigger(job) -> tuple[str, str]:
     return "unknown", str(trigger)
 
 
+def _advance_past_skips(
+    trigger,
+    start: datetime,
+    skip_hours: list[int],
+    skip_weekdays: list[int],
+    tz: ZoneInfo,
+    max_iterations: int = 200,
+) -> datetime | None:
+    """Walk forward through cron fire times until we find one not in skip_hours/skip_weekdays."""
+    candidate = start
+    for _ in range(max_iterations):
+        local_dt = candidate.astimezone(tz)
+        if local_dt.hour not in skip_hours and local_dt.weekday() not in skip_weekdays:
+            return candidate
+        next_candidate = trigger.get_next_fire_time(candidate, candidate + timedelta(seconds=1))
+        if next_candidate is None:
+            return None
+        candidate = next_candidate
+    return None
+
+
 def _job_category(job_id: str) -> str:
     if job_id.startswith("strat_"):
         return "strategy"
@@ -90,33 +114,71 @@ def _job_name(job_id: str) -> str:
 
 @router.get("/jobs")
 async def list_scheduler_jobs() -> list[dict[str, Any]]:
-    """Return all currently registered APScheduler jobs."""
+    """Return all currently registered APScheduler jobs with effective next_run_time."""
+    from db.models import AccountStrategy
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
     scheduler = get_scheduler()
     jobs = scheduler.get_jobs()
 
-    result = []
+    # Pre-fetch skip configs for all bindings (skip_hours, skip_weekdays, timezone)
+    skip_configs: dict[int, tuple[list[int], list[int], str]] = {}
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AccountStrategy).options(selectinload(AccountStrategy.strategy))
+        )
+        for binding in result.scalars().all():
+            s = binding.strategy
+            skip_h: list[int] = json.loads(s.skip_hours or "[]")
+            skip_wd: list[int] = json.loads(s.skip_weekdays or "[]")
+            skip_configs[binding.id] = (skip_h, skip_wd, s.skip_hours_timezone or "UTC")
+
+    result_list = []
     for job in jobs:
         trigger_type, trigger_desc = _describe_trigger(job)
         next_run = job.next_run_time
-        result.append(
+
+        # For strategy jobs advance next_run past any skipped hours/weekdays
+        effective_next_run = next_run
+        if next_run and job.id.startswith("strat_"):
+            parts = job.id.split("_", 2)
+            try:
+                binding_id = int(parts[1])
+                config = skip_configs.get(binding_id)
+                if config:
+                    skip_h, skip_wd, tz_str = config
+                    if skip_h or skip_wd:
+                        try:
+                            tz = ZoneInfo(tz_str)
+                        except ZoneInfoNotFoundError:
+                            tz = ZoneInfo("UTC")
+                        effective_next_run = (
+                            _advance_past_skips(job.trigger, next_run, skip_h, skip_wd, tz)
+                            or next_run
+                        )
+            except (ValueError, IndexError):
+                pass
+
+        result_list.append(
             {
                 "id": job.id,
                 "name": _job_name(job.id),
                 "trigger_type": trigger_type,
                 "trigger_description": trigger_desc,
-                "next_run_time": next_run.isoformat() if next_run else None,
+                "next_run_time": effective_next_run.isoformat() if effective_next_run else None,
                 "category": _job_category(job.id),
             }
         )
 
     # Sort: strategy first, system last; then by next_run_time
-    result.sort(
+    result_list.sort(
         key=lambda j: (
             0 if j["category"] == "strategy" else 1,
             j["next_run_time"] or "9999",
         )
     )
-    return result
+    return result_list
 
 
 _maintenance_svc = PositionMaintenanceService()
