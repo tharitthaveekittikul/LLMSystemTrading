@@ -15,6 +15,7 @@ import { strategiesApi } from "@/lib/api/strategies";
 import type { Strategy } from "@/types/trading";
 import { X } from "lucide-react";
 import { SkipHoursGrid } from "@/components/strategies/skip-hours-grid";
+import { SkipWeekdaysGrid } from "@/components/strategies/skip-weekdays-grid";
 
 type ExecMode =
   | "llm_only"
@@ -88,6 +89,7 @@ export default function EditStrategyPage() {
           class_name: s.class_name ?? undefined,
           skip_hours: s.skip_hours ?? [],
           skip_hours_timezone: s.skip_hours_timezone ?? "Asia/Bangkok",
+          skip_weekdays: s.skip_weekdays ?? [],
         });
       } catch (err) {
         console.error(err);
@@ -138,6 +140,7 @@ export default function EditStrategyPage() {
         class_name: form.class_name ?? undefined,
         skip_hours: form.skip_hours,
         skip_hours_timezone: form.skip_hours_timezone ?? undefined,
+        skip_weekdays: form.skip_weekdays,
       });
       router.push(`/strategies/${strategyId}`);
     } catch (err) {
@@ -407,6 +410,21 @@ export default function EditStrategyPage() {
                       skip_hours: h,
                       skip_hours_timezone: tz,
                     }))
+                  }
+                />
+              </div>
+              {/* Skip Weekdays */}
+              <div className="space-y-2">
+                <Label>
+                  Skip Days{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (strategy will not run on these days of the week)
+                  </span>
+                </Label>
+                <SkipWeekdaysGrid
+                  days={form.skip_weekdays ?? []}
+                  onChange={(d) =>
+                    setForm((f) => ({ ...f, skip_weekdays: d }))
                   }
                 />
               </div>

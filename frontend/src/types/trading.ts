@@ -279,6 +279,7 @@ export interface Strategy {
   maintenance_enabled: boolean;
   skip_hours: number[];
   skip_hours_timezone: string | null;
+  skip_weekdays: number[];
   binding_count: number;
 }
 
@@ -310,6 +311,7 @@ export interface CreateStrategyPayload {
   class_name?: string;
   skip_hours?: number[];
   skip_hours_timezone?: string;
+  skip_weekdays?: number[];
 }
 
 export interface StrategyRun {

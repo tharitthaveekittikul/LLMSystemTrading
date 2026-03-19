@@ -74,6 +74,11 @@ class AbstractStrategy(ABC):
     symbols: tuple[str, ...] = ()                  # immutable — subclasses assign a new tuple
     execution_mode: str = ""
 
+    # Skip filters (hydrated from DB via apply_db_config)
+    _skip_hours: list[int] = []
+    _skip_weekdays: list[int] = []        # 0=Mon … 6=Sun (Python weekday())
+    _skip_timezone: str = "UTC"
+
     def apply_db_config(self, strategy_db: "Strategy") -> None:
         """Hydrate strategy attributes from the database configuration."""
         import json
@@ -93,6 +98,41 @@ class AbstractStrategy(ABC):
                 self.symbols = tuple(json.loads(strategy_db.symbols))
             except json.JSONDecodeError:
                 pass
+
+        self._skip_timezone = strategy_db.skip_hours_timezone or "UTC"
+
+        if strategy_db.skip_hours:
+            try:
+                self._skip_hours = json.loads(strategy_db.skip_hours)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if strategy_db.skip_weekdays:
+            try:
+                self._skip_weekdays = json.loads(strategy_db.skip_weekdays)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    def is_skipped(self, dt: "datetime | None" = None) -> bool:
+        """Return True if the given datetime (default: now) should be skipped.
+
+        Checks both skip_hours and skip_weekdays using skip_hours_timezone.
+        """
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            tz = ZoneInfo(self._skip_timezone)
+        except ZoneInfoNotFoundError:
+            tz = ZoneInfo("UTC")
+
+        now = (dt or _dt.now(tz)).astimezone(tz)
+
+        if self._skip_hours and now.hour in self._skip_hours:
+            return True
+        if self._skip_weekdays and now.weekday() in self._skip_weekdays:
+            return True
+        return False
 
     @abstractmethod
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:

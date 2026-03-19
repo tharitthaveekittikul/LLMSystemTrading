@@ -39,6 +39,7 @@ class StrategyCreate(BaseModel):
     class_name: str | None = None
     skip_hours: list[int] = []
     skip_hours_timezone: str = "Asia/Bangkok"
+    skip_weekdays: list[int] = []
 
 
 class StrategyUpdate(BaseModel):
@@ -63,6 +64,7 @@ class StrategyUpdate(BaseModel):
     maintenance_enabled: bool | None = None
     skip_hours: list[int] | None = None
     skip_hours_timezone: str | None = None
+    skip_weekdays: list[int] | None = None
 
 
 class StrategyResponse(BaseModel):
@@ -88,6 +90,7 @@ class StrategyResponse(BaseModel):
     maintenance_enabled: bool
     skip_hours: list[int]
     skip_hours_timezone: str | None
+    skip_weekdays: list[int]
     binding_count: int = 0
     model_config = {"from_attributes": True}
 
@@ -132,6 +135,7 @@ def _to_response(strategy: Strategy, binding_count: int = 0) -> StrategyResponse
         maintenance_enabled=strategy.maintenance_enabled,
         skip_hours=json.loads(strategy.skip_hours) if strategy.skip_hours else [],
         skip_hours_timezone=strategy.skip_hours_timezone,
+        skip_weekdays=json.loads(strategy.skip_weekdays) if strategy.skip_weekdays else [],
         binding_count=binding_count,
     )
 
@@ -183,6 +187,7 @@ async def create_strategy(body: StrategyCreate, db: AsyncSession = Depends(get_d
         class_name=body.class_name,
         skip_hours=json.dumps(body.skip_hours) if body.skip_hours else None,
         skip_hours_timezone=body.skip_hours_timezone or None,
+        skip_weekdays=json.dumps(body.skip_weekdays) if body.skip_weekdays else None,
     )
     db.add(strategy)
     try:
@@ -222,6 +227,8 @@ async def update_strategy(
         data["context_tfs"] = json.dumps(data["context_tfs"])
     if "skip_hours" in data:
         data["skip_hours"] = json.dumps(data["skip_hours"]) if data["skip_hours"] else None
+    if "skip_weekdays" in data:
+        data["skip_weekdays"] = json.dumps(data["skip_weekdays"]) if data["skip_weekdays"] else None
     for key, value in data.items():
         setattr(strategy, key, value)
     if body.execution_mode is not None:

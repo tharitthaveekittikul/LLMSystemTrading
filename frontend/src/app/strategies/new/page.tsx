@@ -17,6 +17,7 @@ import { accountsApi } from "@/lib/api/accounts";
 import type { Account, CreateStrategyPayload } from "@/types/trading";
 import { X } from "lucide-react";
 import { SkipHoursGrid } from "../../../components/strategies/skip-hours-grid";
+import { SkipWeekdaysGrid } from "../../../components/strategies/skip-weekdays-grid";
 
 const STEP_LABELS = [
   "Basics",
@@ -51,6 +52,7 @@ export default function NewStrategyPage() {
     news_filter: true,
     skip_hours: [],
     skip_hours_timezone: "Asia/Bangkok",
+    skip_weekdays: [],
   });
 
   useEffect(() => {
@@ -371,6 +373,21 @@ export default function NewStrategyPage() {
                       skip_hours: h,
                       skip_hours_timezone: tz,
                     }))
+                  }
+                />
+              </div>
+              {/* Skip Weekdays */}
+              <div className="space-y-2">
+                <Label>
+                  Skip Days{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (strategy will not run on these days of the week)
+                  </span>
+                </Label>
+                <SkipWeekdaysGrid
+                  days={form.skip_weekdays ?? []}
+                  onChange={(d) =>
+                    setForm((f) => ({ ...f, skip_weekdays: d }))
                   }
                 />
               </div>

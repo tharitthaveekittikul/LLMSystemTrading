@@ -104,25 +104,37 @@ async def _run_strategy_job(
     from db.postgres import AsyncSessionLocal
     from services.ai_trading import AITradingService
 
-    # ── Skip-hour guard ───────────────────────────────────────────────────────
+    # ── Skip-hour / skip-weekday guard ────────────────────────────────────────
     if strategy_id:
         from db.models import Strategy as _Strategy
         async with AsyncSessionLocal() as _db:
             _s = await _db.get(_Strategy, strategy_id)
-        if _s and _s.skip_hours:
-            _skip: list[int] = json.loads(_s.skip_hours)
+        if _s:
             _tz_str = _s.skip_hours_timezone or "UTC"
             try:
                 _tz = ZoneInfo(_tz_str)
             except ZoneInfoNotFoundError:
                 _tz = ZoneInfo("UTC")
-            _now_hour = datetime.now(_tz).hour
-            if _now_hour in _skip:
-                logger.info(
-                    "Skip hour %02d (%s): strategy_id=%s symbol=%s — candle skipped",
-                    _now_hour, _tz_str, strategy_id, symbol,
-                )
-                return
+            _now = datetime.now(_tz)
+
+            if _s.skip_hours:
+                _skip_h: list[int] = json.loads(_s.skip_hours)
+                if _now.hour in _skip_h:
+                    logger.info(
+                        "Skip hour %02d (%s): strategy_id=%s symbol=%s — candle skipped",
+                        _now.hour, _tz_str, strategy_id, symbol,
+                    )
+                    return
+
+            if _s.skip_weekdays:
+                _skip_wd: list[int] = json.loads(_s.skip_weekdays)
+                if _now.weekday() in _skip_wd:
+                    _day_name = _now.strftime("%A")
+                    logger.info(
+                        "Skip weekday %s (%s): strategy_id=%s symbol=%s — candle skipped",
+                        _day_name, _tz_str, strategy_id, symbol,
+                    )
+                    return
     # ─────────────────────────────────────────────────────────────────────────
 
     # Load code strategy instance fresh each run.
