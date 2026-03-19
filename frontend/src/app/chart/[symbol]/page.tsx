@@ -5,8 +5,16 @@ import { useParams, useSearchParams } from "next/navigation";
 import { AlertCircle, BarChart2, Loader2 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { AppHeader } from "@/components/app-header";
-import { ChartToolbar, type Timeframe, type CandleCount, type EMAPeriod } from "@/components/chart/chart-toolbar";
-import { TradingChart, type OHLCVCandle } from "@/components/chart/trading-chart";
+import {
+  ChartToolbar,
+  type Timeframe,
+  type CandleCount,
+  type EMAPeriod,
+} from "@/components/chart/chart-toolbar";
+import {
+  TradingChart,
+  type OHLCVCandle,
+} from "@/components/chart/trading-chart";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import { apiRequest } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -46,24 +54,29 @@ function ChartPageContent() {
   const pendingOrders = useTradingStore((s) => s.pendingOrders);
 
   const [timeframe, setTimeframe] = useState<Timeframe>(
-    (searchParams.get("tf") as Timeframe | null) ?? "M15",
+    (searchParams.get("tf") as Timeframe | null) ?? "H1",
   );
   const [count, setCount] = useState<CandleCount>(() => {
     const raw = Number(searchParams.get("count"));
-    return VALID_COUNTS.has(raw) ? (raw as CandleCount) : 500;
+    return VALID_COUNTS.has(raw) ? (raw as CandleCount) : 1000;
   });
   const [timezone, setTimezone] = useState<string>(() => {
     if (typeof window === "undefined") return "Asia/Bangkok";
-    return localStorage.getItem("chartTimezone") ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return (
+      localStorage.getItem("chartTimezone") ??
+      Intl.DateTimeFormat().resolvedOptions().timeZone
+    );
   });
   const [emaActive, setEmaActive] = useState<EMAPeriod[]>([20, 50]);
-  const [rsiActive, setRsiActive] = useState(false);
+  const [rsiActive, setRsiActive] = useState(true);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleEmaToggle(p: EMAPeriod) {
-    setEmaActive((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+    setEmaActive((prev) =>
+      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p],
+    );
   }
 
   // Remember last visited symbol + timezone across sessions
@@ -95,7 +108,9 @@ function ChartPageContent() {
         setCandles(data);
       } catch (err) {
         if (!silent)
-          setError(err instanceof Error ? err.message : "Failed to load chart data");
+          setError(
+            err instanceof Error ? err.message : "Failed to load chart data",
+          );
       } finally {
         if (!silent) setLoading(false);
       }
@@ -120,7 +135,8 @@ function ChartPageContent() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || e.metaKey || e.ctrlKey) return;
+      if (tag === "INPUT" || tag === "TEXTAREA" || e.metaKey || e.ctrlKey)
+        return;
       const tf = TF_KEYS[e.key];
       if (tf) setTimeframe(tf);
     }
@@ -171,7 +187,9 @@ function ChartPageContent() {
                 <span
                   className={cn(
                     "font-bold text-[10px] px-1 py-0.5 rounded",
-                    isLong ? "bg-blue-500/20 text-blue-400" : "bg-red-500/20 text-red-400",
+                    isLong
+                      ? "bg-blue-500/20 text-blue-400"
+                      : "bg-red-500/20 text-red-400",
                   )}
                 >
                   {pos.type.toUpperCase()}
@@ -181,7 +199,9 @@ function ChartPageContent() {
                 <span
                   className={cn(
                     "font-semibold",
-                    isProfit ? "text-green-500 dark:text-green-400" : "text-red-500",
+                    isProfit
+                      ? "text-green-500 dark:text-green-400"
+                      : "text-red-500",
                   )}
                 >
                   {pnlSign}${pos.profit.toFixed(2)}
@@ -209,7 +229,10 @@ function ChartPageContent() {
 
           {symbolPositions.length > 0 &&
             (() => {
-              const total = symbolPositions.reduce((sum, p) => sum + p.profit, 0);
+              const total = symbolPositions.reduce(
+                (sum, p) => sum + p.profit,
+                0,
+              );
               const isProfit = total >= 0;
               return (
                 <>
