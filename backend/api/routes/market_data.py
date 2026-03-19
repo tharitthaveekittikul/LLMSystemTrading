@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import select
@@ -56,16 +57,29 @@ async def get_ohlcv(
     try:
         async with MT5Bridge(creds) as bridge:
             candles = await bridge.get_rates(symbol, tf_int, count, require_connected=False)
+            tick = await bridge.get_tick(symbol)
     except Exception as exc:
         logger.error("get_rates(%s, %s) failed: %s", symbol, timeframe, exc)
         raise HTTPException(status_code=503, detail=str(exc))
+
+    # MT5 bar times are in broker server timezone, not UTC.
+    # Detect the offset by comparing the latest tick time to real UTC,
+    # then subtract it so the frontend receives true UTC timestamps.
+    broker_offset_s = 0
+    if tick and "time" in tick:
+        utc_now = int(datetime.now(UTC).timestamp())
+        raw_offset = int(tick["time"]) - utc_now
+        # Round to nearest hour (ignore sub-minute drift)
+        broker_offset_s = round(raw_offset / 3600) * 3600
+        if broker_offset_s:
+            logger.debug("Broker UTC offset detected: %+dh", broker_offset_s // 3600)
 
     result = []
     for c in candles:
         t = c["time"]
         ts = int(t.timestamp()) if hasattr(t, "timestamp") else int(t)
         result.append({
-            "time": ts,
+            "time": ts - broker_offset_s,
             "open": float(c["open"]),
             "high": float(c["high"]),
             "low":  float(c["low"]),
