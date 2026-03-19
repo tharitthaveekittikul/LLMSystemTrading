@@ -51,7 +51,9 @@ function getColors(isDark: boolean) {
     : { bg: "#fafafa", text: "#71717a", grid: "#e4e4e7", border: "#d4d4d8" };
 }
 
-function makeTimeFormatter(tz: string): (time: BusinessDay | UTCTimestamp) => string {
+function makeTimeFormatter(
+  tz: string,
+): (time: BusinessDay | UTCTimestamp) => string {
   return (ts) => {
     if (typeof ts !== "number") return "";
     return new Date(ts * 1000).toLocaleString("en-GB", {
@@ -107,7 +109,8 @@ export function TradingChart({
     if (!containerRef.current) return;
 
     const colors = getColors(isDarkRef.current);
-    const tz = timezoneRef.current ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const tz =
+      timezoneRef.current ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     const chart = createChart(containerRef.current, {
       autoSize: true,
@@ -165,7 +168,8 @@ export function TradingChart({
     containerRef.current.appendChild(legend);
     legendRef.current = legend;
 
-    const fmt = (v: number) => (v >= 100 ? v.toFixed(2) : v.toFixed(v >= 1 ? 4 : 5));
+    const fmt = (v: number) =>
+      v >= 100 ? v.toFixed(2) : v.toFixed(v >= 1 ? 4 : 5);
 
     chart.subscribeCrosshairMove((param) => {
       if (!param.point) {
@@ -175,7 +179,9 @@ export function TradingChart({
       const bar = param.seriesData?.get(candleSeries) as
         | { open: number; high: number; low: number; close: number }
         | undefined;
-      const vol = param.seriesData?.get(volSeries) as { value: number } | undefined;
+      const vol = param.seriesData?.get(volSeries) as
+        | { value: number }
+        | undefined;
       if (!bar) {
         legend.innerHTML = "";
         return;
@@ -254,7 +260,7 @@ export function TradingChart({
           lineWidth: 2,
           lineStyle: LineStyle.Solid,
           axisLabelVisible: true,
-          title: `${pos.type.toUpperCase()} ${pos.volume} ${pnlSign}${pos.profit.toFixed(2)}`,
+          title: `${pos.type.toUpperCase()} ${pos.volume} ${pnlSign}${pos.profit.toFixed(2)} USD`,
         }),
       );
 
