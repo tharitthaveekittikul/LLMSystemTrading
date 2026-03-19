@@ -23,6 +23,15 @@ const TIMEZONES = [
   { label: "UTC", value: "UTC" },
 ] as const;
 
+const EMA_PERIODS = [20, 50, 200] as const;
+export type EMAPeriod = (typeof EMA_PERIODS)[number];
+
+const EMA_ACTIVE_STYLE: Record<EMAPeriod, string> = {
+  20: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  50: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  200: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+};
+
 interface ChartToolbarProps {
   symbol: string;
   timeframe: Timeframe;
@@ -31,6 +40,10 @@ interface ChartToolbarProps {
   onCountChange: (n: CandleCount) => void;
   timezone?: string;
   onTimezoneChange?: (tz: string) => void;
+  emaActive: EMAPeriod[];
+  onEmaToggle: (p: EMAPeriod) => void;
+  rsiActive: boolean;
+  onRsiToggle: () => void;
   onRefresh?: () => void;
   isLoading?: boolean;
 }
@@ -43,6 +56,10 @@ export function ChartToolbar({
   onCountChange,
   timezone,
   onTimezoneChange,
+  emaActive,
+  onEmaToggle,
+  rsiActive,
+  onRsiToggle,
   onRefresh,
   isLoading,
 }: ChartToolbarProps) {
@@ -136,6 +153,40 @@ export function ChartToolbar({
           </select>
         </>
       )}
+
+      <div className="h-5 w-px bg-border" />
+
+      {/* Indicators */}
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] text-muted-foreground font-medium pr-0.5">EMA</span>
+        {EMA_PERIODS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onEmaToggle(p)}
+            className={cn(
+              "h-7 px-2 text-xs font-medium rounded border transition-all",
+              emaActive.includes(p)
+                ? EMA_ACTIVE_STYLE[p]
+                : "text-muted-foreground hover:text-foreground border-transparent",
+            )}
+          >
+            {p}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={onRsiToggle}
+          className={cn(
+            "h-7 px-2 text-xs font-medium rounded border transition-all",
+            rsiActive
+              ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"
+              : "text-muted-foreground hover:text-foreground border-transparent",
+          )}
+        >
+          RSI
+        </button>
+      </div>
 
       <div className="flex-1" />
 

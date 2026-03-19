@@ -5,6 +5,7 @@ import {
   createChart,
   CandlestickSeries,
   HistogramSeries,
+  LineSeries,
   ColorType,
   CrosshairMode,
   LineStyle,
@@ -35,6 +36,55 @@ interface TradingChartProps {
   /** Increment/change when symbol/timeframe/count changes to trigger fitContent.
    *  Auto-refresh should NOT change this — just update candles. */
   viewResetKey?: string;
+  emaActive?: (20 | 50 | 200)[];
+  rsiActive?: boolean;
+}
+
+// ── Indicator config ─────────────────────────────────────────────────────────
+const EMA_CONFIG: Record<20 | 50 | 200, { color: string; lineWidth: 1 | 2 | 3 | 4 }> = {
+  20: { color: "#f59e0b", lineWidth: 1 },
+  50: { color: "#a855f7", lineWidth: 1 },
+  200: { color: "#3b82f6", lineWidth: 2 },
+};
+
+function calcEMA(data: OHLCVCandle[], period: number): { time: UTCTimestamp; value: number }[] {
+  if (data.length < period) return [];
+  const k = 2 / (period + 1);
+  let ema = data.slice(0, period).reduce((s, c) => s + c.close, 0) / period;
+  const result: { time: UTCTimestamp; value: number }[] = [
+    { time: data[period - 1].time as UTCTimestamp, value: ema },
+  ];
+  for (let i = period; i < data.length; i++) {
+    ema = data[i].close * k + ema * (1 - k);
+    result.push({ time: data[i].time as UTCTimestamp, value: ema });
+  }
+  return result;
+}
+
+function calcRSI(data: OHLCVCandle[], period = 14): { time: UTCTimestamp; value: number }[] {
+  if (data.length < period + 1) return [];
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = data[i].close - data[i - 1].close;
+    if (d > 0) avgGain += d;
+    else avgLoss -= d;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  const result: { time: UTCTimestamp; value: number }[] = [
+    { time: data[period].time as UTCTimestamp, value: avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss) },
+  ];
+  for (let i = period + 1; i < data.length; i++) {
+    const d = data[i].close - data[i - 1].close;
+    avgGain = (avgGain * (period - 1) + Math.max(d, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-d, 0)) / period;
+    result.push({
+      time: data[i].time as UTCTimestamp,
+      value: avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss),
+    });
+  }
+  return result;
 }
 
 // MT5 color convention
@@ -83,6 +133,8 @@ export function TradingChart({
   isDark = true,
   timezone,
   viewResetKey,
+  emaActive = [],
+  rsiActive = false,
 }: TradingChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -93,6 +145,10 @@ export function TradingChart({
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const legendRef = useRef<HTMLDivElement | null>(null);
   const prevViewResetKeyRef = useRef<string>("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const emaSeriesRef = useRef<Map<20 | 50 | 200, ISeriesApi<any>>>(new Map());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rsiSeriesRef = useRef<ISeriesApi<any> | null>(null);
 
   // Keep latest prop values accessible inside effects without adding to deps.
   // Updated via useLayoutEffect (runs before useEffect) to avoid ref-in-render lint error.
@@ -207,8 +263,10 @@ export function TradingChart({
       volSeriesRef.current = null;
       priceLinesRef.current = [];
       prevViewResetKeyRef.current = ""; // reset so next data load triggers fitContent
+      emaSeriesRef.current.clear();
+      rsiSeriesRef.current = null;
     };
-  }, [symbol]); // candles/isDark/timezone intentionally excluded — handled by Effects 1b/3/4
+  }, [symbol]); // candles/isDark/timezone/emaActive/rsiActive intentionally excluded — handled by Effects 1b/3/4/5/6
 
   // ── Effect 1b: update candle + volume data (no chart recreation) ───────────
   // fitContent fires only when viewResetKey changes (symbol/tf/count change).
@@ -363,6 +421,79 @@ export function TradingChart({
       localization: { timeFormatter: makeTimeFormatter(tz) },
     });
   }, [timezone]);
+
+  // ── Effect 5: manage EMA overlay series ────────────────────────────────────
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || candles.length === 0) return;
+
+    const sorted = [...candles].sort((a, b) => a.time - b.time);
+    const active = new Set(emaActive);
+
+    // Remove stale series
+    for (const [p, s] of emaSeriesRef.current.entries()) {
+      if (!active.has(p)) {
+        chart.removeSeries(s);
+        emaSeriesRef.current.delete(p);
+      }
+    }
+
+    // Add missing series + update data
+    for (const p of active) {
+      if (!emaSeriesRef.current.has(p)) {
+        const { color, lineWidth } = EMA_CONFIG[p];
+        const s = chart.addSeries(LineSeries, {
+          color,
+          lineWidth,
+          priceLineVisible: false,
+          lastValueVisible: true,
+          crosshairMarkerVisible: false,
+          title: `EMA${p}`,
+        });
+        emaSeriesRef.current.set(p, s);
+      }
+      emaSeriesRef.current.get(p)!.setData(calcEMA(sorted, p));
+    }
+  }, [candles, emaActive]);
+
+  // ── Effect 6: manage RSI pane (native pane index 1 = separate subplot) ──────
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    if (!rsiActive) {
+      if (rsiSeriesRef.current) {
+        chart.removeSeries(rsiSeriesRef.current);
+        rsiSeriesRef.current = null;
+        // Remove the now-empty RSI pane
+        if (chart.panes().length > 1) chart.removePane(1);
+      }
+      return;
+    }
+
+    if (!rsiSeriesRef.current) {
+      // paneIndex=1 creates a true separate pane below the main chart
+      const s = chart.addSeries(LineSeries, {
+        color: "#06b6d4",
+        lineWidth: 1 as const,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        crosshairMarkerVisible: false,
+        title: "RSI(14)",
+      }, 1);
+      s.createPriceLine({ price: 70, color: "#ef444480", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "OB" });
+      s.createPriceLine({ price: 30, color: "#22c55e80", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "OS" });
+      s.createPriceLine({ price: 50, color: "#71717a40", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: false, title: "" });
+      // RSI pane occupies ~25% of total chart height
+      chart.panes()[1]?.setStretchFactor(0.35);
+      rsiSeriesRef.current = s;
+    }
+
+    if (candles.length > 0) {
+      const sorted = [...candles].sort((a, b) => a.time - b.time);
+      rsiSeriesRef.current.setData(calcRSI(sorted));
+    }
+  }, [rsiActive, candles]);
 
   return <div ref={containerRef} className="relative w-full h-full" />;
 }

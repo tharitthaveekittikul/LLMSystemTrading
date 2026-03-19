@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { AlertCircle, BarChart2, Loader2 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { AppHeader } from "@/components/app-header";
-import { ChartToolbar, type Timeframe, type CandleCount } from "@/components/chart/chart-toolbar";
+import { ChartToolbar, type Timeframe, type CandleCount, type EMAPeriod } from "@/components/chart/chart-toolbar";
 import { TradingChart, type OHLCVCandle } from "@/components/chart/trading-chart";
 import { useTradingStore } from "@/hooks/use-trading-store";
 import { apiRequest } from "@/lib/api";
@@ -56,9 +56,15 @@ function ChartPageContent() {
     if (typeof window === "undefined") return "Asia/Bangkok";
     return localStorage.getItem("chartTimezone") ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   });
+  const [emaActive, setEmaActive] = useState<EMAPeriod[]>([20, 50]);
+  const [rsiActive, setRsiActive] = useState(false);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handleEmaToggle(p: EMAPeriod) {
+    setEmaActive((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+  }
 
   // Remember last visited symbol + timezone across sessions
   useEffect(() => {
@@ -137,6 +143,10 @@ function ChartPageContent() {
         onCountChange={setCount}
         timezone={timezone}
         onTimezoneChange={setTimezone}
+        emaActive={emaActive}
+        onEmaToggle={handleEmaToggle}
+        rsiActive={rsiActive}
+        onRsiToggle={() => setRsiActive((v) => !v)}
         onRefresh={fetchCandles}
         isLoading={loading}
       />
@@ -274,6 +284,8 @@ function ChartPageContent() {
             symbol={symbol}
             isDark={isDark}
             timezone={timezone || undefined}
+            emaActive={emaActive}
+            rsiActive={rsiActive}
           />
         )}
       </div>
