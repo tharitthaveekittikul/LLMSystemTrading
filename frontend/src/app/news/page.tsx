@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   RefreshCw,
   Download,
@@ -144,11 +144,13 @@ function EventRow({
   onAnalyzed,
   onActualSaved,
   usdThbRate,
+  isNextActive,
 }: {
   event: EconomicEvent;
   onAnalyzed: (updated: EconomicEvent) => void;
   onActualSaved: (updated: EconomicEvent) => void;
   usdThbRate: number;
+  isNextActive?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -216,14 +218,21 @@ function EventRow({
 
   return (
     <div
-      className={`border rounded-lg overflow-hidden ${past ? "opacity-60" : ""}`}
+      className={`border rounded-lg overflow-hidden ${past ? "opacity-60" : ""} ${isNextActive ? "border-blue-500/50 dark:border-blue-500/30 bg-blue-50/50 dark:bg-blue-900/10 shadow-sm ring-1 ring-blue-500/20" : ""}`}
     >
       {/* Main row */}
       <div className="flex items-center gap-3 px-4 py-3 flex-wrap sm:flex-nowrap">
         {/* Time (Bangkok) */}
-        <span className="text-sm font-mono w-14 shrink-0 text-muted-foreground">
-          {toBangkokTime(event.event_utc)}
-        </span>
+        <div className={`flex items-center gap-1 w-17 shrink-0 text-sm font-mono ${isNextActive ? "text-blue-600 dark:text-blue-400 font-medium" : "text-muted-foreground"}`}>
+          {isNextActive ? (
+            <span className="text-blue-500 text-[10px] w-2.5 flex justify-center pt-px" title="Next Event">
+              ▶
+            </span>
+          ) : (
+            <span className="w-2.5" />
+          )}
+          <span>{toBangkokTime(event.event_utc)}</span>
+        </div>
 
         {/* Currency */}
         <span className="font-semibold w-10 shrink-0 text-sm">
@@ -453,6 +462,15 @@ type ImpactFilter = (typeof IMPACT_FILTERS)[number];
 export default function NewsPage() {
   const [events, setEvents] = useState<EconomicEvent[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const nextEventTime = useMemo(() => {
+    const futureEvents = events.filter((ev) => !isPast(ev.event_utc));
+    if (futureEvents.length === 0) return null;
+    const closest = futureEvents.reduce((a, b) => {
+      return new Date(b.event_utc) < new Date(a.event_utc) ? b : a;
+    });
+    return closest.event_utc;
+  }, [events]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -722,6 +740,7 @@ export default function NewsPage() {
                   onAnalyzed={handleEventUpdate}
                   onActualSaved={handleEventUpdate}
                   usdThbRate={usdThbRate}
+                  isNextActive={ev.event_utc === nextEventTime}
                 />
               ))}
             </div>
@@ -737,6 +756,7 @@ export default function NewsPage() {
                 onAnalyzed={handleEventUpdate}
                 onActualSaved={handleEventUpdate}
                 usdThbRate={usdThbRate}
+                isNextActive={ev.event_utc === nextEventTime}
               />
             ))}
           </div>
