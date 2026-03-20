@@ -14,7 +14,7 @@ from core.security import decrypt
 from db.models import Account, AIJournal
 from db.redis import get_candle_cache, set_candle_cache
 from mt5.bridge import AccountCredentials, MT5Bridge
-from mt5.executor import MT5Executor, OrderRequest
+from mt5.executor import MT5Executor, OrderRequest, pending_expiry_hours
 from services.ai_trading import _calculate_lot_size, _CACHE_TTL, _TIMEFRAME_MAP, StrategyOverrides
 from services.kill_switch import is_active as kill_switch_active
 from services.mtf_data import MTFMarketData, TimeframeData, OHLCV
@@ -343,6 +343,7 @@ async def _run_pipeline(
         stop_loss=signal.stop_loss,
         take_profit=signal.take_profit,
         comment="AI-Trade",
+        expiration_hours=pending_expiry_hours(timeframe),
     )
     
     await tracer.record(

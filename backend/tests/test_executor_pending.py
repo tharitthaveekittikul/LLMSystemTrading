@@ -4,6 +4,34 @@ from unittest.mock import AsyncMock, patch
 from pydantic import ValidationError
 
 
+def test_pending_expiry_hours_mapping():
+    from mt5.executor import pending_expiry_hours
+    assert pending_expiry_hours("M15") == 1.0
+    assert pending_expiry_hours("H1")  == 4.0
+    assert pending_expiry_hours("H4")  == 16.0
+    assert pending_expiry_hours("D1")  == 24.0
+    assert pending_expiry_hours("XYZ") == 4.0   # fallback
+
+
+def test_order_request_expiration_hours_validation():
+    from mt5.executor import OrderRequest
+    from pydantic import ValidationError
+    # valid
+    req = OrderRequest(
+        symbol="XAUUSD", action="BUY_LIMIT", volume=0.1,
+        entry_price=1900.0, stop_loss=1890.0, take_profit=1920.0,
+        expiration_hours=4.0,
+    )
+    assert req.expiration_hours == 4.0
+    # must be > 0
+    with pytest.raises(ValidationError):
+        OrderRequest(
+            symbol="XAUUSD", action="BUY_LIMIT", volume=0.1,
+            entry_price=1900.0, stop_loss=1890.0, take_profit=1920.0,
+            expiration_hours=0.0,
+        )
+
+
 def test_order_request_accepts_pending_actions():
     from mt5.executor import OrderRequest
     for action in ("BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP"):
@@ -100,3 +128,68 @@ async def test_place_order_uses_deal_action_for_buy():
     assert sent_request["action"] == 1   # TRADE_ACTION_DEAL
     assert sent_request["type"] == 0     # ORDER_TYPE_BUY
     assert "deviation" in sent_request
+
+
+@pytest.mark.asyncio
+async def test_place_order_pending_with_expiration_sets_type_time_specified():
+    """Pending order with expiration_hours sends type_time=2 and expiration timestamp."""
+    from mt5.executor import MT5Executor, OrderRequest
+    from services.risk_manager import RiskConfig
+    import time
+
+    mock_bridge = AsyncMock()
+    mock_bridge.get_positions = AsyncMock(return_value=[])
+    mock_bridge.is_autotrading_enabled = AsyncMock(return_value=True)
+    mock_bridge.get_filling_mode = AsyncMock(return_value=1)
+    mock_bridge.send_order = AsyncMock(return_value={"retcode": 10009, "order": 12347})
+
+    _all_off = RiskConfig(position_limit_enabled=False, rate_limit_enabled=False, hedging_allowed=True)
+
+    with patch("mt5.executor.kill_switch_active", return_value=False), \
+         patch("mt5.executor.load_risk_config", new=AsyncMock(return_value=_all_off)), \
+         patch("mt5.executor.AsyncSessionLocal", return_value=_make_mock_session_ctx()):
+        executor = MT5Executor(mock_bridge)
+        req = OrderRequest(
+            symbol="XAUUSD", action="BUY_LIMIT", volume=0.1,
+            entry_price=1900.0, stop_loss=1890.0, take_profit=1920.0,
+            expiration_hours=4.0,
+        )
+        before = int(time.time())
+        result = await executor.place_order(req)
+        after = int(time.time())
+
+    assert result.success is True
+    sent = mock_bridge.send_order.call_args[0][0]
+    assert sent["type_time"] == 2                            # ORDER_TIME_SPECIFIED
+    assert "expiration" in sent
+    assert before + 4 * 3600 <= sent["expiration"] <= after + 4 * 3600
+
+
+@pytest.mark.asyncio
+async def test_place_order_pending_no_expiration_uses_gtc():
+    """Pending order without expiration_hours sends type_time=0 (GTC) and no expiration key."""
+    from mt5.executor import MT5Executor, OrderRequest
+    from services.risk_manager import RiskConfig
+
+    mock_bridge = AsyncMock()
+    mock_bridge.get_positions = AsyncMock(return_value=[])
+    mock_bridge.is_autotrading_enabled = AsyncMock(return_value=True)
+    mock_bridge.get_filling_mode = AsyncMock(return_value=1)
+    mock_bridge.send_order = AsyncMock(return_value={"retcode": 10009, "order": 12348})
+
+    _all_off = RiskConfig(position_limit_enabled=False, rate_limit_enabled=False, hedging_allowed=True)
+
+    with patch("mt5.executor.kill_switch_active", return_value=False), \
+         patch("mt5.executor.load_risk_config", new=AsyncMock(return_value=_all_off)), \
+         patch("mt5.executor.AsyncSessionLocal", return_value=_make_mock_session_ctx()):
+        executor = MT5Executor(mock_bridge)
+        req = OrderRequest(
+            symbol="XAUUSD", action="SELL_STOP", volume=0.1,
+            entry_price=1880.0, stop_loss=1890.0, take_profit=1860.0,
+        )
+        result = await executor.place_order(req)
+
+    assert result.success is True
+    sent = mock_bridge.send_order.call_args[0][0]
+    assert sent["type_time"] == 0        # ORDER_TIME_GTC
+    assert "expiration" not in sent

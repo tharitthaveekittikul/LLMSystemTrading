@@ -6,6 +6,7 @@ Never import MetaTrader5 directly in this file — use bridge.py.
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -50,6 +51,30 @@ _ORDER_TYPE_MAP: dict[str, int] = {
 
 _PENDING_ACTIONS = frozenset({"BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP"})
 
+# ORDER_TIME constants (MT5 spec)
+_ORDER_TIME_GTC       = 0  # Good Till Cancelled
+_ORDER_TIME_SPECIFIED = 2  # Expires at specific datetime
+
+# Default expiry: 4 candles of the primary timeframe
+_TF_EXPIRY_HOURS: dict[str, float] = {
+    "M1": 4 / 60,
+    "M5": 20 / 60,
+    "M15": 1.0,
+    "M30": 2.0,
+    "H1": 4.0,
+    "H4": 16.0,
+    "D1": 24.0,
+}
+
+
+def pending_expiry_hours(timeframe: str) -> float:
+    """Return recommended expiry (hours) for a pending order on the given timeframe.
+
+    Defaults to 4 candles of the primary timeframe.  Falls back to 4 hours if
+    the timeframe is not in the lookup table.
+    """
+    return _TF_EXPIRY_HOURS.get(timeframe.upper(), 4.0)
+
 
 class OrderRequest(BaseModel):
     """Validated order request.  Raises ValidationError on bad input."""
@@ -62,6 +87,11 @@ class OrderRequest(BaseModel):
     take_profit: float = Field(..., gt=0.0)
     comment: str = Field(default="AI-Trade", max_length=64)
     deviation: int = Field(default=20, ge=0, description="Max price deviation in points (market orders only)")
+    expiration_hours: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Pending order expiry in hours. None = GTC (no expiry). Only applied to LIMIT/STOP orders.",
+    )
 
     @field_validator("action")
     @classmethod
@@ -151,6 +181,19 @@ class MT5Executor:
         filling_mode = await self._bridge.get_filling_mode(request.symbol)
         logger.debug("Filling mode for %s: %s", request.symbol, filling_mode)
 
+        # Pending order expiry
+        if is_pending and request.expiration_hours is not None:
+            expiry_dt = datetime.now(timezone.utc) + timedelta(hours=request.expiration_hours)
+            order_type_time = _ORDER_TIME_SPECIFIED
+            order_expiration = int(expiry_dt.timestamp())
+            logger.info(
+                "Pending order expiry set | symbol=%s expires_at=%s (in %.1fh)",
+                request.symbol, expiry_dt.isoformat(), request.expiration_hours,
+            )
+        else:
+            order_type_time = _ORDER_TIME_GTC
+            order_expiration = None
+
         mt5_request = {
             "action":       mt5_action,
             "symbol":       request.symbol,
@@ -161,9 +204,11 @@ class MT5Executor:
             "tp":           request.take_profit,
             "magic":        20250101,
             "comment":      request.comment,
-            "type_time":    0,          # ORDER_TIME_GTC
+            "type_time":    order_type_time,
             "type_filling": filling_mode,
         }
+        if order_expiration is not None:
+            mt5_request["expiration"] = order_expiration
         if not is_pending:
             mt5_request["deviation"] = request.deviation
 

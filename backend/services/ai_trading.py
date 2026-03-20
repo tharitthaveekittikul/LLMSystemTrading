@@ -40,7 +40,7 @@ from core.security import decrypt
 from db.models import Account, AIJournal, Trade
 from db.redis import check_llm_rate_limit, get_candle_cache, set_candle_cache
 from mt5.bridge import AccountCredentials, MT5Bridge
-from mt5.executor import MT5Executor, OrderRequest
+from mt5.executor import MT5Executor, OrderRequest, pending_expiry_hours
 from services.alerting import send_alert
 from services.history_sync import HistoryService
 from services.kill_switch import is_active as kill_switch_active
@@ -989,6 +989,7 @@ class AITradingService:
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
             comment="AI-Trade",
+            expiration_hours=pending_expiry_hours(timeframe),
         )
         await tracer.record(
             "order_built",
