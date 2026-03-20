@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/api";
 import type { EconomicEvent } from "@/types/trading";
+import { toast } from "sonner";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -86,7 +87,15 @@ function TokenCostLog({
   event: EconomicEvent;
   usdThbRate: number;
 }) {
-  const { llm_input_tokens, llm_output_tokens, llm_total_tokens, llm_cost_usd, llm_duration_ms, llm_model, llm_provider } = event;
+  const {
+    llm_input_tokens,
+    llm_output_tokens,
+    llm_total_tokens,
+    llm_cost_usd,
+    llm_duration_ms,
+    llm_model,
+    llm_provider,
+  } = event;
   if (!llm_total_tokens && !llm_cost_usd) return null;
 
   const costThb = llm_cost_usd != null ? llm_cost_usd * usdThbRate : null;
@@ -95,7 +104,9 @@ function TokenCostLog({
     <div className="rounded-md bg-black/5 dark:bg-white/5 border border-border/50 px-3 py-2 font-mono text-xs space-y-0.5">
       <div className="flex items-center gap-2 text-muted-foreground">
         <span className="text-primary/70">▶</span>
-        <span className="font-semibold text-foreground">{llm_model ?? "unknown"}</span>
+        <span className="font-semibold text-foreground">
+          {llm_model ?? "unknown"}
+        </span>
         <span>·</span>
         <span>{llm_provider ?? "—"}</span>
         {llm_duration_ms != null && (
@@ -107,20 +118,19 @@ function TokenCostLog({
       </div>
       {llm_total_tokens != null && (
         <div className="pl-4 text-muted-foreground">
-          <span className="text-blue-500 dark:text-blue-400">in</span>
-          {" "}{(llm_input_tokens ?? 0).toLocaleString()}
+          <span className="text-blue-500 dark:text-blue-400">in</span>{" "}
+          {(llm_input_tokens ?? 0).toLocaleString()}
           <span className="mx-1 opacity-40">·</span>
-          <span className="text-green-500 dark:text-green-400">out</span>
-          {" "}{(llm_output_tokens ?? 0).toLocaleString()}
+          <span className="text-green-500 dark:text-green-400">out</span>{" "}
+          {(llm_output_tokens ?? 0).toLocaleString()}
           <span className="mx-1 opacity-40">·</span>
-          <span className="text-foreground font-medium">total</span>
-          {" "}{llm_total_tokens.toLocaleString()} tokens
+          <span className="text-foreground font-medium">total</span>{" "}
+          {llm_total_tokens.toLocaleString()} tokens
         </div>
       )}
       {llm_cost_usd != null && (
         <div className="pl-4 text-muted-foreground">
-          <span className="text-yellow-600 dark:text-yellow-400">cost</span>
-          {" "}
+          <span className="text-yellow-600 dark:text-yellow-400">cost</span>{" "}
           <span className="text-foreground">${llm_cost_usd.toFixed(8)}</span>
           {costThb != null && (
             <span className="ml-1 opacity-70">· ฿{costThb.toFixed(6)}</span>
@@ -223,9 +233,14 @@ function EventRow({
       {/* Main row */}
       <div className="flex items-center gap-3 px-4 py-3 flex-wrap sm:flex-nowrap">
         {/* Time (Bangkok) */}
-        <div className={`flex items-center gap-1 w-17 shrink-0 text-sm font-mono ${isNextActive ? "text-blue-600 dark:text-blue-400 font-medium" : "text-muted-foreground"}`}>
+        <div
+          className={`flex items-center gap-1 w-17 shrink-0 text-sm font-mono ${isNextActive ? "text-blue-600 dark:text-blue-400 font-medium" : "text-muted-foreground"}`}
+        >
           {isNextActive ? (
-            <span className="text-blue-500 text-[10px] w-2.5 flex justify-center pt-px" title="Next Event">
+            <span
+              className="text-blue-500 text-[10px] w-2.5 flex justify-center pt-px"
+              title="Next Event"
+            >
               ▶
             </span>
           ) : (
@@ -370,9 +385,15 @@ function EventRow({
               >
                 <Terminal className="h-3.5 w-3.5 shrink-0" />
                 <span className="font-semibold">LLM Debug</span>
-                {debugLoading && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
+                {debugLoading && (
+                  <Loader2 className="h-3 w-3 animate-spin ml-1" />
+                )}
                 <span className="ml-auto">
-                  {debugOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  {debugOpen ? (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
                 </span>
               </button>
               {debugOpen && (
@@ -382,7 +403,9 @@ function EventRow({
                     <div>
                       <div className="text-green-500 dark:text-green-400 mb-1">
                         ◀ <span className="font-semibold">raw response</span>
-                        <span className="ml-2 opacity-50 text-muted-foreground">(stored)</span>
+                        <span className="ml-2 opacity-50 text-muted-foreground">
+                          (stored)
+                        </span>
                       </div>
                       <pre className="whitespace-pre-wrap wrap-break-word text-muted-foreground leading-relaxed pl-4 border-l-2 border-green-500/40">
                         {event.llm_raw_response ?? debugData?.raw_response}
@@ -399,7 +422,8 @@ function EventRow({
                         {debugData.input_prompt.map((msg, i) => (
                           <div key={i} className="mb-2">
                             <div className="text-primary/70 mb-1">
-                              ▶ <span className="font-semibold">{msg.role}</span>
+                              ▶{" "}
+                              <span className="font-semibold">{msg.role}</span>
                             </div>
                             <pre className="whitespace-pre-wrap wrap-break-word text-muted-foreground leading-relaxed pl-4 border-l-2 border-border/40">
                               {msg.content}
@@ -408,7 +432,8 @@ function EventRow({
                         ))}
                         <div>
                           <div className="text-green-500 dark:text-green-400 mb-1">
-                            ◀ <span className="font-semibold">raw response</span>
+                            ◀{" "}
+                            <span className="font-semibold">raw response</span>
                           </div>
                           <pre className="whitespace-pre-wrap wrap-break-word text-muted-foreground leading-relaxed pl-4 border-l-2 border-green-500/40">
                             {debugData.raw_response}
@@ -423,7 +448,9 @@ function EventRow({
                     onClick={handleDebugRerun}
                     disabled={debugLoading}
                   >
-                    {debugData ? "↺ re-run fresh" : "Run to see full prompt + fresh response"}
+                    {debugData
+                      ? "↺ re-run fresh"
+                      : "Run to see full prompt + fresh response"}
                   </button>
                 </div>
               )}
@@ -551,12 +578,21 @@ export default function NewsPage() {
   async function handleAnalyzeToday() {
     setAnalyzingToday(true);
     try {
-      await apiRequest<{ analyzed: number }>("/news/analyze-today", {
-        method: "POST",
-      });
+      const res = await apiRequest<{ analyzed: number }>(
+        "/news/analyze-today",
+        {
+          method: "POST",
+        },
+      );
+      if (res.analyzed === 0) {
+        toast.info("No unanalyzed HIGH-impact events found for today.");
+      } else {
+        toast.success(`Analyzed ${res.analyzed} event(s) successfully.`);
+      }
       await fetchEvents(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
+      toast.error("Analysis failed.");
     } finally {
       setAnalyzingToday(false);
     }
