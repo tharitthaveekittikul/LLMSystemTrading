@@ -6,6 +6,7 @@ import type {
   ModelPerformanceRow,
   LLMHeatmapResponse,
   LLMTimelinePoint,
+  PipelineCombinationRow,
 } from "@/types/trading"
 import { SidebarInset } from "@/components/ui/sidebar"
 import { AppHeader } from "@/components/app-header"
@@ -15,6 +16,7 @@ import { ModelSymbolHeatmap } from "@/components/llm-analytics/model-symbol-heat
 import { CostVsWinrateScatter } from "@/components/llm-analytics/cost-vs-winrate-scatter"
 import { ActionDistributionChart } from "@/components/llm-analytics/action-distribution-chart"
 import { PnlTimelineChart } from "@/components/llm-analytics/pnl-timeline-chart"
+import { PipelineCombinationsTable } from "@/components/llm-analytics/pipeline-combinations-table"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 
@@ -24,30 +26,37 @@ const PERIODS = [
   { label: "90d", days: 90 },
 ]
 
+const TABS = ["Models", "Pipelines"] as const
+type Tab = typeof TABS[number]
+
 export default function LLMAnalyticsPage() {
   const [days, setDays] = useState(30)
+  const [tab, setTab] = useState<Tab>("Models")
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<LLMAnalyticsSummary | null>(null)
   const [performance, setPerformance] = useState<ModelPerformanceRow[]>([])
   const [heatmap, setHeatmap] = useState<LLMHeatmapResponse | null>(null)
   const [pnlTimeline, setPnlTimeline] = useState<LLMTimelinePoint[]>([])
   const [costTrend, setCostTrend] = useState<LLMTimelinePoint[]>([])
+  const [pipelines, setPipelines] = useState<PipelineCombinationRow[]>([])
 
   const fetchAll = async (d: number) => {
     setLoading(true)
     try {
-      const [s, p, h, pnl, cost] = await Promise.all([
+      const [s, p, h, pnl, cost, pipe] = await Promise.all([
         llmAnalyticsApi.getSummary(d),
         llmAnalyticsApi.getModelPerformance(d),
         llmAnalyticsApi.getHeatmap(d),
         llmAnalyticsApi.getPnlTimeline(d),
         llmAnalyticsApi.getCostTrend(d),
+        llmAnalyticsApi.getPipelineCombinations(d),
       ])
       setSummary(s)
       setPerformance(p)
       setHeatmap(h)
       setPnlTimeline(pnl)
       setCostTrend(cost)
+      setPipelines(pipe)
     } catch (e) {
       console.error("LLM analytics fetch failed", e)
     } finally {
@@ -96,13 +105,39 @@ export default function LLMAnalyticsPage() {
       />
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
         <SummaryKpiCards data={summary} />
-        <ModelPerformanceTable data={performance} />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ModelSymbolHeatmap data={heatmap} />
-          <CostVsWinrateScatter data={performance} />
+
+        {/* Tab switcher */}
+        <div className="flex rounded-md border overflow-hidden w-fit">
+          {TABS.map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-1.5 text-sm transition-colors ${
+                tab === t
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
         </div>
-        <ActionDistributionChart data={performance} />
-        <PnlTimelineChart pnlData={pnlTimeline} costData={costTrend} />
+
+        {tab === "Models" && (
+          <>
+            <ModelPerformanceTable data={performance} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ModelSymbolHeatmap data={heatmap} />
+              <CostVsWinrateScatter data={performance} />
+            </div>
+            <ActionDistributionChart data={performance} />
+            <PnlTimelineChart pnlData={pnlTimeline} costData={costTrend} />
+          </>
+        )}
+
+        {tab === "Pipelines" && (
+          <PipelineCombinationsTable data={pipelines} />
+        )}
       </div>
     </SidebarInset>
   )

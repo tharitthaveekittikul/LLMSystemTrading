@@ -614,6 +614,22 @@ export interface LLMTimelinePoint {
   by_model: Record<string, number>
 }
 
+export interface PipelineCombinationRow {
+  analysis_model: string
+  execution_model: string
+  pipeline_key: string
+  total_runs: number
+  trades_triggered: number
+  profitable_trades: number
+  win_rate: number
+  total_pnl_usd: number
+  avg_profit_usd: number
+  analysis_cost_usd: number
+  execution_cost_usd: number
+  total_cost_usd: number
+  profit_per_dollar: number
+}
+
 // ── Global Settings ───────────────────────────────────────────────────────────
 
 export interface GlobalSettings {

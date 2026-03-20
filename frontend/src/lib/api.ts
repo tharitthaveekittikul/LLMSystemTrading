@@ -326,6 +326,10 @@ export const llmAnalyticsApi = {
     apiRequest<import("@/types/trading").LLMTimelinePoint[]>(
       `/llm-analytics/cost-trend?days=${days}`
     ),
+  getPipelineCombinations: (days = 30) =>
+    apiRequest<import("@/types/trading").PipelineCombinationRow[]>(
+      `/llm-analytics/pipelines?days=${days}`
+    ),
 }
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────

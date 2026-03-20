@@ -56,6 +56,22 @@ class TimelinePoint(BaseModel):
     by_model: dict[str, float]
 
 
+class PipelineCombinationRow(BaseModel):
+    analysis_model: str
+    execution_model: str
+    pipeline_key: str           # "gemini-2.5-flash → claude-sonnet-4-6"
+    total_runs: int
+    trades_triggered: int
+    profitable_trades: int
+    win_rate: float
+    total_pnl_usd: float
+    avg_profit_usd: float
+    analysis_cost_usd: float
+    execution_cost_usd: float
+    total_cost_usd: float
+    profit_per_dollar: float
+
+
 # ── Core query ────────────────────────────────────────────────────────────────
 
 async def _fetch_rows(db: AsyncSession, since: datetime) -> list:
@@ -81,6 +97,100 @@ async def _fetch_rows(db: AsyncSession, since: datetime) -> list:
         .where(LLMCall.pipeline_step_id.is_not(None))
     )
     return (await db.execute(stmt)).all()
+
+
+async def _fetch_pipeline_rows(db: AsyncSession, since: datetime) -> list:
+    """Join LLMCall → PipelineStep → PipelineRun → Trade, selecting role for pipeline pivot."""
+    stmt = (
+        select(
+            LLMCall.model,
+            LLMCall.role,
+            LLMCall.cost_usd,
+            PipelineStep.run_id,
+            PipelineRun.symbol,
+            PipelineRun.final_action,
+            Trade.profit,
+        )
+        .join(PipelineStep, LLMCall.pipeline_step_id == PipelineStep.id)
+        .join(PipelineRun, PipelineStep.run_id == PipelineRun.id)
+        .outerjoin(Trade, PipelineRun.trade_id == Trade.id)
+        .where(LLMCall.created_at >= since)
+        .where(PipelineRun.task_type == "signal")
+        .where(LLMCall.pipeline_step_id.is_not(None))
+    )
+    return (await db.execute(stmt)).all()
+
+
+def _aggregate_pipeline_combinations(rows: list) -> list[PipelineCombinationRow]:
+    """
+    Group by (analysis_model, execution_model) pair at pipeline_run level.
+    Win rate reflects the full pipeline outcome, not individual model contribution.
+    """
+    run_data: dict[str, dict] = {}
+
+    for row in rows:
+        run_id = str(row.run_id)
+        if run_id not in run_data:
+            run_data[run_id] = {
+                "analysis_model": None,
+                "execution_model": None,
+                "analysis_cost": 0.0,
+                "execution_cost": 0.0,
+                "action": (row.final_action or "").lower(),
+                "profit": float(row.profit) if row.profit is not None else None,
+            }
+        rd = run_data[run_id]
+        role = (row.role or "").lower()
+        cost = float(row.cost_usd or 0)
+        if role == "execution_decision":
+            rd["execution_model"] = row.model
+            rd["execution_cost"] += cost
+        elif role in ("market_analysis", "chart_vision", "news_analysis"):
+            rd["analysis_model"] = row.model
+            rd["analysis_cost"] += cost
+        else:
+            rd["analysis_cost"] += cost  # untagged calls counted as analysis cost
+
+    combos: dict[tuple, list] = defaultdict(list)
+    for rd in run_data.values():
+        key = (rd["analysis_model"] or "unknown", rd["execution_model"] or "unknown")
+        combos[key].append(rd)
+
+    result: list[PipelineCombinationRow] = []
+    for (analysis_model, execution_model), runs in combos.items():
+        total_runs = len(runs)
+        triggered = [r for r in runs if r["action"] in ("buy", "sell")]
+        trades_triggered = len(triggered)
+        profitable = [r for r in triggered if r["profit"] is not None and r["profit"] > 0]
+        profitable_trades = len(profitable)
+        win_rate = profitable_trades / trades_triggered if trades_triggered else 0.0
+
+        profits = [r["profit"] for r in triggered if r["profit"] is not None]
+        total_pnl = sum(profits)
+        avg_profit = sum(profits) / len(profits) if profits else 0.0
+
+        analysis_cost = sum(r["analysis_cost"] for r in runs)
+        execution_cost = sum(r["execution_cost"] for r in runs)
+        total_cost = analysis_cost + execution_cost
+        profit_per_dollar = total_pnl / total_cost if total_cost > 0 else 0.0
+
+        result.append(PipelineCombinationRow(
+            analysis_model=analysis_model,
+            execution_model=execution_model,
+            pipeline_key=f"{analysis_model} → {execution_model}",
+            total_runs=total_runs,
+            trades_triggered=trades_triggered,
+            profitable_trades=profitable_trades,
+            win_rate=round(win_rate, 4),
+            total_pnl_usd=round(total_pnl, 6),
+            avg_profit_usd=round(avg_profit, 6),
+            analysis_cost_usd=round(analysis_cost, 8),
+            execution_cost_usd=round(execution_cost, 8),
+            total_cost_usd=round(total_cost, 8),
+            profit_per_dollar=round(profit_per_dollar, 4),
+        ))
+
+    return sorted(result, key=lambda r: -r.total_pnl_usd)
 
 
 def _aggregate_model_performance(rows: list) -> list[ModelPerformanceRow]:
@@ -302,6 +412,16 @@ async def get_pnl_timeline(
         TimelinePoint(date=date, by_model=dict(by_model))
         for date, by_model in sorted(buckets.items())
     ]
+
+
+@router.get("/pipelines", response_model=list[PipelineCombinationRow])
+async def get_pipeline_combinations(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+) -> list[PipelineCombinationRow]:
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = await _fetch_pipeline_rows(db, since)
+    return _aggregate_pipeline_combinations(rows)
 
 
 @router.get("/cost-trend", response_model=list[TimelinePoint])
