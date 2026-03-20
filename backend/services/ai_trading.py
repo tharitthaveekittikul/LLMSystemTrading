@@ -1055,6 +1055,13 @@ class AITradingService:
         )
 
         # ── 16. Persist Trade row ────────────────────────────────────────────
+        _action = signal.action.upper()
+        _is_pending = _action in {"BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP"}
+        _order_type = (
+            "limit" if "LIMIT" in _action
+            else "stop" if "STOP" in _action
+            else "market"
+        )
         trade = Trade(
             account_id=account_id,
             ticket=order_result.ticket,
@@ -1068,6 +1075,8 @@ class AITradingService:
             source="ai",
             is_paper_trade=account.paper_trade_enabled,
             strategy_id=strategy_id,
+            order_type=_order_type,
+            order_status="pending" if _is_pending else "filled",
         )
         db.add(trade)
         await db.flush()
