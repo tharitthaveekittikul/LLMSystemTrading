@@ -198,6 +198,7 @@ _ORDER_TYPE_NAMES: dict[int, str] = {
 
 
 def _normalize_order(order: dict) -> dict:
+    expiry_ts = order.get("time_expiration", 0)
     return {
         "ticket":       order.get("ticket"),
         "symbol":       order.get("symbol"),
@@ -207,4 +208,5 @@ def _normalize_order(order: dict) -> dict:
         "sl":           order.get("sl") or None,
         "tp":           order.get("tp") or None,
         "placed_time":  datetime.fromtimestamp(order.get("time_setup", 0), UTC).isoformat(),
+        "expiration":   datetime.fromtimestamp(expiry_ts, UTC).isoformat() if expiry_ts else None,
     }

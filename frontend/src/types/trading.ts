@@ -187,6 +187,7 @@ export interface PendingOrder {
   sl: number | null;
   tp: number | null;
   placed_time: string;
+  expiration: string | null;
 }
 
 export interface PendingOrdersUpdateData {

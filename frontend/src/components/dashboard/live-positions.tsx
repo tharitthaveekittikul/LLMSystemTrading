@@ -34,6 +34,15 @@ function orderTypeLabel(type: string): string {
   return type.replace(/_/g, " ").toUpperCase();
 }
 
+function formatExpiry(expiration: string | null): string {
+  if (!expiration) return "GTC";
+  const diffMs = new Date(expiration).getTime() - Date.now();
+  if (diffMs <= 0) return "Expired";
+  const h = Math.floor(diffMs / 3_600_000);
+  const m = Math.floor((diffMs % 3_600_000) / 60_000);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 export function LivePositions() {
   const positions = useTradingStore((s) => s.openPositions);
   const pendingOrders = useTradingStore((s) => s.pendingOrders);
@@ -79,6 +88,7 @@ export function LivePositions() {
                 <TableHead>Type</TableHead>
                 <TableHead>Volume</TableHead>
                 <TableHead className="text-right">Price / P&amp;L</TableHead>
+                <TableHead className="text-right">Expiry</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -115,6 +125,7 @@ export function LivePositions() {
                     {pos.profit >= 0 ? "+" : ""}
                     {pos.profit.toFixed(2)}
                   </TableCell>
+                  <TableCell />
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
@@ -152,6 +163,9 @@ export function LivePositions() {
                   <TableCell>{order.volume}</TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
                     @ {order.price}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
+                    {formatExpiry(order.expiration)}
                   </TableCell>
                   <TableCell />
                 </TableRow>
