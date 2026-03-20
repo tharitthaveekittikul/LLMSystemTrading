@@ -229,7 +229,16 @@ async def _call_llm_for_role(
     ai_msg = await llm.ainvoke(messages)
     duration_ms = int((time.monotonic() - t0) * 1000)
 
-    raw_text = ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
+    if isinstance(ai_msg.content, str):
+        raw_text = ai_msg.content
+    elif isinstance(ai_msg.content, list):
+        # Anthropic Claude returns a list of content blocks: [{'type': 'text', 'text': '...'}]
+        raw_text = "\n".join(
+            block["text"] if isinstance(block, dict) and "text" in block else str(block)
+            for block in ai_msg.content
+        )
+    else:
+        raw_text = str(ai_msg.content)
     inp, out, total = _extract_tokens(ai_msg, provider)
 
     # Parse JSON from the text response

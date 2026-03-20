@@ -639,6 +639,32 @@ export interface TelegramSettings {
   token_hint: string | null;
 }
 
+// ── Economic Calendar ─────────────────────────────────────────────────────────
+
+export interface EconomicEvent {
+  id: number;
+  title: string;
+  currency: string;
+  event_utc: string; // ISO UTC — convert to Bangkok for display
+  impact: "High" | "Medium" | "Low";
+  forecast: string | null;
+  previous: string | null;
+  actual: string | null; // user-entered after checking ForexFactory
+  affected_symbols: string[];
+  llm_signal: "BUY" | "SELL" | "HOLD" | "AVOID" | null;
+  llm_summary: string | null;
+  llm_provider: string | null;
+  llm_model: string | null;
+  llm_analyzed_at: string | null;
+  llm_input_tokens: number | null;
+  llm_output_tokens: number | null;
+  llm_total_tokens: number | null;
+  llm_cost_usd: number | null;
+  llm_duration_ms: number | null;
+  llm_raw_response: string | null;
+  analysis_error: string | null;
+}
+
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 export interface ScheduledJob {

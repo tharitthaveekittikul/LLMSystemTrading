@@ -385,6 +385,41 @@ class BacktestTrade(Base):
     run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="trades")
 
 
+class EconomicEvent(Base):
+    __tablename__ = "economic_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Synthetic dedup key: sha1(title|currency|date|hour:minute)
+    ff_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    currency: Mapped[str] = mapped_column(String(10), index=True)
+    event_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    impact: Mapped[str] = mapped_column(String(10), index=True)  # High | Medium | Low
+    forecast: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    previous: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    actual: Mapped[str | None] = mapped_column(String(50), nullable=True)  # user-entered
+    affected_symbols: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
+    # LLM analysis
+    llm_signal: Mapped[str | None] = mapped_column(String(10), nullable=True)  # BUY|SELL|HOLD|AVOID
+    llm_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    llm_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    llm_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    llm_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    llm_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    llm_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    llm_total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    llm_cost_usd: Mapped[float | None] = mapped_column(Numeric(10, 8), nullable=True)
+    llm_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    analysis_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    llm_raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+
 class TelegramSettings(Base):
     __tablename__ = "telegram_settings"
 

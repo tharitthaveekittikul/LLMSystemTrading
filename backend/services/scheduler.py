@@ -230,6 +230,46 @@ async def start_scheduler(db: "AsyncSession") -> None:
         settings.maintenance_task_enabled,
     )
 
+    # News calendar jobs — only when news_enabled
+    if settings.news_enabled:
+        async def _run_news_fetch_job() -> None:
+            async with AsyncSessionLocal() as _db:
+                from services.news_fetcher import fetch_and_store_events
+                try:
+                    count = await fetch_and_store_events(_db)
+                    logger.info("Scheduled news fetch complete | rows=%d", count)
+                except Exception as exc:
+                    logger.error("Scheduled news fetch failed: %s", exc)
+
+        async def _run_news_analyze_job() -> None:
+            async with AsyncSessionLocal() as _db:
+                from services.news_analyzer import analyze_today_events
+                try:
+                    count = await analyze_today_events(_db)
+                    logger.info("Scheduled news analysis complete | analyzed=%d", count)
+                except Exception as exc:
+                    logger.error("Scheduled news analysis failed: %s", exc)
+
+        # Fetch at 23:00 UTC = 06:00 Bangkok
+        _scheduler.add_job(
+            _run_news_fetch_job,
+            trigger=CronTrigger(hour=23, minute=0, timezone="UTC"),
+            id="news_fetch_daily",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        # Analyze at 00:00 UTC = 07:00 Bangkok
+        _scheduler.add_job(
+            _run_news_analyze_job,
+            trigger=CronTrigger(hour=0, minute=0, timezone="UTC"),
+            id="news_analyze_daily",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("News calendar jobs registered (fetch 23:00 UTC, analyze 00:00 UTC)")
+    else:
+        logger.info("News calendar jobs skipped (news_enabled=False)")
+
     _scheduler.start()
     logger.info("Scheduler started with %d jobs", len(_scheduler.get_jobs()))
 
