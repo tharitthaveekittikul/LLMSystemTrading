@@ -381,6 +381,13 @@ export interface SyncAllResult {
   errors: string[];
 }
 
+export interface SyncOrdersResult {
+  total_checked: number;
+  positions_closed: number;
+  orders_cancelled: number;
+  unchanged: number;
+}
+
 // ── Pipeline Logs ─────────────────────────────────────────────────────────────
 
 export interface PipelineStep {

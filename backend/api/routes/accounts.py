@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -356,6 +356,144 @@ async def get_account_history(
         raise HTTPException(status_code=502, detail=str(exc))
 
     return deals
+
+
+# MT5 order state / deal entry constants
+_ORDER_STATE_CANCELED  = 2
+_ORDER_STATE_FILLED    = 4
+_ORDER_STATE_REJECTED  = 5
+_ORDER_STATE_EXPIRED   = 6
+_DEAL_ENTRY_OUT        = 1   # closing deal
+
+
+class SyncOrdersResponse(BaseModel):
+    total_checked: int
+    positions_closed: int   # open positions manually closed in MT5
+    orders_cancelled: int   # pending orders cancelled/expired in MT5
+    unchanged: int
+
+
+@router.post("/{account_id}/sync-orders", response_model=SyncOrdersResponse)
+async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
+    """Reconcile DB open trades against MT5.
+
+    Handles two cases:
+    1. Pending orders (order_status='pending') cancelled/expired in MT5.
+    2. Filled positions (order_status='filled') manually closed in MT5.
+    Errors: 404 account not found, 502/503 MT5 unavailable.
+    """
+    from db.models import Trade
+
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    password = decrypt(account.password_encrypted)
+    creds = AccountCredentials(
+        login=account.login,
+        password=password,
+        server=account.server,
+        path=account.mt5_path or settings.mt5_path,
+    )
+
+    # ── Load ALL open DB trades (pending + filled) ────────────────────────────
+    result = await db.execute(
+        select(Trade).where(
+            Trade.account_id == account_id,
+            Trade.closed_at.is_(None),
+        )
+    )
+    open_trades: list[Trade] = list(result.scalars().all())
+
+    if not open_trades:
+        return SyncOrdersResponse(total_checked=0, positions_closed=0, orders_cancelled=0, unchanged=0)
+
+    oldest_opened = min(t.opened_at for t in open_trades)
+    now = datetime.now(timezone.utc)
+
+    try:
+        async with MT5Bridge(creds) as bridge:
+            active_positions = await bridge.get_positions()
+            active_orders    = await bridge.get_orders()
+            hist_orders      = await bridge.history_orders_get(oldest_opened, now)
+            hist_deals       = await bridge.history_deals_get(oldest_opened, now)
+
+    except RuntimeError as exc:
+        logger.error("MT5 unavailable (sync-orders) | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ConnectionError as exc:
+        logger.error("MT5 connect failed (sync-orders) | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    active_position_tickets: set[int] = {p["ticket"] for p in active_positions}
+    active_order_tickets: set[int]    = {o["ticket"] for o in active_orders}
+    hist_orders_by_ticket: dict[int, dict] = {o["ticket"]: o for o in hist_orders}
+
+    # Closing deals indexed by position_id (entry=OUT means the position was closed)
+    closing_deals: dict[int, dict] = {
+        d["position_id"]: d
+        for d in hist_deals
+        if d.get("entry") == _DEAL_ENTRY_OUT
+    }
+
+    counts = {"positions_closed": 0, "orders_cancelled": 0, "unchanged": 0}
+    now_ts = datetime.now(timezone.utc)
+
+    for trade in open_trades:
+        # ── Case 1: filled position ───────────────────────────────────────────
+        if trade.order_status == "filled":
+            if trade.ticket in active_position_tickets:
+                counts["unchanged"] += 1
+                continue
+
+            # Position no longer active — find its closing deal
+            deal = closing_deals.get(trade.ticket)
+            if deal:
+                deal_time = deal.get("time")
+                trade.close_price = deal.get("price")
+                trade.profit      = deal.get("profit")
+                trade.closed_at   = (
+                    datetime.fromtimestamp(deal_time, tz=timezone.utc)
+                    if deal_time else now_ts
+                )
+            else:
+                trade.closed_at = now_ts  # fallback: no deal found
+
+            counts["positions_closed"] += 1
+            logger.info(
+                "Position closed (manual) | account_id=%s ticket=%s close_price=%s profit=%s",
+                account_id, trade.ticket, trade.close_price, trade.profit,
+            )
+
+        # ── Case 2: pending order ─────────────────────────────────────────────
+        else:
+            if trade.ticket in active_order_tickets:
+                counts["unchanged"] += 1
+                continue
+
+            hist_order = hist_orders_by_ticket.get(trade.ticket)
+            state = hist_order.get("state") if hist_order else None
+
+            if state == _ORDER_STATE_EXPIRED:
+                trade.order_status = "expired"
+            else:
+                trade.order_status = "cancelled"
+
+            trade.closed_at = now_ts
+            counts["orders_cancelled"] += 1
+            logger.info(
+                "Pending order reconciled | account_id=%s ticket=%s state=%s -> %s",
+                account_id, trade.ticket, state, trade.order_status,
+            )
+
+    await db.commit()
+
+    return SyncOrdersResponse(
+        total_checked=len(open_trades),
+        positions_closed=counts["positions_closed"],
+        orders_cancelled=counts["orders_cancelled"],
+        unchanged=counts["unchanged"],
+    )
 
 
 @router.post("/{account_id}/history/sync", response_model=HistorySyncResponse)

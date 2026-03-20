@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import type { Account, AccountCreatePayload, AccountUpdatePayload, MT5AccountInfo, AccountStats, EquityPoint, HistoryDeal, HistorySyncResult, SyncAllResult } from "@/types/trading";
+import type { Account, AccountCreatePayload, AccountUpdatePayload, MT5AccountInfo, AccountStats, EquityPoint, HistoryDeal, HistorySyncResult, SyncAllResult, SyncOrdersResult } from "@/types/trading";
 
 export const accountsApi = {
   list: () => apiRequest<Account[]>("/accounts"),
@@ -33,4 +33,6 @@ export const accountsApi = {
     apiRequest<SyncAllResult>(`/accounts/sync-all?days=${days ?? 90}`, {
       method: "POST",
     }),
+  syncOrders: (id: number) =>
+    apiRequest<SyncOrdersResult>(`/accounts/${id}/sync-orders`, { method: "POST" }),
 };
