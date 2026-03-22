@@ -37,6 +37,8 @@ class StrategyCreate(BaseModel):
     custom_prompt: str | None = None
     module_path: str | None = None
     class_name: str | None = None
+    strategy_key: str | None = None
+    strategy_params: dict | None = None
     skip_hours: list[int] = []
     skip_hours_timezone: str = "Asia/Bangkok"
     skip_weekdays: list[int] = []
@@ -60,6 +62,8 @@ class StrategyUpdate(BaseModel):
     custom_prompt: str | None = None
     module_path: str | None = None
     class_name: str | None = None
+    strategy_key: str | None = None
+    strategy_params: dict | None = None
     is_active: bool | None = None
     maintenance_enabled: bool | None = None
     skip_hours: list[int] | None = None
@@ -86,6 +90,8 @@ class StrategyResponse(BaseModel):
     custom_prompt: str | None
     module_path: str | None
     class_name: str | None
+    strategy_key: str | None
+    strategy_params: dict | None
     is_active: bool
     maintenance_enabled: bool
     skip_hours: list[int]
@@ -131,6 +137,8 @@ def _to_response(strategy: Strategy, binding_count: int = 0) -> StrategyResponse
         custom_prompt=strategy.custom_prompt,
         module_path=strategy.module_path,
         class_name=strategy.class_name,
+        strategy_key=strategy.strategy_key,
+        strategy_params=json.loads(strategy.strategy_params) if strategy.strategy_params else None,
         is_active=strategy.is_active,
         maintenance_enabled=strategy.maintenance_enabled,
         skip_hours=json.loads(strategy.skip_hours) if strategy.skip_hours else [],
@@ -158,8 +166,26 @@ async def list_strategies(db: AsyncSession = Depends(get_db)):
     return [_to_response(s, len(s.account_bindings)) for s in rows]
 
 
+@router.get("/registry", response_model=list[dict])
+async def get_strategy_registry():
+    """Return all registered rule-based strategies with their param schemas."""
+    from strategies.registry import list_strategies
+    return list_strategies()
+
+
 @router.post("", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
 async def create_strategy(body: StrategyCreate, db: AsyncSession = Depends(get_db)):
+    # Resolve module_path/class_name from registry key when provided
+    module_path = body.module_path
+    class_name = body.class_name
+    if body.strategy_key:
+        from strategies.registry import get_strategy as get_registry_strategy
+        meta = get_registry_strategy(body.strategy_key)
+        if meta is None:
+            raise HTTPException(status_code=422, detail=f"Unknown strategy_key: {body.strategy_key!r}")
+        module_path = meta.module_path
+        class_name = meta.class_name
+
     # Derive strategy_type from execution_mode when not explicitly overriding
     execution_mode = body.execution_mode or "llm_only"
     strategy_type = body.strategy_type
@@ -183,8 +209,10 @@ async def create_strategy(body: StrategyCreate, db: AsyncSession = Depends(get_d
         tp_pips=body.tp_pips,
         news_filter=body.news_filter,
         custom_prompt=body.custom_prompt,
-        module_path=body.module_path,
-        class_name=body.class_name,
+        module_path=module_path,
+        class_name=class_name,
+        strategy_key=body.strategy_key,
+        strategy_params=json.dumps(body.strategy_params) if body.strategy_params else None,
         skip_hours=json.dumps(body.skip_hours) if body.skip_hours else None,
         skip_hours_timezone=body.skip_hours_timezone or None,
         skip_weekdays=json.dumps(body.skip_weekdays) if body.skip_weekdays else None,
@@ -229,6 +257,15 @@ async def update_strategy(
         data["skip_hours"] = json.dumps(data["skip_hours"]) if data["skip_hours"] else None
     if "skip_weekdays" in data:
         data["skip_weekdays"] = json.dumps(data["skip_weekdays"]) if data["skip_weekdays"] else None
+    if "strategy_key" in data:
+        from strategies.registry import get_strategy as get_registry_strategy
+        meta = get_registry_strategy(data["strategy_key"])
+        if meta is None:
+            raise HTTPException(status_code=422, detail=f"Unknown strategy_key: {data['strategy_key']!r}")
+        data["module_path"] = meta.module_path
+        data["class_name"] = meta.class_name
+    if "strategy_params" in data:
+        data["strategy_params"] = json.dumps(data["strategy_params"]) if data["strategy_params"] else None
     for key, value in data.items():
         setattr(strategy, key, value)
     if body.execution_mode is not None:

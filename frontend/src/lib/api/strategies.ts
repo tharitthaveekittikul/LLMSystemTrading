@@ -1,8 +1,9 @@
 import { apiRequest } from "@/lib/api"
-import type { Strategy, StrategyBinding, CreateStrategyPayload, StrategyRun, StrategyStats } from "@/types/trading"
+import type { Strategy, StrategyBinding, CreateStrategyPayload, StrategyRun, StrategyStats, StrategyRegistryEntry } from "@/types/trading"
 
 export const strategiesApi = {
   list: () => apiRequest<Strategy[]>("/strategies"),
+  registry: () => apiRequest<StrategyRegistryEntry[]>("/strategies/registry"),
   get: (id: number) => apiRequest<Strategy>(`/strategies/${id}`),
   create: (payload: CreateStrategyPayload) =>
     apiRequest<Strategy>("/strategies", {

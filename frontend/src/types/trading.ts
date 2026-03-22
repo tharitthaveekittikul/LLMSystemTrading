@@ -112,7 +112,7 @@ export interface Trade {
   profit: number | null;
   opened_at: string;
   closed_at: string | null;
-  source: "ai" | "manual";
+  source: string; // "manual" | strategy class name (e.g. "HarmonicStrategy")
   order_type?: "market" | "limit" | "stop";
   order_status?: "pending" | "filled" | "cancelled" | "expired";
   maintenance_enabled?: boolean;
@@ -257,6 +257,28 @@ export interface EquityPoint {
 
 // ── Strategies ────────────────────────────────────────────────────────────────
 
+export interface StrategyParamField {
+  name: string;
+  label: string;
+  type: "int" | "float" | "bool" | "str" | "select";
+  default: number | string | boolean;
+  description: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
+}
+
+export interface StrategyRegistryEntry {
+  key: string;
+  display_name: string;
+  description: string;
+  execution_mode: string;
+  module_path: string;
+  class_name: string;
+  params: StrategyParamField[];
+}
+
 export interface Strategy {
   id: number;
   name: string;
@@ -276,6 +298,8 @@ export interface Strategy {
   custom_prompt: string | null;
   module_path: string | null;
   class_name: string | null;
+  strategy_key: string | null;
+  strategy_params: Record<string, unknown> | null;
   is_active: boolean;
   maintenance_enabled: boolean;
   skip_hours: number[];
@@ -310,6 +334,8 @@ export interface CreateStrategyPayload {
   custom_prompt?: string;
   module_path?: string;
   class_name?: string;
+  strategy_key?: string;
+  strategy_params?: Record<string, unknown>;
   skip_hours?: number[];
   skip_hours_timezone?: string;
   skip_weekdays?: number[];
@@ -501,6 +527,7 @@ export interface BacktestTrade {
   profit: number | null;
   exit_reason: "sl" | "tp" | "signal_reverse" | "end_of_data" | null;
   equity_after: number | null;
+  source: string | null; // strategy class name (e.g. "HarmonicStrategy")
 }
 
 export interface BacktestEquityPoint {

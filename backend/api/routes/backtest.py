@@ -123,6 +123,7 @@ class BacktestTradeOut(BaseModel):
     profit: float | None
     exit_reason: str | None
     equity_after: float | None
+    source: str | None
 
     model_config = {"from_attributes": True}
 
@@ -143,6 +144,7 @@ class BacktestTradeOut(BaseModel):
             profit=t.profit,
             exit_reason=t.exit_reason,
             equity_after=t.equity_after,
+            source=t.source,
         )
 
 
@@ -647,6 +649,7 @@ async def _run_backtest_job(
                     equity_after=td.get("equity_after"),
                     pattern_name=td.get("pattern_name"),
                     pattern_metadata=json.dumps(td.get("pattern_metadata")) if td.get("pattern_metadata") else None,
+                    source=td.get("source"),
                 )
                 db.add(bt)
             await db.flush()

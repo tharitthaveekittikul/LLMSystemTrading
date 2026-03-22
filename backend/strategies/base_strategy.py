@@ -155,6 +155,16 @@ class AbstractStrategy(ABC):
             except (json.JSONDecodeError, TypeError):
                 pass
 
+        # Apply per-instance param overrides stored in strategy_params JSON
+        if strategy_db.strategy_params:
+            try:
+                params = json.loads(strategy_db.strategy_params)
+                for k, v in params.items():
+                    if hasattr(self, k) and not k.startswith("_"):
+                        setattr(self, k, v)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
     def is_skipped(self, dt: "datetime | None" = None) -> bool:
         """Return True if the given datetime (default: now) should be skipped.
 

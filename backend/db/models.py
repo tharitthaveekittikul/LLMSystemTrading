@@ -51,7 +51,7 @@ class Trade(Base):
     profit: Mapped[float | None] = mapped_column(Float, nullable=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | manual
+    source: Mapped[str] = mapped_column(String(100), default="manual")  # "manual" | strategy class name (e.g. "HarmonicStrategy")
     is_paper_trade: Mapped[bool] = mapped_column(Boolean, default=False)
     maintenance_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     order_type:   Mapped[str] = mapped_column(String(6),  default="market")   # market | limit | stop
@@ -125,6 +125,8 @@ class Strategy(Base):
     custom_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     module_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     class_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    strategy_key: Mapped[str | None] = mapped_column(String(100), nullable=True)   # registry key, e.g. "harmonic"
+    strategy_params: Mapped[str | None] = mapped_column(Text, nullable=True)       # JSON dict of param overrides
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     maintenance_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     skip_hours: Mapped[str | None] = mapped_column(Text, nullable=True)          # JSON list of ints, e.g. [4,6,7]
@@ -387,6 +389,7 @@ class BacktestTrade(Base):
     equity_after: Mapped[float | None] = mapped_column(Float, nullable=True)
     pattern_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     pattern_metadata: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
+    source: Mapped[str | None] = mapped_column(String(100), nullable=True)  # strategy class name (e.g. "HarmonicStrategy")
 
     run: Mapped["BacktestRun"] = relationship("BacktestRun", back_populates="trades")
 

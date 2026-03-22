@@ -55,6 +55,7 @@ class TradeResult:
     equity_after: float
     pattern_name: str | None = None
     pattern_metadata: str | None = None
+    source: str | None = None
 
 # Number of candles in the rolling window passed to strategy.generate_signal()
 _WINDOW = 50
@@ -132,6 +133,9 @@ class BacktestEngine:
         tp_partial_close_ratio: float = config.get("tp_partial_close_ratio", 0.5)
         total = len(candles)
 
+        # Source label for recorded trades — strategy class name (e.g. "HarmonicStrategy")
+        trade_source: str = type(strategy).__name__
+
         # LLM sampling step: call LLM every K-th candle
         is_llm_strategy = getattr(strategy, "strategy_type", "code") in ("config", "prompt")
         llm_step = max(1, total // max_llm) if is_llm_strategy and max_llm > 0 else None
@@ -187,6 +191,7 @@ class BacktestEngine:
                         equity_after=round(balance, 4),
                         pattern_name=open_position.pattern_name,
                         pattern_metadata=open_position.pattern_metadata,
+                        source=trade_source,
                     )))
                     equity_curve.append({"time": partial_profit_event["exit_time"], "equity": round(balance, 4)})
 
@@ -219,6 +224,7 @@ class BacktestEngine:
                         equity_after=round(balance, 4),
                         pattern_name=open_position.pattern_name,
                         pattern_metadata=open_position.pattern_metadata,
+                        source=trade_source,
                     )))
                     equity_curve.append({"time": closed["exit_time"], "equity": round(balance, 4)})
                     open_position = None
@@ -366,6 +372,7 @@ class BacktestEngine:
                 equity_after=round(balance, 4),
                 pattern_name=open_position.pattern_name,
                 pattern_metadata=open_position.pattern_metadata,
+                source=trade_source,
             )))
             equity_curve.append({"time": last_candle["time"], "equity": round(balance, 4)})
 
