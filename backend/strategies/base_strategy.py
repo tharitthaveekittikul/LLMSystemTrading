@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -40,6 +41,47 @@ _HOLD = StrategyResult(
     action="HOLD", entry=None, stop_loss=None, take_profit=None,
     confidence=0.0, rationale="No signal", timeframe="",
 )
+
+
+@dataclass
+class Tick:
+    """Snapshot of the latest bid/ask for a symbol, as delivered by MT5 symbol_info_tick()."""
+    symbol: str
+    bid: float
+    ask: float
+    time: datetime
+
+
+@dataclass
+class OpenPosition:
+    """Minimal view of a live MT5 position — passed to on_tick() for management decisions."""
+    ticket: int
+    symbol: str
+    direction: Literal["BUY", "SELL"]
+    entry_price: float
+    volume: float
+    profit: float
+    current_sl: float | None = None
+    current_tp: float | None = None
+
+
+@dataclass
+class ManagementAction:
+    """Instruction returned by on_tick() to modify or close an open position.
+
+    action_type:
+        TRAIL_STOP   — move SL to `price` (trailing; only tighten, never widen)
+        BREAK_EVEN   — move SL to entry_price (price field ignored)
+        MOVE_SL      — set SL to an explicit `price`
+        MOVE_TP      — set TP to an explicit `price`
+        PARTIAL_CLOSE — close `volume` lots of the position
+        CLOSE        — close the full position immediately
+    """
+    action_type: Literal["TRAIL_STOP", "BREAK_EVEN", "MOVE_SL", "MOVE_TP", "PARTIAL_CLOSE", "CLOSE"]
+    ticket: int                    # MT5 position ticket
+    price: float | None = None     # new SL / TP price (ignored for BREAK_EVEN, CLOSE)
+    volume: float | None = None    # lots to close (PARTIAL_CLOSE only)
+    rationale: str = ""
 
 
 def direction_from_action(action: str) -> str:
@@ -144,8 +186,38 @@ class AbstractStrategy(ABC):
         """Describe how the frontend should render analytics for this strategy type."""
         ...
 
+    # ── Lifecycle hooks ───────────────────────────────────────────────────────
+    async def on_start(self) -> None:
+        """Called once when the strategy is activated by the orchestrator.
+
+        Override to: warm up indicator caches, load custom data, validate
+        account state, pre-compute static values.
+        Default: no-op.
+        """
+
+    async def on_stop(self) -> None:
+        """Called when the strategy is deactivated (graceful shutdown or user toggle).
+
+        Override to: flush state, close file handles, cancel pending orders
+        that this strategy placed.
+        Default: no-op.
+        """
+
+    async def on_tick(
+        self,
+        _tick: Tick,
+        _open_positions: list[OpenPosition],
+    ) -> list[ManagementAction]:
+        """Called on every new price tick. For POSITION MANAGEMENT ONLY.
+
+        Override to: trail stops, trigger break-even, partial close at TP levels.
+        NEVER put signal detection here — use run() / check_rule() on candle close.
+        Default: no action.
+        """
+        return []
+
     # ── Legacy compatibility ── keep generate_signal so old BacktestEngine still works
-    def generate_signal(self, market_data: dict) -> dict | None:
+    def generate_signal(self, _market_data: dict) -> dict | None:
         """Legacy single-TF interface. Returns None by default — use run() instead."""
         return None
 
