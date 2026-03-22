@@ -333,7 +333,7 @@ async def get_candles(
     raw = await svc.load_from_csv(_io.StringIO(p.read_text(encoding="utf-8", errors="replace")))
     return [
         {
-            "time": int(c["time"]),
+            "time": int(c["time"].timestamp()),
             "open": c["open"],
             "high": c["high"],
             "low": c["low"],
