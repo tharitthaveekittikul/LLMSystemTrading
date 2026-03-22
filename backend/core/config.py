@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     jwt_secret: str = _DEV_JWT_SECRET
 
     # ── LLM ───────────────────────────────────────────────────────────────────
-    llm_provider: str = "openai"  # openai | gemini | anthropic | openrouter
+    llm_provider: str = "openai"  # openai | gemini | anthropic | openrouter | ollama
     llm_confidence_threshold: float = 0.70
     openai_api_key: str = ""
     gemini_api_key: str = ""
@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-4o"  # override with OPENROUTER_MODEL in .env
+    ollama_base_url: str = "http://localhost:11434"  # override with OLLAMA_BASE_URL
+    ollama_model: str = "llama3.1:8b"                # override with OLLAMA_MODEL
 
     # ── MetaTrader 5 ──────────────────────────────────────────────────────────
     mt5_path: str = ""  # leave empty to use default MT5 installation path
@@ -77,7 +79,7 @@ class Settings(BaseSettings):
     @field_validator("llm_provider")
     @classmethod
     def validate_llm_provider(cls, v: str) -> str:
-        allowed = {"openai", "gemini", "anthropic", "openrouter"}
+        allowed = {"openai", "gemini", "anthropic", "openrouter", "ollama"}
         if v not in allowed:
             raise ValueError(f"llm_provider must be one of {allowed}, got '{v}'")
         return v
@@ -158,12 +160,13 @@ class Settings(BaseSettings):
             "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
             "openrouter": ("openrouter_api_key", "OPENROUTER_API_KEY"),
         }
-        attr, env_var = _provider_key_map[self.llm_provider]
-        if not getattr(self, attr):
-            raise ValueError(
-                f"llm_provider is '{self.llm_provider}' but {env_var} is not set. "
-                f"Add {env_var}=<your-key> to backend/.env"
-            )
+        if self.llm_provider in _provider_key_map:
+            attr, env_var = _provider_key_map[self.llm_provider]
+            if not getattr(self, attr):
+                raise ValueError(
+                    f"llm_provider is '{self.llm_provider}' but {env_var} is not set. "
+                    f"Add {env_var}=<your-key> to backend/.env"
+                )
 
         return self
 

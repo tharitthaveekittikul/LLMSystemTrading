@@ -19,7 +19,7 @@ import { MaintenanceSection } from "@/components/settings/maintenance-section";
 import { RiskManagerSection } from "@/components/settings/risk-manager-section";
 import { TelegramSection } from "@/components/settings/telegram-section";
 
-const PROVIDERS = ["openai", "gemini", "anthropic", "openrouter"] as const;
+const PROVIDERS = ["openai", "gemini", "anthropic", "openrouter", "ollama"] as const;
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<ProviderStatus[]>([]);

@@ -22,6 +22,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   gemini: "Gemini",
   anthropic: "Anthropic",
   openrouter: "OpenRouter",
+  ollama: "Ollama",
 };
 
 // ── ModelSelector ──────────────────────────────────────────────────────────────
@@ -92,7 +93,8 @@ interface ProviderCardProps {
 }
 
 export function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
-  const [apiKey, setApiKey] = useState("");
+  const isOllama = provider === "ollama";
+  const [apiKey, setApiKey] = useState(isOllama ? "http://localhost:11434" : "");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -100,7 +102,7 @@ export function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
 
   async function handleTest() {
     if (!apiKey.trim()) {
-      toast.error("Enter an API key to test");
+      toast.error(isOllama ? "Enter a Base URL to test" : "Enter an API key to test");
       return;
     }
     setTesting(true);
@@ -117,14 +119,14 @@ export function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
 
   async function handleSave() {
     if (!apiKey.trim()) {
-      toast.error("Enter an API key to save");
+      toast.error(isOllama ? "Enter a Base URL to save" : "Enter an API key to save");
       return;
     }
     setSaving(true);
     try {
       await settingsApi.saveProvider(provider, apiKey);
-      toast.success(`${label} API key saved`);
-      setApiKey("");
+      toast.success(isOllama ? `${label} Base URL saved` : `${label} API key saved`);
+      if (!isOllama) setApiKey("");
       onSaved();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Save failed");
@@ -156,8 +158,8 @@ export function ProviderCard({ provider, status, onSaved }: ProviderCardProps) {
       </CardHeader>
       <CardContent className="space-y-2">
         <Input
-          type="password"
-          placeholder={`${label} API key`}
+          type={isOllama ? "text" : "password"}
+          placeholder={isOllama ? "Base URL (e.g. http://localhost:11434)" : `${label} API key`}
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           className="font-mono text-sm"

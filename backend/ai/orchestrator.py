@@ -142,6 +142,14 @@ def _build_llm(
             temperature=0,
         )
 
+    if resolved_provider == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(
+            model=model or settings.ollama_model,
+            base_url=api_key or settings.ollama_base_url,
+            temperature=0,
+        )
+
     raise ValueError(f"Unknown llm_provider: {resolved_provider!r}")
 
 
@@ -158,6 +166,8 @@ def _provider_from_llm(llm: BaseChatModel) -> str:
         return "google"
     if "anthropic" in mod:
         return "anthropic"
+    if "ollama" in mod:
+        return "ollama"
     return "unknown"
 
 

@@ -15,7 +15,7 @@ from db.postgres import get_db
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-_VALID_PROVIDERS = {"openai", "gemini", "anthropic", "openrouter"}
+_VALID_PROVIDERS = {"openai", "gemini", "anthropic", "openrouter", "ollama"}
 _VALID_TASKS = {
     "market_analysis", "vision", "execution_decision",
     "maintenance_technical", "maintenance_sentiment", "maintenance_decision",
@@ -97,6 +97,15 @@ async def _fetch_provider_models(provider: str, api_key: str) -> list[str]:
             response = await client.models.list()
             return sorted(m.id for m in response.data)
 
+        if provider == "ollama":
+            import httpx  # noqa: PLC0415
+            base_url = api_key  # For ollama, api_key stores the base URL
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{base_url.rstrip('/')}/api/tags")
+                resp.raise_for_status()
+                data = resp.json()
+            return sorted(m["name"] for m in data.get("models", []))
+
     except Exception as exc:
         logger.warning("Failed to fetch models for %s: %s", provider, exc)
     return []
@@ -133,6 +142,14 @@ async def _test_provider_connection(provider: str, api_key: str) -> tuple[bool, 
             await client.models.list()
             return True, "Connected to OpenRouter"
 
+        if provider == "ollama":
+            import httpx  # noqa: PLC0415
+            base_url = api_key  # For ollama, api_key stores the base URL
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{base_url.rstrip('/')}/api/tags")
+                resp.raise_for_status()
+            return True, "Connected to Ollama"
+
         return False, f"Unknown provider: {provider}"
 
     except Exception as exc:
@@ -148,7 +165,7 @@ async def list_providers(db: AsyncSession = Depends(get_db)) -> list[ProviderSta
     configs = {row.provider: row for row in rows}
 
     result: list[ProviderStatus] = []
-    for provider in ["openai", "gemini", "anthropic", "openrouter"]:
+    for provider in ["openai", "gemini", "anthropic", "openrouter", "ollama"]:
         row = configs.get(provider)
         if row:
             result.append(ProviderStatus(
@@ -240,6 +257,10 @@ async def list_provider_models(
             LLMProviderConfig.is_active.is_(True),
         )
     )).scalar_one_or_none()
+
+    if provider == "ollama":
+        base_url = decrypt(row.encrypted_api_key) if row else settings.ollama_base_url
+        return await _fetch_provider_models("ollama", base_url)
 
     if not row:
         raise HTTPException(status_code=404, detail=f"No active API key configured for {provider!r}")
