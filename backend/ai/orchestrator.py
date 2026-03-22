@@ -224,6 +224,20 @@ def _extract_tokens(ai_msg: Any, provider: str) -> tuple[int | None, int | None,
     return None, None, None
 
 
+def log_llm_usage(ai_msg: Any, llm: BaseChatModel, caller: str) -> None:
+    """Log token usage and estimated cost for any LLM call site outside orchestrator."""
+    from core.llm_pricing import compute_cost
+    provider = _provider_from_llm(llm)
+    model = _model_name_from_llm(llm)
+    inp, out, total = _extract_tokens(ai_msg, provider)
+    cost = compute_cost(model, inp or 0, out or 0) if inp is not None or out is not None else None
+    cost_str = f"${cost:.6f}" if cost is not None else "n/a"
+    logger.info(
+        "LLM caller=%s provider=%s model=%s input=%s output=%s total=%s cost=%s",
+        caller, provider, model, inp, out, total, cost_str,
+    )
+
+
 # ── Per-role LLM caller ────────────────────────────────────────────────────────
 
 async def _call_llm_for_role(
@@ -283,9 +297,12 @@ async def _call_llm_for_role(
             "content": content_str
         })
 
+    from core.llm_pricing import compute_cost
+    cost = compute_cost(model, inp or 0, out or 0) if inp is not None or out is not None else None
+    cost_str = f"${cost:.6f}" if cost is not None else "n/a"
     logger.info(
-        "LLM role=%s provider=%s model=%s input=%s output=%s total=%s duration=%dms",
-        role, provider, model, inp, out, total, duration_ms,
+        "LLM role=%s provider=%s model=%s input=%s output=%s total=%s cost=%s duration=%dms",
+        role, provider, model, inp, out, total, cost_str, duration_ms,
     )
     return LLMRoleResult(
         content=content,

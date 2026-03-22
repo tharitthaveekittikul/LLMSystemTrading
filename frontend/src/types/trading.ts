@@ -688,6 +688,40 @@ export interface EconomicEvent {
   analysis_error: string | null;
 }
 
+// ── Learning / RAG Feedback ───────────────────────────────────────────────────
+
+export interface ConfidenceBucket {
+  bucket: string
+  label: string
+  win_rate: number
+  trade_count: number
+  overconfident: boolean
+}
+
+export interface SignalReliabilityRow {
+  signal: string
+  reliable_pct: number
+  sample_count: number
+  is_reliable: boolean
+}
+
+export interface LearningLesson {
+  lesson: string
+  symbol: string
+  direction: string
+  profit: number
+  closed_at: string
+}
+
+export interface ResearchConfig {
+  lessons: string[]
+  blocked_symbols: string[]
+  signal_weights: Record<string, number>
+  suggested_params: Record<string, unknown>
+  last_run_at: string | null
+  stats_snapshot: Record<string, unknown>
+}
+
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 export interface ScheduledJob {

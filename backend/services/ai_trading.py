@@ -597,6 +597,14 @@ class AITradingService:
                     "Could not fetch trade history for LLM context | account_id=%s: %s", account_id, exc
                 )
 
+            # ── RAG Performance Context (self-calibration) ────────────────
+            from services.rag_context import build_rag_context
+            rag_ctx = await build_rag_context(db, account_id, symbol, tf_upper)
+            if rag_ctx:
+                trade_history_context = (
+                    (trade_history_context + "\n\n" if trade_history_context else "") + rag_ctx
+                )
+
             # ── Fetch per-role LLM assignments from DB ───────────────────
             ma_llm  = await _get_task_llm("market_analysis", db)
             cv_llm  = await _get_task_llm("chart_vision", db)

@@ -19,7 +19,7 @@ _VALID_PROVIDERS = {"openai", "gemini", "anthropic", "openrouter", "ollama"}
 _VALID_TASKS = {
     "market_analysis", "vision", "execution_decision",
     "maintenance_technical", "maintenance_sentiment", "maintenance_decision",
-    "news_analysis",
+    "news_analysis", "post_trade_analysis",
 }
 
 
@@ -279,7 +279,7 @@ async def get_assignments(db: AsyncSession = Depends(get_db)) -> list[TaskAssign
     for task in [
         "market_analysis", "vision", "execution_decision",
         "maintenance_technical", "maintenance_sentiment", "maintenance_decision",
-        "news_analysis",
+        "news_analysis", "post_trade_analysis",
     ]:
         row = assigned.get(task)
         if row:

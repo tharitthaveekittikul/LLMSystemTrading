@@ -17,6 +17,7 @@ import { CostVsWinrateScatter } from "@/components/llm-analytics/cost-vs-winrate
 import { ActionDistributionChart } from "@/components/llm-analytics/action-distribution-chart"
 import { PnlTimelineChart } from "@/components/llm-analytics/pnl-timeline-chart"
 import { PipelineCombinationsTable } from "@/components/llm-analytics/pipeline-combinations-table"
+import { LearningTab } from "@/components/llm-analytics/learning-tab"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 
@@ -26,7 +27,7 @@ const PERIODS = [
   { label: "90d", days: 90 },
 ]
 
-const TABS = ["Models", "Pipelines"] as const
+const TABS = ["Models", "Pipelines", "Learning"] as const
 type Tab = typeof TABS[number]
 
 export default function LLMAnalyticsPage() {
@@ -137,6 +138,10 @@ export default function LLMAnalyticsPage() {
 
         {tab === "Pipelines" && (
           <PipelineCombinationsTable data={pipelines} />
+        )}
+
+        {tab === "Learning" && (
+          <LearningTab days={days} />
         )}
       </div>
     </SidebarInset>

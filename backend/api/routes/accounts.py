@@ -438,6 +438,7 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
 
     counts = {"positions_closed": 0, "orders_cancelled": 0, "unchanged": 0}
     now_ts = datetime.now(timezone.utc)
+    newly_closed_trade_ids: list[int] = []
 
     for trade in open_trades:
         # ── Case 1: filled position ───────────────────────────────────────────
@@ -459,6 +460,7 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
             else:
                 trade.closed_at = now_ts  # fallback: no deal found
 
+            newly_closed_trade_ids.append(trade.id)
             counts["positions_closed"] += 1
             logger.info(
                 "Position closed (manual) | account_id=%s ticket=%s close_price=%s profit=%s",
@@ -487,6 +489,15 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
             )
 
     await db.commit()
+
+    # ── Post-trade analysis + research loop (fire-and-forget) ────────────────
+    if newly_closed_trade_ids:
+        import asyncio
+        from services.trade_analyzer import analyze_closed_trade
+        from services.research_loop import maybe_run
+        for tid in newly_closed_trade_ids:
+            asyncio.ensure_future(analyze_closed_trade(tid, db))
+        asyncio.ensure_future(maybe_run(account_id, db))
 
     return SyncOrdersResponse(
         total_checked=len(open_trades),

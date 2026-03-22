@@ -57,6 +57,7 @@ class Trade(Base):
     order_type:   Mapped[str] = mapped_column(String(6),  default="market")   # market | limit | stop
     order_status: Mapped[str] = mapped_column(String(9),  default="filled")   # pending | filled | cancelled | expired
     strategy_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("strategies.id", ondelete="SET NULL"), nullable=True)
+    trade_analysis: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON from post-trade LLM analysis
 
     __table_args__ = (
         UniqueConstraint("account_id", "ticket", name="uq_trade_account_ticket"),

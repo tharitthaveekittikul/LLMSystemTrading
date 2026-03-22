@@ -330,6 +330,22 @@ export const llmAnalyticsApi = {
     apiRequest<import("@/types/trading").PipelineCombinationRow[]>(
       `/llm-analytics/pipelines?days=${days}`
     ),
+  getConfidenceCalibration: (days = 90, accountId?: number) =>
+    apiRequest<import("@/types/trading").ConfidenceBucket[]>(
+      `/llm-analytics/learning/confidence-calibration?days=${days}${accountId ? `&account_id=${accountId}` : ""}`
+    ),
+  getSignalReliability: (days = 90, accountId?: number) =>
+    apiRequest<import("@/types/trading").SignalReliabilityRow[]>(
+      `/llm-analytics/learning/signal-reliability?days=${days}${accountId ? `&account_id=${accountId}` : ""}`
+    ),
+  getLessons: (limit = 20, accountId?: number) =>
+    apiRequest<import("@/types/trading").LearningLesson[]>(
+      `/llm-analytics/learning/lessons?limit=${limit}${accountId ? `&account_id=${accountId}` : ""}`
+    ),
+  getResearchConfig: () =>
+    apiRequest<import("@/types/trading").ResearchConfig>(
+      `/llm-analytics/learning/research-config`
+    ),
 }
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────

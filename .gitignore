@@ -53,3 +53,5 @@ backend/alembic/versions/*.py
 
 # Large data files
 data/backtests/
+
+documents/articles/

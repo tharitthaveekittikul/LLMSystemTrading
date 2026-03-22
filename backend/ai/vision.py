@@ -44,4 +44,6 @@ async def analyze_chart_screenshot(image_path: str | Path) -> str:
     )
 
     response = await llm.ainvoke([message])
+    from ai.orchestrator import log_llm_usage
+    log_llm_usage(response, llm, "chart_vision")
     return response.content

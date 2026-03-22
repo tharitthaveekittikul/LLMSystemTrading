@@ -22,6 +22,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   gemini: "Gemini",
   anthropic: "Anthropic",
   openrouter: "OpenRouter",
+  ollama: "Ollama (Local)",
 };
 
 const TASKS: { key: string; label: string }[] = [
@@ -32,6 +33,7 @@ const TASKS: { key: string; label: string }[] = [
   { key: "maintenance_sentiment", label: "Maintenance — Sentiment" },
   { key: "maintenance_decision", label: "Maintenance — Decision" },
   { key: "news_analysis", label: "News Analysis (Gate)" },
+  { key: "post_trade_analysis", label: "Post-Trade Analysis" },
 ];
 
 interface TaskAssignmentsSectionProps {
