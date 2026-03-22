@@ -38,6 +38,8 @@ class BacktestRunRequest(BaseModel):
     max_llm_calls: int = Field(default=100, ge=0)
     volume: float = Field(default=0.1, gt=0)
     risk_pct: float | None = Field(default=None, ge=0, le=1)  # e.g. 0.01 = 1%; None = fixed lot
+    commission_per_lot: float = Field(default=0.0, ge=0)  # USD per lot (round trip)
+    tp_partial_close_ratio: float = Field(default=0.5, gt=0, le=1)  # fraction to close at each TP
     csv_upload_id: str | None = None          # primary TF CSV (backward compat)
     csv_uploads: dict[str, str] | None = None  # {tf_name: upload_id} for MTF CSVs
 
@@ -177,6 +179,8 @@ async def submit_run(
         spread_pips=req.spread_pips,
         execution_mode=req.execution_mode,
         max_llm_calls=req.max_llm_calls,
+        commission_per_lot=req.commission_per_lot,
+        tp_partial_close_ratio=req.tp_partial_close_ratio,
         status="pending",
         progress_pct=0,
     )
@@ -261,6 +265,83 @@ async def get_equity_curve(
     )
     rows = (await db.execute(q)).all()
     return [{"time": r.exit_time.isoformat(), "equity": r.equity_after} for r in rows]
+
+
+@router.get("/runs/{run_id}/drawdown")
+async def get_drawdown(
+    run_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Return [{time, drawdown_pct}] computed from the equity curve.
+
+    Drawdown = (running_peak - current_equity) / running_peak * 100
+    Returns positive drawdown percentage (0 = no drawdown, 20 = 20% below peak).
+    """
+    run = await db.get(BacktestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Backtest run not found")
+    q = (
+        select(BacktestTrade.exit_time, BacktestTrade.equity_after)
+        .where(BacktestTrade.run_id == run_id)
+        .where(BacktestTrade.exit_time.is_not(None))
+        .where(BacktestTrade.equity_after.is_not(None))
+        .order_by(BacktestTrade.exit_time)
+    )
+    rows = (await db.execute(q)).all()
+    if not rows:
+        return []
+    peak = run.initial_balance
+    points = []
+    for r in rows:
+        equity = r.equity_after
+        if equity > peak:
+            peak = equity
+        drawdown_pct = (peak - equity) / peak * 100 if peak > 0 else 0.0
+        points.append({
+            "time": r.exit_time.isoformat(),
+            "drawdown_pct": round(drawdown_pct, 2),
+        })
+    return points
+
+
+@router.get("/runs/{run_id}/candles")
+async def get_candles(
+    run_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return OHLCV candles for a backtest run (enables chart replay).
+
+    CSV runs: reads the stored file at run.data_file_path.
+    MT5 runs: not yet supported — returns 404.
+    Response shape: [{time, open, high, low, close, volume}]
+    """
+    run = await db.get(BacktestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    if not run.data_file_path:
+        raise HTTPException(status_code=404, detail="No candle data stored for this run (MT5 runs not yet supported)")
+
+    import pathlib
+    p = pathlib.Path(run.data_file_path)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Candle data file not found on disk")
+
+    from services.backtest_data import BacktestDataService
+    import io as _io
+    svc = BacktestDataService()
+    raw = await svc.load_from_csv(_io.StringIO(p.read_text(encoding="utf-8", errors="replace")))
+    return [
+        {
+            "time": int(c["time"]),
+            "open": c["open"],
+            "high": c["high"],
+            "low": c["low"],
+            "close": c["close"],
+            "volume": c.get("tick_volume", 0),
+        }
+        for c in raw
+    ]
 
 
 @router.get("/runs/{run_id}/monthly-pnl")
@@ -453,6 +534,18 @@ async def _run_backtest_job(
                 with open(primary_upload, "r") as f:
                     candles = await data_svc.load_from_csv(io.StringIO(f.read()))
 
+                # ── Persist CSV for chart replay ────────────────────────────────
+                import pathlib, shutil
+                _candle_store = pathlib.Path("uploads/candles")
+                _candle_store.mkdir(parents=True, exist_ok=True)
+                _dest = _candle_store / f"{run_id}.csv"
+                try:
+                    shutil.copy2(str(primary_upload), str(_dest))
+                    run.data_file_path = str(_dest.resolve())
+                    await db.commit()
+                except Exception as _e:
+                    logger.warning("Could not persist candle CSV for run %d: %s", run_id, _e)
+
                 # ── Context TF CSVs (optional) ─────────────────────────────────
                 context_candles: dict[str, list[dict]] = {}
                 if req.csv_uploads:
@@ -517,6 +610,8 @@ async def _run_backtest_job(
                 "volume": req.volume,
                 "risk_pct": req.risk_pct,
                 "max_llm_calls": req.max_llm_calls,
+                "commission_per_lot": req.commission_per_lot,
+                "tp_partial_close_ratio": req.tp_partial_close_ratio,
             }
 
             async def _progress(pct: int) -> None:

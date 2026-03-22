@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import {
   createChart,
+  createSeriesMarkers,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
@@ -11,11 +12,13 @@ import {
   LineStyle,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type IPriceLine,
   type UTCTimestamp,
   type BusinessDay,
+  type SeriesMarker,
 } from "lightweight-charts";
-import type { Position, PendingOrder } from "@/types/trading";
+import type { Position, PendingOrder, TradeMarker } from "@/types/trading";
 
 export interface OHLCVCandle {
   time: number;
@@ -38,6 +41,9 @@ interface TradingChartProps {
   viewResetKey?: string;
   emaActive?: (20 | 50 | 200)[];
   rsiActive?: boolean;
+  tradeMarkers?: TradeMarker[];
+  /** When set, chart scrolls to show this unix timestamp (seconds). Used by trade table row-click. */
+  focusTime?: number;
 }
 
 // ── Indicator config ─────────────────────────────────────────────────────────
@@ -135,6 +141,8 @@ export function TradingChart({
   viewResetKey,
   emaActive = [],
   rsiActive = false,
+  tradeMarkers,
+  focusTime,
 }: TradingChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -149,6 +157,8 @@ export function TradingChart({
   const emaSeriesRef = useRef<Map<20 | 50 | 200, ISeriesApi<any>>>(new Map());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rsiSeriesRef = useRef<ISeriesApi<any> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markersPluginRef = useRef<ISeriesMarkersPluginApi<UTCTimestamp> | null>(null);
 
   // Keep latest prop values accessible inside effects without adding to deps.
   // Updated via useLayoutEffect (runs before useEffect) to avoid ref-in-render lint error.
@@ -265,6 +275,7 @@ export function TradingChart({
       prevViewResetKeyRef.current = ""; // reset so next data load triggers fitContent
       emaSeriesRef.current.clear();
       rsiSeriesRef.current = null;
+      markersPluginRef.current = null;
     };
   }, [symbol]); // candles/isDark/timezone/emaActive/rsiActive intentionally excluded — handled by Effects 1b/3/4/5/6
 
@@ -494,6 +505,83 @@ export function TradingChart({
       rsiSeriesRef.current.setData(calcRSI(sorted));
     }
   }, [rsiActive, candles]);
+
+  // ── Effect 7: trade markers (backtest replay) ──────────────────────────────
+  // v5 API: createSeriesMarkers() factory from 'lightweight-charts'
+  // Docs: frontend/node_modules/lightweight-charts/dist/typings.d.ts:274
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    if (markersPluginRef.current) {
+      markersPluginRef.current.setMarkers([]);
+    }
+
+    if (!tradeMarkers || tradeMarkers.length === 0) return;
+
+    const markers: SeriesMarker<UTCTimestamp>[] = tradeMarkers.flatMap(
+      (t): SeriesMarker<UTCTimestamp>[] => {
+        const isBuy = t.direction === "BUY";
+        const isWin = (t.profit ?? 0) >= 0;
+
+        const entry: SeriesMarker<UTCTimestamp> = {
+          time: t.entry_time as UTCTimestamp,
+          position: isBuy ? "belowBar" : "aboveBar",
+          shape: isBuy ? "arrowUp" : "arrowDown",
+          color: isBuy ? "#22c55e" : "#ef4444",
+          text: isBuy ? "B" : "S",
+          size: 1,
+        };
+
+        if (!t.exit_time) return [entry];
+
+        const exit: SeriesMarker<UTCTimestamp> = {
+          time: t.exit_time as UTCTimestamp,
+          position: isBuy ? "aboveBar" : "belowBar",
+          shape: "circle",
+          color: isWin ? "#22c55e" : "#ef4444",
+          text:
+            t.exit_reason === "sl"
+              ? "SL"
+              : t.exit_reason?.startsWith("tp")
+              ? "TP"
+              : "X",
+          size: 1,
+        };
+
+        return [entry, exit];
+      },
+    );
+
+    // lightweight-charts requires markers sorted by time
+    markers.sort((a, b) => (a.time as number) - (b.time as number));
+
+    if (!markersPluginRef.current) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      markersPluginRef.current = createSeriesMarkers(series as any, markers);
+    } else {
+      markersPluginRef.current.setMarkers(markers);
+    }
+  }, [tradeMarkers]);
+
+  // ── Effect 8: scroll to focusTime (trade table row-click) ─────────────────
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !focusTime) return;
+    const ts = focusTime as UTCTimestamp;
+    const coord = chart.timeScale().timeToCoordinate(ts);
+    if (coord !== null) {
+      const logicalRange = chart.timeScale().getVisibleLogicalRange();
+      if (logicalRange) {
+        const barIdx = chart.timeScale().coordinateToLogical(coord) ?? 0;
+        const halfWindow = 20;
+        chart.timeScale().setVisibleLogicalRange({
+          from: barIdx - halfWindow,
+          to: barIdx + halfWindow,
+        });
+      }
+    }
+  }, [focusTime]);
 
   return <div ref={containerRef} className="relative w-full h-full" />;
 }

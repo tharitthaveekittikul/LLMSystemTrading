@@ -529,6 +529,8 @@ export interface BacktestRunRequest {
   risk_pct?: number; // 0.01 = 1% risk per trade; omit or null = fixed lot
   csv_upload_id?: string;             // primary TF CSV (backward compat)
   csv_uploads?: Record<string, string>; // {tf_name: upload_id} for MTF CSVs
+  commission_per_lot?: number;        // USD per lot round trip
+  tp_partial_close_ratio?: number;    // fraction to close at each TP (0–1)
 }
 
 // ── LLM Usage ─────────────────────────────────────────────────────────────────
@@ -720,6 +722,16 @@ export interface ResearchConfig {
   suggested_params: Record<string, unknown>
   last_run_at: string | null
   stats_snapshot: Record<string, unknown>
+}
+
+// ── Trade Markers (backtest replay) ───────────────────────────────────────────
+
+export interface TradeMarker {
+  entry_time: number;      // unix timestamp (seconds)
+  exit_time: number | null;
+  direction: "BUY" | "SELL";
+  profit: number | null;
+  exit_reason: string | null;
 }
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────

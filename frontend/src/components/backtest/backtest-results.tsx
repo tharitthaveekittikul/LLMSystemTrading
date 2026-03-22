@@ -13,19 +13,23 @@ import type {
 } from "@/types/trading";
 import { BacktestMetricsGrid } from "./backtest-metrics-grid";
 import { EquityCurveChart } from "./equity-curve-chart";
+import { DrawdownChart } from "./drawdown-chart";
 import { MonthlyHeatmap } from "./monthly-heatmap";
 import { BacktestTradeTable } from "./backtest-trade-table";
+import { TradingChart, type OHLCVCandle } from "@/components/chart/trading-chart";
+import type { TradeMarker } from "@/types/trading";
 
 interface Props {
   run: BacktestRunSummary;
 }
 
-type TabId = "equity" | "monthly" | "trades";
+type TabId = "equity" | "monthly" | "trades" | "chart";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "equity", label: "Equity Curve" },
   { id: "monthly", label: "Monthly P&L" },
   { id: "trades", label: "Trades" },
+  { id: "chart", label: "Chart" },
 ];
 
 export function BacktestResults({ run }: Props) {
@@ -33,6 +37,9 @@ export function BacktestResults({ run }: Props) {
   const [equity, setEquity] = useState<BacktestEquityPoint[]>([]);
   const [monthly, setMonthly] = useState<BacktestMonthlyPnl[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>("equity");
+  const [candles, setCandles] = useState<OHLCVCandle[]>([]);
+  const [candlesLoading, setCandlesLoading] = useState(false);
+  const [focusTime, setFocusTime] = useState<number | undefined>();
 
   useEffect(() => {
     if (run.status !== "completed") return;
@@ -51,6 +58,18 @@ export function BacktestResults({ run }: Props) {
       }
     })();
   }, [run.id, run.status]);
+
+  useEffect(() => {
+    if (activeTab !== "chart" || candles.length > 0 || run.status !== "completed") return;
+    setCandlesLoading(true);
+    backtestApi
+      .getCandles(run.id)
+      .then(setCandles)
+      .catch(() => {
+        // silently show empty chart state
+      })
+      .finally(() => setCandlesLoading(false));
+  }, [activeTab, run.id, run.status, candles.length]);
 
   if (run.status === "pending" || run.status === "running") {
     return (
@@ -132,13 +151,55 @@ export function BacktestResults({ run }: Props) {
 
         {/* Tab panels */}
         {activeTab === "equity" && (
-          <EquityCurveChart
-            data={equity}
-            initialBalance={run.initial_balance}
-          />
+          <div>
+            <EquityCurveChart
+              data={equity}
+              initialBalance={run.initial_balance}
+            />
+            <DrawdownChart runId={run.id} />
+          </div>
         )}
         {activeTab === "monthly" && <MonthlyHeatmap data={monthly} />}
-        {activeTab === "trades" && <BacktestTradeTable trades={trades} />}
+        {activeTab === "trades" && (
+          <BacktestTradeTable
+            trades={trades}
+            onRowClick={(t) => {
+              setFocusTime(new Date(t.entry_time).getTime() / 1000);
+              setActiveTab("chart");
+            }}
+          />
+        )}
+        {activeTab === "chart" && (
+          <div className="h-[520px] w-full rounded-md border overflow-hidden">
+            {candlesLoading ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                Loading candles…
+              </div>
+            ) : candles.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                No candle data available for this run
+              </div>
+            ) : (
+              <TradingChart
+                candles={candles}
+                positions={[]}
+                pendingOrders={[]}
+                symbol={run.symbol}
+                viewResetKey={`backtest-${run.id}`}
+                focusTime={focusTime}
+                tradeMarkers={trades.map<TradeMarker>((t) => ({
+                  entry_time: new Date(t.entry_time).getTime() / 1000,
+                  exit_time: t.exit_time
+                    ? new Date(t.exit_time).getTime() / 1000
+                    : null,
+                  direction: t.direction as "BUY" | "SELL",
+                  profit: t.profit ?? null,
+                  exit_reason: t.exit_reason ?? null,
+                }))}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

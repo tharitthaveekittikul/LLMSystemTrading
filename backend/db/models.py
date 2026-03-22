@@ -351,6 +351,11 @@ class BacktestRun(Base):
     max_consec_wins: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_consec_losses: Mapped[int | None] = mapped_column(Integer, nullable=True)
     avg_spread: Mapped[float | None] = mapped_column(Float, nullable=True)
+    commission_per_lot: Mapped[float] = mapped_column(Float, default=0.0)
+    tp_partial_close_ratio: Mapped[float] = mapped_column(Float, default=0.5)
+    data_file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Absolute path to the stored OHLCV CSV for this run (enables chart replay).
+    # None for MT5 runs where data must be re-fetched on demand.
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )

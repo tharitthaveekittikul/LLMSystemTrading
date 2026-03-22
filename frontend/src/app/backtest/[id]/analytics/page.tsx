@@ -10,7 +10,9 @@ import { AnalyticsKPIBar } from "@/components/analytics/analytics-kpi-bar"
 import { AnalyticsHeatmap } from "@/components/analytics/analytics-heatmap"
 import { AnalyticsCombinations } from "@/components/analytics/analytics-combinations"
 import { PatternGridPanel } from "@/components/analytics/panels/pattern-grid-panel"
+import { TradingChart, type OHLCVCandle } from "@/components/chart/trading-chart"
 import { backtestApi } from "@/lib/api"
+import type { BacktestTrade, BacktestRunSummary, TradeMarker } from "@/types/trading"
 
 interface PatternGroup {
   name: string; trades: number; win_rate: number; total_pnl: number
@@ -54,6 +56,11 @@ export default function AnalyticsPage() {
   const [groups, setGroups] = useState<PatternGroup[]>([])
   const [heatmap, setHeatmap] = useState<HeatmapData | null>(null)
   const [combinations, setCombinations] = useState<CombinationsData | null>(null)
+  const [run, setRun] = useState<BacktestRunSummary | null>(null)
+  const [trades, setTrades] = useState<BacktestTrade[]>([])
+  const [candles, setCandles] = useState<OHLCVCandle[]>([])
+  const [candlesLoading, setCandlesLoading] = useState(false)
+  const [chartVisible, setChartVisible] = useState(false)
   const [metric, setMetric] = useState("win_rate")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -61,16 +68,20 @@ export default function AnalyticsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [s, g, h, c] = await Promise.all([
+        const [s, g, h, c, r, t] = await Promise.all([
           backtestApi.getAnalyticsSummary(runId),
           backtestApi.getAnalyticsGroups(runId, "pattern_name"),
           backtestApi.getAnalyticsHeatmap(runId, "symbol", "pattern_name", metric),
           backtestApi.getAnalyticsCombinations(runId),
+          backtestApi.getRun(runId),
+          backtestApi.getTrades(runId),
         ])
         setSummary(s)
         setGroups(g)
         setHeatmap(h)
         setCombinations(c)
+        setRun(r)
+        setTrades(t)
       } catch {
         setError("Failed to load analytics")
       } finally {
@@ -80,6 +91,16 @@ export default function AnalyticsPage() {
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId])
+
+  useEffect(() => {
+    if (!chartVisible || candles.length > 0) return
+    setCandlesLoading(true)
+    backtestApi.getCandles(runId)
+      .then((data) => setCandles(data as OHLCVCandle[]))
+      .catch(() => { /* leave candles empty — chart shows "no data" message */ })
+      .finally(() => setCandlesLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartVisible])
 
   const handleMetricChange = async (m: string) => {
     setMetric(m)
@@ -146,6 +167,44 @@ export default function AnalyticsPage() {
             <DetailPanel groups={groups} />
           </div>
         )}
+
+        <div className="border rounded-lg overflow-hidden">
+          <button
+            onClick={() => setChartVisible(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+          >
+            <span>Price Chart with Trade Markers</span>
+            <span>{chartVisible ? "▲" : "▼"}</span>
+          </button>
+          {chartVisible && (
+            <div className="h-[600px]">
+              {candlesLoading ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                  Loading chart data...
+                </div>
+              ) : candles.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                  No chart data available for this run.
+                </div>
+              ) : (
+                <TradingChart
+                  candles={candles}
+                  positions={[]}
+                  pendingOrders={[]}
+                  symbol={run?.symbol ?? ""}
+                  viewResetKey={`analytics-${runId}`}
+                  tradeMarkers={trades.map((t): TradeMarker => ({
+                    entry_time: new Date(t.entry_time).getTime() / 1000,
+                    exit_time: t.exit_time ? new Date(t.exit_time).getTime() / 1000 : null,
+                    direction: t.direction,
+                    profit: t.profit ?? null,
+                    exit_reason: t.exit_reason ?? null,
+                  }))}
+                />
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </SidebarInset>
   )

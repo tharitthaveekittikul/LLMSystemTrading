@@ -15,11 +15,12 @@ import {
 
 interface Props {
   trades: BacktestTrade[];
+  onRowClick?: (trade: BacktestTrade) => void;
 }
 
 const PAGE_SIZE = 50;
 
-export function BacktestTradeTable({ trades }: Props) {
+export function BacktestTradeTable({ trades, onRowClick }: Props) {
   const [page, setPage] = useState(0);
 
   if (trades.length === 0) {
@@ -61,7 +62,14 @@ export function BacktestTradeTable({ trades }: Props) {
           </TableHeader>
           <TableBody>
             {slice.map((t, i) => (
-              <TableRow key={t.id} className={cn(i % 2 !== 0 && "bg-muted/20")}>
+              <TableRow
+                key={t.id}
+                className={cn(
+                  i % 2 !== 0 && "bg-muted/20",
+                  onRowClick && "cursor-pointer hover:bg-muted/60",
+                )}
+                onClick={() => onRowClick?.(t)}
+              >
                 <TableCell className="text-xs text-muted-foreground">
                   {page * PAGE_SIZE + i + 1}
                 </TableCell>

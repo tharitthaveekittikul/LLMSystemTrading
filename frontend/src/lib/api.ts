@@ -180,8 +180,16 @@ export const backtestApi = {
       `/backtest/runs/${runId}/monthly-pnl`,
     ),
 
+  getDrawdown: (runId: number) =>
+    apiRequest<{ time: string; drawdown_pct: number }[]>(
+      `/backtest/runs/${runId}/drawdown`,
+    ),
+
   deleteRun: (runId: number) =>
     apiRequest<void>(`/backtest/runs/${runId}`, { method: "DELETE" }),
+
+  getCandles: (runId: number) =>
+    apiRequest<{ time: number; open: number; high: number; low: number; close: number; volume: number }[]>(`/backtest/runs/${runId}/candles`),
 
   getAnalyticsSummary: (runId: number) =>
     apiRequest<{

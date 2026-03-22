@@ -47,6 +47,8 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvAvgSpread, setCsvAvgSpread] = useState<number | null>(null);
   const [contextCsvFiles, setContextCsvFiles] = useState<Record<string, File | null>>({});
+  const [commissionPerLot, setCommissionPerLot] = useState("0");
+  const [tpPartialCloseRatio, setTpPartialCloseRatio] = useState("0.5");
 
   const selectedStrategy = strategies.find((s) => String(s.id) === strategyId);
   // Exclude primary TF from context list (it's already the main CSV)
@@ -98,6 +100,8 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
         risk_pct: sizingMode === "risk_pct" ? Number(riskPct) / 100 : undefined,
         csv_upload_id: csvUploadId,
         csv_uploads: csvUploads,
+        commission_per_lot: Number(commissionPerLot),
+        tp_partial_close_ratio: Number(tpPartialCloseRatio),
       };
       const run = await backtestApi.submitRun(req);
       onRunCreated(run);
@@ -259,6 +263,32 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
           </p>
         </div>
       )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Commission / Lot (USD)</Label>
+          <Input
+            className="h-8 text-xs"
+            type="number"
+            min="0"
+            step="0.1"
+            value={commissionPerLot}
+            onChange={(e) => setCommissionPerLot(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Partial TP Close Ratio</Label>
+          <Input
+            className="h-8 text-xs"
+            type="number"
+            min="0.01"
+            max="1"
+            step="0.01"
+            value={tpPartialCloseRatio}
+            onChange={(e) => setTpPartialCloseRatio(e.target.value)}
+          />
+        </div>
+      </div>
 
       <div className="space-y-1">
         <Label className="text-xs">

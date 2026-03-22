@@ -16,9 +16,45 @@ Design:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, asdict
 from typing import Callable, Awaitable
 
+from services.instrument_spec import contract_size
+
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class OpenPosition:
+    symbol: str
+    direction: str          # "BUY" | "SELL"
+    entry_time: int         # unix timestamp
+    entry_price: float
+    stop_loss: float
+    take_profit: float
+    volume: float
+    take_profit_levels: list[float] | None = None
+    tp_level_idx: int = 0
+    pattern_name: str | None = None
+    pattern_metadata: str | None = None
+
+
+@dataclass
+class TradeResult:
+    symbol: str
+    direction: str
+    entry_time: int
+    entry_price: float
+    stop_loss: float
+    take_profit: float
+    volume: float
+    exit_time: int
+    exit_price: float
+    exit_reason: str
+    profit: float
+    equity_after: float
+    pattern_name: str | None = None
+    pattern_metadata: str | None = None
 
 # Number of candles in the rolling window passed to strategy.generate_signal()
 _WINDOW = 50
@@ -92,13 +128,15 @@ class BacktestEngine:
         volume = config.get("volume", 0.1)
         risk_pct = config.get("risk_pct") or 0.0   # 0 = use fixed volume; >0 = risk-based sizing
         max_llm = config.get("max_llm_calls", 100)
+        commission_per_lot: float = config.get("commission_per_lot", 0.0)
+        tp_partial_close_ratio: float = config.get("tp_partial_close_ratio", 0.5)
         total = len(candles)
 
         # LLM sampling step: call LLM every K-th candle
         is_llm_strategy = getattr(strategy, "strategy_type", "code") in ("config", "prompt")
         llm_step = max(1, total // max_llm) if is_llm_strategy and max_llm > 0 else None
 
-        open_position: dict | None = None  # one position at a time
+        open_position: OpenPosition | None = None  # one position at a time
         trades: list[dict] = []
         equity_curve: list[dict] = []
         last_signal: dict | None = None
@@ -124,30 +162,64 @@ class BacktestEngine:
 
             # ── 1. Check open position SL/TP ──────────────────────────────────
             if open_position is not None:
-                closed, partial_profit_event = _check_exit(open_position, candle, mode)
-                
+                closed, partial_profit_event = _check_exit(open_position, candle, mode, tp_partial_close_ratio)
+
                 if partial_profit_event:
                     # Scale out: close a portion of the trade and adjust SL
-                    profit = _calc_profit(open_position, partial_profit_event["exit_price"], partial_profit_event["volume_closed"], symbol)
+                    vol_closed = partial_profit_event["volume_closed"]
+                    profit = _calc_profit(open_position, partial_profit_event["exit_price"], vol_closed, symbol)
+                    commission = commission_per_lot * vol_closed
+                    profit -= commission
                     balance += profit
-                    
-                    trade_part = {**open_position, **partial_profit_event, "volume": partial_profit_event["volume_closed"], "profit": round(profit, 4), "equity_after": round(balance, 4)}
-                    trades.append(trade_part)
+
+                    trades.append(asdict(TradeResult(
+                        symbol=open_position.symbol,
+                        direction=open_position.direction,
+                        entry_time=open_position.entry_time,
+                        entry_price=open_position.entry_price,
+                        stop_loss=open_position.stop_loss,
+                        take_profit=open_position.take_profit,
+                        volume=vol_closed,
+                        exit_time=partial_profit_event["exit_time"],
+                        exit_price=partial_profit_event["exit_price"],
+                        exit_reason=partial_profit_event["exit_reason"],
+                        profit=round(profit, 4),
+                        equity_after=round(balance, 4),
+                        pattern_name=open_position.pattern_name,
+                        pattern_metadata=open_position.pattern_metadata,
+                    )))
                     equity_curve.append({"time": partial_profit_event["exit_time"], "equity": round(balance, 4)})
-                    
-                    open_position["volume"] -= partial_profit_event["volume_closed"]
+
+                    open_position.volume -= vol_closed
                     # If we don't have enough volume to keep going, we fully close it
-                    if open_position["volume"] < 0.001:
+                    if open_position.volume < 0.001:
                         open_position = None
                     else:
-                        open_position["stop_loss"] = partial_profit_event["new_sl"]
+                        open_position.stop_loss = partial_profit_event["new_sl"]
 
                 if closed and open_position is not None:
                     # Fully closed
-                    profit = _calc_profit(open_position, closed["exit_price"], open_position["volume"], symbol)
+                    vol_closed = open_position.volume
+                    profit = _calc_profit(open_position, closed["exit_price"], vol_closed, symbol)
+                    commission = commission_per_lot * vol_closed
+                    profit -= commission
                     balance += profit
-                    trade = {**open_position, **closed, "profit": round(profit, 4), "equity_after": round(balance, 4)}
-                    trades.append(trade)
+                    trades.append(asdict(TradeResult(
+                        symbol=open_position.symbol,
+                        direction=open_position.direction,
+                        entry_time=open_position.entry_time,
+                        entry_price=open_position.entry_price,
+                        stop_loss=open_position.stop_loss,
+                        take_profit=open_position.take_profit,
+                        volume=vol_closed,
+                        exit_time=closed["exit_time"],
+                        exit_price=closed["exit_price"],
+                        exit_reason=closed["exit_reason"],
+                        profit=round(profit, 4),
+                        equity_after=round(balance, 4),
+                        pattern_name=open_position.pattern_name,
+                        pattern_metadata=open_position.pattern_metadata,
+                    )))
                     equity_curve.append({"time": closed["exit_time"], "equity": round(balance, 4)})
                     open_position = None
 
@@ -249,29 +321,24 @@ class BacktestEngine:
                                 risk_pct=risk_pct,
                                 fill_price=fill_price,
                                 sl_price=_sl,
-                                contract_size=_contract_size(symbol),
+                                contract_size=contract_size(symbol),
                             )
                         else:
                             trade_volume = volume
 
-                        open_position = {
-                            "symbol": symbol,
-                            "direction": actual_dir,
-                            "entry_time": candle["time"],
-                            "entry_price": round(fill_price, 5),
-                            "stop_loss": round(signal["stop_loss"], 5),
-                            "take_profit": round(signal["take_profit"], 5),
-                            "take_profit_levels": signal.get("take_profit_levels"),
-                            "tp_level_idx": 0, # Keep track of which TP level we are targeting
-                            "volume": trade_volume,
-                            "exit_time": None,
-                            "exit_price": None,
-                            "exit_reason": None,
-                            "profit": None,
-                            "equity_after": None,
-                            "pattern_name": signal.get("pattern_name"),
-                            "pattern_metadata": signal.get("pattern_metadata"),
-                        }
+                        open_position = OpenPosition(
+                            symbol=symbol,
+                            direction=actual_dir,
+                            entry_time=candle["time"],
+                            entry_price=round(fill_price, 5),
+                            stop_loss=round(signal["stop_loss"], 5),
+                            take_profit=round(signal["take_profit"], 5),
+                            take_profit_levels=signal.get("take_profit_levels"),
+                            tp_level_idx=0,
+                            volume=trade_volume,
+                            pattern_name=signal.get("pattern_name"),
+                            pattern_metadata=signal.get("pattern_metadata"),
+                        )
 
             # ── 4. Progress callback ───────────────────────────────────────────
             if progress_cb and i % 1000 == 0 and i > 0:
@@ -281,19 +348,25 @@ class BacktestEngine:
         # ── Close any open position at end of data ─────────────────────────────
         if open_position is not None:
             last_candle = candles[-1]
-            profit = _calc_profit(open_position, last_candle["close"], open_position["volume"], symbol)
+            profit = _calc_profit(open_position, last_candle["close"], open_position.volume, symbol)
+            profit -= commission_per_lot * open_position.volume
             balance += profit
-            trade = {
-                **open_position,
-                "exit_time": last_candle["time"],
-                "exit_price": round(last_candle["close"], 5),
-                "exit_reason": "end_of_data",
-                "profit": round(profit, 4),
-                "equity_after": round(balance, 4),
-                "pattern_name": open_position.get("pattern_name"),
-                "pattern_metadata": open_position.get("pattern_metadata"),
-            }
-            trades.append(trade)
+            trades.append(asdict(TradeResult(
+                symbol=open_position.symbol,
+                direction=open_position.direction,
+                entry_time=open_position.entry_time,
+                entry_price=open_position.entry_price,
+                stop_loss=open_position.stop_loss,
+                take_profit=open_position.take_profit,
+                volume=open_position.volume,
+                exit_time=last_candle["time"],
+                exit_price=round(last_candle["close"], 5),
+                exit_reason="end_of_data",
+                profit=round(profit, 4),
+                equity_after=round(balance, 4),
+                pattern_name=open_position.pattern_name,
+                pattern_metadata=open_position.pattern_metadata,
+            )))
             equity_curve.append({"time": last_candle["time"], "equity": round(balance, 4)})
 
         non_zero_spreads = [c.get("spread", 0) for c in candles if c.get("spread", 0) > 0]
@@ -331,13 +404,13 @@ def _spread_to_price(spread_pts: int, symbol: str) -> float:
     return spread_pts * 0.00001
 
 
-def _check_exit(pos: dict, candle: dict, mode: str) -> tuple[dict | None, dict | None]:
+def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_ratio: float = 0.5) -> tuple[dict | None, dict | None]:
     """Return (fully_closed_info, partial_closed_info) tuples."""
-    direction = pos["direction"]
-    sl = pos["stop_loss"]
-    tp = pos["take_profit"]
-    tp_levels = pos.get("take_profit_levels")
-    tp_idx = pos.get("tp_level_idx", 0)
+    direction = pos.direction
+    sl = pos.stop_loss
+    tp = pos.take_profit
+    tp_levels = pos.take_profit_levels
+    tp_idx = pos.tp_level_idx
     
     # We dynamically switch intended TP to the active TP level
     active_tp = tp
@@ -357,8 +430,8 @@ def _check_exit(pos: dict, candle: dict, mode: str) -> tuple[dict | None, dict |
             elif price >= active_tp:
                 if tp_levels and tp_idx < len(tp_levels) - 1:
                     # Partial TP reached
-                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
-                    pos["tp_level_idx"] = tp_idx + 1
+                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
+                    pos.tp_level_idx = tp_idx + 1
                 else:
                     fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
         else:  # SELL
@@ -367,8 +440,8 @@ def _check_exit(pos: dict, candle: dict, mode: str) -> tuple[dict | None, dict |
             elif price <= active_tp:
                 if tp_levels and tp_idx < len(tp_levels) - 1:
                     # Partial TP reached
-                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
-                    pos["tp_level_idx"] = tp_idx + 1
+                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
+                    pos.tp_level_idx = tp_idx + 1
                 else:
                     fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
     else:  # intra_candle
@@ -382,8 +455,8 @@ def _check_exit(pos: dict, candle: dict, mode: str) -> tuple[dict | None, dict |
                     fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
                 else:
                     if tp_levels and tp_idx < len(tp_levels) - 1:
-                        partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
-                        pos["tp_level_idx"] = tp_idx + 1
+                        partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
+                        pos.tp_level_idx = tp_idx + 1
                         # Note: we might theoretically hit the new SL inside the same candle, but for simplicity we ignore this micro-action.
                     else:
                         fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
@@ -391,8 +464,8 @@ def _check_exit(pos: dict, candle: dict, mode: str) -> tuple[dict | None, dict |
                 fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
             elif tp_hit:
                 if tp_levels and tp_idx < len(tp_levels) - 1:
-                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
-                    pos["tp_level_idx"] = tp_idx + 1
+                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
+                    pos.tp_level_idx = tp_idx + 1
                 else:
                     fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
         else:  # SELL
@@ -403,16 +476,16 @@ def _check_exit(pos: dict, candle: dict, mode: str) -> tuple[dict | None, dict |
                     fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
                 else:
                     if tp_levels and tp_idx < len(tp_levels) - 1:
-                        partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
-                        pos["tp_level_idx"] = tp_idx + 1
+                        partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
+                        pos.tp_level_idx = tp_idx + 1
                     else:
                         fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
             elif sl_hit:
                 fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
             elif tp_hit:
                 if tp_levels and tp_idx < len(tp_levels) - 1:
-                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos["volume"] / 2, "new_sl": pos["entry_price"]}
-                    pos["tp_level_idx"] = tp_idx + 1
+                    partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
+                    pos.tp_level_idx = tp_idx + 1
                 else:
                     fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
                     
@@ -442,32 +515,11 @@ def _fill_price(
     return None  # no next candle, skip
 
 
-def _contract_size(symbol: str) -> float:
-    """Return standard lot contract size for a symbol.
-
-    XAUUSD/XAGUSD: 100 oz per lot (not 100,000 — gold is priced per oz)
-    Indices (US30, NAS, SPX, DAX, FTSE, CAC): 1 unit per lot
-    Crude oil (OIL, BRENT, WTI): 1,000 barrels per lot
-    Forex (all others): 100,000 units per lot
-    """
-    sym = symbol.upper()
-    if any(m in sym for m in ("XAU", "XAG")):
-        return 100        # Gold/Silver: 100 troy oz per standard lot
-    if any(m in sym for m in ("XPT", "XPD")):
-        return 50         # Platinum/Palladium: 50 oz
-    if any(m in sym for m in ("US30", "NAS", "SPX", "DAX", "FTSE", "CAC", "NDX", "UK100", "JP225")):
-        return 1          # Index CFDs: 1 unit (broker-dependent, 1 is safest default)
-    if any(m in sym for m in ("OIL", "BRENT", "WTI", "USOIL", "UKOIL")):
-        return 1_000      # Crude oil: 1,000 barrels per standard lot
-    return 100_000        # Standard forex: 100,000 units per lot
-
-
-def _calc_profit(pos: dict, exit_price: float, volume: float, symbol: str) -> float:
+def _calc_profit(pos: OpenPosition, exit_price: float, volume: float, symbol: str) -> float:
     """Calculate P&L in account currency."""
-    entry = pos["entry_price"]
-    direction_sign = 1 if pos["direction"] == "BUY" else -1
-    price_diff = (exit_price - entry) * direction_sign
-    return price_diff * volume * _contract_size(symbol)
+    direction_sign = 1 if pos.direction == "BUY" else -1
+    price_diff = (exit_price - pos.entry_price) * direction_sign
+    return price_diff * volume * contract_size(symbol)
 
 
 def _build_market_data(symbol: str, timeframe: str, candle: dict, window: list[dict]) -> dict:
