@@ -1,11 +1,12 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Brain, Network, Newspaper, Shield } from "lucide-react";
+import { Brain, Newspaper, RefreshCw, Shield } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
 import { TabMarket } from "@/components/agent-workflow/tab-market";
 import { TabMaintenance } from "@/components/agent-workflow/tab-maintenance";
 import { TabNews } from "@/components/agent-workflow/tab-news";
+import { TabLearning } from "@/components/agent-workflow/tab-learning";
 import { ContextMap } from "@/components/agent-workflow/context-map";
 
 export default function AgentWorkflowPage() {
@@ -58,6 +59,10 @@ export default function AgentWorkflowPage() {
               <Newspaper className="h-4 w-4" />
               News Pipelines
             </TabsTrigger>
+            <TabsTrigger value="learning" className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Learning Loop
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="market">
@@ -70,6 +75,10 @@ export default function AgentWorkflowPage() {
 
           <TabsContent value="news">
             <TabNews />
+          </TabsContent>
+
+          <TabsContent value="learning">
+            <TabLearning />
           </TabsContent>
         </Tabs>
 

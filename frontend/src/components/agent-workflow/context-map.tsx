@@ -45,6 +45,35 @@ const contextLinks = [
     note: "Macro context prevents holding through high-risk events",
     color: "amber",
   },
+  // ── RAG Feedback Loop ──────────────────────────────────────────────────────
+  {
+    from: "Post-Trade Analyzer",
+    to: "DB (trades.trade_analysis)",
+    field: "trade_analysis JSON",
+    note: "Fires after every close — stores correct/wrong signals, lesson, confidence_justified",
+    color: "teal",
+  },
+  {
+    from: "Research Loop",
+    to: "research_config.json",
+    field: "lessons + blocked_symbols",
+    note: "Runs every 30 trades — LLM reviews 90-day stats and writes actionable lessons",
+    color: "violet",
+  },
+  {
+    from: "RAG Context Builder",
+    to: "Market Analysis Agent 1",
+    field: "rag_context",
+    note: "8-section SQL-aggregated performance history — no LLM cost, injected before every call",
+    color: "orange",
+  },
+  {
+    from: "RAG Context Builder",
+    to: "Maintenance Agents 1a + 1b",
+    field: "rag_context",
+    note: "Same performance context injected into both maintenance agents on every run",
+    color: "orange",
+  },
 ] as const;
 
 export function ContextMap() {
@@ -66,6 +95,12 @@ export function ContextMap() {
                   ? "bg-amber-500/10 border border-amber-500/30 text-amber-300"
                   : item.color === "purple"
                   ? "bg-purple-500/10 border border-purple-500/30 text-purple-300"
+                  : item.color === "teal"
+                  ? "bg-teal-500/10 border border-teal-500/30 text-teal-300"
+                  : item.color === "violet"
+                  ? "bg-violet-500/10 border border-violet-500/30 text-violet-300"
+                  : item.color === "orange"
+                  ? "bg-orange-500/10 border border-orange-500/30 text-orange-300"
                   : "bg-blue-500/10 border border-blue-500/30 text-blue-300"
               )}
             >

@@ -17,7 +17,12 @@ export const marketAgents: AgentDef[] = [
       { name: "open_positions", type: "input" },
       { name: "recent_signals", type: "input" },
       { name: "news_context", type: "optional", description: "Pre-formatted news string from News Gate" },
-      { name: "trade_history_context", type: "optional" },
+      {
+        name: "rag_context",
+        type: "shared",
+        from: "RAG Context Builder",
+        description: "8-section performance history: WR, signal reliability, lessons, blocked symbols",
+      },
     ],
     outputs: [
       { name: "trend (bullish/bearish/ranging)", type: "output" },
@@ -98,6 +103,12 @@ export const maintenanceAgents: AgentDef[] = [
         description: "ticket, direction, entry, SL, TP, PnL, volume",
       },
       { name: "strategy_params", type: "input", description: "sl_pips, tp_pips, risk_pct" },
+      {
+        name: "rag_context",
+        type: "shared",
+        from: "RAG Context Builder",
+        description: "signal reliability, symbol WR, session patterns, lessons",
+      },
     ],
     outputs: [
       { name: "trend + trend_strength", type: "output" },
@@ -114,7 +125,12 @@ export const maintenanceAgents: AgentDef[] = [
     inputs: [
       { name: "symbol", type: "input" },
       { name: "news_context", type: "optional", description: "Upcoming events string" },
-      { name: "trade_history_context", type: "optional" },
+      {
+        name: "rag_context",
+        type: "shared",
+        from: "RAG Context Builder",
+        description: "signal reliability, symbol WR, session patterns, lessons",
+      },
     ],
     outputs: [
       { name: "sentiment_direction (BULLISH/BEARISH/NEUTRAL)", type: "output" },
