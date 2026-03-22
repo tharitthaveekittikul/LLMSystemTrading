@@ -42,13 +42,21 @@ export function StrategyParamsForm({ params, values, onChange }: Props) {
 
         if (param.type === "bool") {
           return (
-            <div key={param.name} className="flex items-center justify-between rounded-lg border p-3">
+            <div
+              key={param.name}
+              className="flex items-center justify-between rounded-lg border p-3"
+            >
               <div className="space-y-0.5">
-                <Label htmlFor={id} className="text-sm font-medium cursor-pointer">
+                <Label
+                  htmlFor={id}
+                  className="text-sm font-medium cursor-pointer"
+                >
                   {param.label}
                 </Label>
                 {param.description && (
-                  <p className="text-xs text-muted-foreground">{param.description}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {param.description}
+                  </p>
                 )}
               </div>
               <Switch
@@ -65,7 +73,9 @@ export function StrategyParamsForm({ params, values, onChange }: Props) {
             <div key={param.name} className="space-y-1.5">
               <Label htmlFor={id}>{param.label}</Label>
               {param.description && (
-                <p className="text-xs text-muted-foreground">{param.description}</p>
+                <p className="text-xs text-muted-foreground">
+                  {param.description}
+                </p>
               )}
               <Select
                 value={String(getVal(param.name, param.default))}
@@ -88,27 +98,44 @@ export function StrategyParamsForm({ params, values, onChange }: Props) {
 
         // int / float / str
         const isNumeric = param.type === "int" || param.type === "float";
+
+        // For float fields we keep the raw string in state so intermediate
+        // values like "0.0" or "0.00" are not collapsed to "0" by parseFloat.
+        const rawValue = param.type === "float"
+          ? String(getVal<string | number>(param.name, param.default as string | number))
+          : String(getVal(param.name, param.default));
+
         return (
           <div key={param.name} className="space-y-1.5">
             <Label htmlFor={id}>{param.label}</Label>
             {param.description && (
-              <p className="text-xs text-muted-foreground">{param.description}</p>
+              <p className="text-xs text-muted-foreground">
+                {param.description}
+              </p>
             )}
             <Input
               id={id}
-              type={isNumeric ? "number" : "text"}
-              value={String(getVal(param.name, param.default))}
+              // Use "text" + inputMode for floats so the browser/parseFloat
+              // cannot mangle intermediate input like "0.0" → "0".
+              type={param.type === "float" ? "text" : isNumeric ? "number" : "text"}
+              inputMode={param.type === "float" ? "decimal" : undefined}
+              value={rawValue}
               min={param.min}
               max={param.max}
-              step={
-                param.step ??
-                (param.type === "int" ? 1 : param.type === "float" ? 0.001 : undefined)
-              }
               onChange={(e) => {
                 if (param.type === "int") {
-                  set(param.name, parseInt(e.target.value, 10));
+                  const parsed = parseInt(e.target.value, 10);
+                  set(param.name, isNaN(parsed) ? e.target.value : parsed);
                 } else if (param.type === "float") {
-                  set(param.name, parseFloat(e.target.value));
+                  // Always store the raw string so "0.0", "0.00", "-0." etc.
+                  // are preserved while the user is still typing.
+                  const raw = e.target.value;
+                  const parsed = parseFloat(raw);
+                  // If the string is a complete, unambiguous number (doesn't
+                  // end with "." or trailing zeros after decimal), commit the
+                  // numeric value; otherwise keep the raw string.
+                  const isComplete = raw !== "" && !raw.endsWith(".") && !(/\.\d*0$/.test(raw)) && !isNaN(parsed);
+                  set(param.name, isComplete ? parsed : raw);
                 } else {
                   set(param.name, e.target.value);
                 }

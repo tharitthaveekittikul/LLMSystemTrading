@@ -442,3 +442,44 @@ class TelegramSettings(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
+
+
+class OptimizationRun(Base):
+    """Stores a parameter sweep job — one row per optimization request.
+
+    param_grid  — JSON dict: {param_name: [v1, v2, ...]}  (the search space)
+    results     — JSON list: [{params: {...}, metrics: {...}}, ...] ranked by optimize_metric
+    best_params — JSON dict: the top-ranked param combination
+    """
+    __tablename__ = "optimization_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    strategy_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("strategies.id", ondelete="CASCADE"), index=True
+    )
+    symbol: Mapped[str] = mapped_column(String(20), index=True)
+    timeframe: Mapped[str] = mapped_column(String(10), default="M15")
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    initial_balance: Mapped[float] = mapped_column(Float, default=10_000.0)
+    spread_pips: Mapped[float] = mapped_column(Float, default=1.5)
+    execution_mode: Mapped[str] = mapped_column(String(20), default="close_price")
+    volume: Mapped[float] = mapped_column(Float, default=0.1)
+    commission_per_lot: Mapped[float] = mapped_column(Float, default=0.0)
+    tp_partial_close_ratio: Mapped[float] = mapped_column(Float, default=0.5)
+    csv_upload_id: Mapped[str | None] = mapped_column(Text, nullable=True)   # primary TF CSV path
+    csv_uploads: Mapped[str | None] = mapped_column(Text, nullable=True)     # JSON {tf: path}
+    param_grid: Mapped[str] = mapped_column(Text, default="{}")              # JSON search space
+    optimize_metric: Mapped[str] = mapped_column(String(50), default="sharpe_ratio")
+    status: Mapped[str] = mapped_column(String(20), default="pending")       # pending|running|completed|failed
+    progress_pct: Mapped[int] = mapped_column(Integer, default=0)
+    total_combinations: Mapped[int] = mapped_column(Integer, default=0)
+    completed_combinations: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    results: Mapped[str | None] = mapped_column(Text, nullable=True)         # JSON ranked list
+    best_params: Mapped[str | None] = mapped_column(Text, nullable=True)     # JSON top params
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+    strategy: Mapped["Strategy"] = relationship("Strategy")

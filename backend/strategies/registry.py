@@ -28,6 +28,7 @@ class ParamField:
     max: float | None = None
     step: float | None = None
     options: list[str] | None = None   # only for type="select"
+    optimize: bool = False             # whether this param can be swept in optimization
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -36,6 +37,7 @@ class ParamField:
             "type": self.type,
             "default": self.default,
             "description": self.description,
+            "optimize": self.optimize,
         }
         if self.min is not None:
             d["min"] = self.min
@@ -93,7 +95,9 @@ REGISTRY: dict[str, StrategyMeta] = {
                 default=2,
                 min=1,
                 max=10,
+                step=1,
                 description="Confirmation candles each side for Williams Fractals pivot detection.",
+                optimize=True,
             ),
             ParamField(
                 name="min_pattern_pips",
@@ -101,8 +105,10 @@ REGISTRY: dict[str, StrategyMeta] = {
                 type="float",
                 default=0.0,
                 min=0.0,
-                step=1.0,
+                max=50.0,
+                step=5.0,
                 description="Minimum XA leg size in pips (0 = no filter).",
+                optimize=True,
             ),
             ParamField(
                 name="prz_cooldown_candles",
@@ -111,7 +117,9 @@ REGISTRY: dict[str, StrategyMeta] = {
                 default=20,
                 min=0,
                 max=200,
+                step=10,
                 description="Suppress re-entry into the same PRZ for this many primary-TF candles.",
+                optimize=True,
             ),
             ParamField(
                 name="prz_tolerance_pct",
@@ -120,8 +128,9 @@ REGISTRY: dict[str, StrategyMeta] = {
                 default=0.005,
                 min=0.001,
                 max=0.05,
-                step=0.001,
+                step=0.005,
                 description="Price distance threshold to consider two entries in the same PRZ (0.5% default).",
+                optimize=True,
             ),
         ],
     ),

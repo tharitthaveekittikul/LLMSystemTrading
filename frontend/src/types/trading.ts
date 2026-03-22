@@ -751,6 +751,73 @@ export interface ResearchConfig {
   stats_snapshot: Record<string, unknown>
 }
 
+// ── Optimization / Parameter Sweep ────────────────────────────────────────────
+
+export interface OptimizationRequest {
+  strategy_id: number;
+  symbol: string;
+  timeframe?: string;
+  start_date: string;
+  end_date: string;
+  initial_balance?: number;
+  spread_pips?: number;
+  execution_mode?: "close_price" | "intra_candle";
+  volume?: number;
+  commission_per_lot?: number;
+  tp_partial_close_ratio?: number;
+  csv_upload_id?: string;
+  csv_uploads?: Record<string, string>;
+  /** Search space: { param_name: [v1, v2, ...] } */
+  param_grid: Record<string, (number | string | boolean)[]>;
+  optimize_metric?: string;
+}
+
+export interface OptimizationMetrics {
+  total_trades: number;
+  win_rate: number | null;
+  profit_factor: number | null;
+  expectancy: number | null;
+  max_drawdown_pct: number | null;
+  sharpe_ratio: number | null;
+  sortino_ratio: number | null;
+  total_return_pct: number | null;
+  recovery_factor: number | null;
+  avg_win: number | null;
+  avg_loss: number | null;
+  max_consec_wins: number | null;
+  max_consec_losses: number | null;
+}
+
+export interface OptimizationResult {
+  params: Record<string, number | string | boolean>;
+  metrics: OptimizationMetrics;
+}
+
+export interface OptimizationRunSummary {
+  id: number;
+  strategy_id: number;
+  symbol: string;
+  timeframe: string;
+  start_date: string;
+  end_date: string;
+  initial_balance: number;
+  spread_pips: number;
+  execution_mode: string;
+  volume: number;
+  commission_per_lot: number;
+  tp_partial_close_ratio: number;
+  param_grid: Record<string, unknown[]>;
+  optimize_metric: string;
+  status: "pending" | "running" | "completed" | "failed";
+  progress_pct: number;
+  total_combinations: number;
+  completed_combinations: number;
+  error_message: string | null;
+  results: OptimizationResult[];
+  best_params: Record<string, unknown> | null;
+  created_at: string;
+}
+
 // ── Trade Markers (backtest replay) ───────────────────────────────────────────
 
 export interface TradeMarker {

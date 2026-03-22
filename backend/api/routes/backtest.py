@@ -14,7 +14,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.ws import broadcast_all
-from db.models import BacktestRun, BacktestTrade, Strategy, Account
+from db.models import BacktestRun, BacktestTrade, Strategy, Account, OptimizationRun
 from db.postgres import get_db, AsyncSessionLocal
 from services.backtest_data import BacktestDataService, BacktestDataError
 from services.backtest_engine import BacktestEngine
@@ -723,6 +723,174 @@ def _load_strategy(strategy_db: Strategy):
             return self._prompt
 
     return _ConfigStrategy()
+
+
+# ── Optimization schemas ──────────────────────────────────────────────────────
+
+class OptimizationRequest(BaseModel):
+    strategy_id: int
+    symbol: str = Field(..., min_length=1, max_length=20)
+    timeframe: str | None = Field(default=None)
+    start_date: datetime
+    end_date: datetime
+    initial_balance: float = Field(default=10_000.0, gt=0)
+    spread_pips: float = Field(default=1.5, ge=0)
+    execution_mode: str = Field(default="close_price")
+    volume: float = Field(default=0.1, gt=0)
+    commission_per_lot: float = Field(default=0.0, ge=0)
+    tp_partial_close_ratio: float = Field(default=0.5, gt=0, le=1)
+    csv_upload_id: str | None = None
+    csv_uploads: dict[str, str] | None = None
+    param_grid: dict[str, list] = Field(..., description="Search space: {param_name: [v1, v2, ...]}")
+    optimize_metric: str = Field(default="sharpe_ratio")
+
+
+class OptimizationRunOut(BaseModel):
+    id: int
+    strategy_id: int
+    symbol: str
+    timeframe: str
+    start_date: str
+    end_date: str
+    initial_balance: float
+    spread_pips: float
+    execution_mode: str
+    volume: float
+    commission_per_lot: float
+    tp_partial_close_ratio: float
+    param_grid: dict
+    optimize_metric: str
+    status: str
+    progress_pct: int
+    total_combinations: int
+    completed_combinations: int
+    error_message: str | None
+    results: list[dict]
+    best_params: dict | None
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm(cls, r: OptimizationRun) -> "OptimizationRunOut":
+        return cls(
+            id=r.id,
+            strategy_id=r.strategy_id,
+            symbol=r.symbol,
+            timeframe=r.timeframe,
+            start_date=r.start_date.isoformat(),
+            end_date=r.end_date.isoformat(),
+            initial_balance=r.initial_balance,
+            spread_pips=r.spread_pips,
+            execution_mode=r.execution_mode,
+            volume=r.volume,
+            commission_per_lot=r.commission_per_lot,
+            tp_partial_close_ratio=r.tp_partial_close_ratio,
+            param_grid=json.loads(r.param_grid or "{}"),
+            optimize_metric=r.optimize_metric,
+            status=r.status,
+            progress_pct=r.progress_pct,
+            total_combinations=r.total_combinations,
+            completed_combinations=r.completed_combinations,
+            error_message=r.error_message,
+            results=json.loads(r.results or "[]"),
+            best_params=json.loads(r.best_params or "{}") if r.best_params else None,
+            created_at=r.created_at.isoformat(),
+        )
+
+
+# ── Optimization endpoints ─────────────────────────────────────────────────────
+
+@router.post("/optimize", response_model=OptimizationRunOut, status_code=202)
+async def submit_optimization(
+    req: OptimizationRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> OptimizationRunOut:
+    """Submit a parameter sweep job. Returns immediately; optimization runs in background."""
+    strategy = await db.get(Strategy, req.strategy_id)
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    if not strategy.module_path or not strategy.class_name:
+        raise HTTPException(
+            status_code=422,
+            detail="Strategy must have module_path and class_name (registry-based strategy required for optimization)",
+        )
+
+    if not req.param_grid:
+        raise HTTPException(status_code=422, detail="param_grid must not be empty")
+
+    total = 1
+    for vals in req.param_grid.values():
+        total *= len(vals)
+    if total > 2000:
+        raise HTTPException(
+            status_code=422,
+            detail=f"param_grid produces {total} combinations (max 2000). Reduce the sweep range.",
+        )
+
+    timeframe = req.timeframe or strategy.primary_tf or strategy.timeframe or "M15"
+
+    opt = OptimizationRun(
+        strategy_id=req.strategy_id,
+        symbol=req.symbol,
+        timeframe=timeframe,
+        start_date=req.start_date,
+        end_date=req.end_date,
+        initial_balance=req.initial_balance,
+        spread_pips=req.spread_pips,
+        execution_mode=req.execution_mode,
+        volume=req.volume,
+        commission_per_lot=req.commission_per_lot,
+        tp_partial_close_ratio=req.tp_partial_close_ratio,
+        csv_upload_id=req.csv_upload_id,
+        csv_uploads=json.dumps(req.csv_uploads) if req.csv_uploads else None,
+        param_grid=json.dumps(req.param_grid),
+        optimize_metric=req.optimize_metric,
+        status="pending",
+        progress_pct=0,
+        total_combinations=total,
+        completed_combinations=0,
+        created_at=datetime.now(UTC),
+    )
+    db.add(opt)
+    await db.commit()
+    await db.refresh(opt)
+
+    from services.optimization_service import OptimizationService
+    svc = OptimizationService()
+    background_tasks.add_task(svc.run, opt.id)
+
+    logger.info(
+        "Optimization %d submitted | strategy=%s symbol=%s combos=%d metric=%s",
+        opt.id, strategy.name, opt.symbol, total, req.optimize_metric,
+    )
+    return OptimizationRunOut.from_orm(opt)
+
+
+@router.get("/optimize", response_model=list[OptimizationRunOut])
+async def list_optimizations(
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> list[OptimizationRunOut]:
+    q = (
+        select(OptimizationRun)
+        .order_by(desc(OptimizationRun.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await db.execute(q)).scalars().all()
+    return [OptimizationRunOut.from_orm(r) for r in rows]
+
+
+@router.get("/optimize/{opt_id}", response_model=OptimizationRunOut)
+async def get_optimization(opt_id: int, db: AsyncSession = Depends(get_db)) -> OptimizationRunOut:
+    opt = await db.get(OptimizationRun, opt_id)
+    if not opt:
+        raise HTTPException(status_code=404, detail="Optimization run not found")
+    return OptimizationRunOut.from_orm(opt)
 
 
 def _timeframe_to_int(tf: str) -> int:

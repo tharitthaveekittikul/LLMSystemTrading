@@ -371,3 +371,37 @@ export const schedulerApi = {
   runMaintenanceForTicket: (accountId: number, ticket: number) =>
     apiRequest<{ status: string; detail: string }>(`/scheduler/run-maintenance/${accountId}/ticket/${ticket}`, { method: "POST" }),
 };
+
+// ── Optimization ──────────────────────────────────────────────────────────────
+
+export const optimizationApi = {
+  submit: (req: import("@/types/trading").OptimizationRequest) =>
+    apiRequest<import("@/types/trading").OptimizationRunSummary>("/backtest/optimize", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  list: (params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return apiRequest<import("@/types/trading").OptimizationRunSummary[]>(
+      `/backtest/optimize${qs ? `?${qs}` : ""}`,
+    );
+  },
+
+  get: (id: number) =>
+    apiRequest<import("@/types/trading").OptimizationRunSummary>(`/backtest/optimize/${id}`),
+
+  uploadCsv: async (file: File): Promise<{ upload_id: string; size_bytes: number; avg_spread_pts?: number }> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_V1}/backtest/data/upload`, { method: "POST", body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as { detail?: string }).detail || `Upload failed: ${res.statusText}`);
+    }
+    return res.json();
+  },
+};

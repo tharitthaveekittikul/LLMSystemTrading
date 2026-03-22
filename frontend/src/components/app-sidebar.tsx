@@ -18,6 +18,7 @@ import {
   ScrollText,
   Settings,
   Shield,
+  SlidersHorizontal,
   Timer,
   TrendingUp,
   Users,
@@ -51,6 +52,7 @@ const navItems = [
   { title: "Agent Workflow", url: "/agent-workflow", icon: Network },
   { title: "Storage", url: "/storage", icon: Database },
   { title: "Backtest", url: "/backtest", icon: FlaskConical },
+  { title: "Optimize", url: "/backtest/optimize", icon: SlidersHorizontal },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 

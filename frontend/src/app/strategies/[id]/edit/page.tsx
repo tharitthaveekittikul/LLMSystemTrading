@@ -12,10 +12,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { strategiesApi } from "@/lib/api/strategies";
-import type { Strategy } from "@/types/trading";
-import { X } from "lucide-react";
+import type { Strategy, StrategyRegistryEntry } from "@/types/trading";
+import { X, ChevronDown, ChevronUp } from "lucide-react";
 import { SkipHoursGrid } from "@/components/strategies/skip-hours-grid";
 import { SkipWeekdaysGrid } from "@/components/strategies/skip-weekdays-grid";
+import { StrategyClassSelector } from "@/components/strategies/strategy-class-selector";
+import { StrategyParamsForm } from "@/components/strategies/strategy-params-form";
 
 type ExecMode =
   | "llm_only"
@@ -64,11 +66,18 @@ export default function EditStrategyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [symbolInput, setSymbolInput] = useState("");
   const [form, setForm] = useState<Partial<Strategy>>({});
+  const [registryEntries, setRegistryEntries] = useState<StrategyRegistryEntry[]>([]);
+  const [strategyParamValues, setStrategyParamValues] = useState<Record<string, unknown>>({});
+  const [showCustomClass, setShowCustomClass] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const s = await strategiesApi.get(strategyId);
+        const [s, reg] = await Promise.all([
+          strategiesApi.get(strategyId),
+          strategiesApi.registry(),
+        ]);
+        setRegistryEntries(reg);
         setForm({
           name: s.name,
           description: s.description ?? undefined,
@@ -87,10 +96,18 @@ export default function EditStrategyPage() {
           custom_prompt: s.custom_prompt ?? undefined,
           module_path: s.module_path ?? undefined,
           class_name: s.class_name ?? undefined,
+          strategy_key: s.strategy_key ?? undefined,
           skip_hours: s.skip_hours ?? [],
           skip_hours_timezone: s.skip_hours_timezone ?? "Asia/Bangkok",
           skip_weekdays: s.skip_weekdays ?? [],
         });
+        if (s.strategy_params) {
+          setStrategyParamValues(s.strategy_params);
+        }
+        // Show custom class section if no registry key but has module_path
+        if (!s.strategy_key && s.module_path) {
+          setShowCustomClass(true);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -100,6 +117,23 @@ export default function EditStrategyPage() {
   }, [strategyId]);
 
   const execMode = (form.execution_mode ?? "llm_only") as ExecMode;
+  const selectedEntry = registryEntries.find((e) => e.key === form.strategy_key) ?? null;
+
+  function selectRegistryEntry(key: string) {
+    const entry = registryEntries.find((e) => e.key === key);
+    if (!entry) return;
+    const defaults: Record<string, unknown> = {};
+    for (const p of entry.params) defaults[p.name] = p.default;
+    setStrategyParamValues(defaults);
+    setForm((f) => ({
+      ...f,
+      strategy_key: key,
+      execution_mode: entry.execution_mode as ExecMode,
+      module_path: undefined,
+      class_name: undefined,
+    }));
+    setShowCustomClass(false);
+  }
 
   function addSymbol() {
     const sym = symbolInput.trim();
@@ -138,6 +172,8 @@ export default function EditStrategyPage() {
         custom_prompt: form.custom_prompt ?? undefined,
         module_path: form.module_path ?? undefined,
         class_name: form.class_name ?? undefined,
+        strategy_key: form.strategy_key ?? undefined,
+        strategy_params: Object.keys(strategyParamValues).length > 0 ? strategyParamValues : undefined,
         skip_hours: form.skip_hours,
         skip_hours_timezone: form.skip_hours_timezone ?? undefined,
         skip_weekdays: form.skip_weekdays,
@@ -435,6 +471,7 @@ export default function EditStrategyPage() {
           {step === 2 && (
             <>
               <h3 className="font-semibold">Step 3 — Configuration</h3>
+
               {execMode === "llm_only" && (
                 <div className="space-y-2">
                   <Label>Custom LLM System Prompt</Label>
@@ -452,88 +489,148 @@ export default function EditStrategyPage() {
                   />
                 </div>
               )}
+
               {execMode !== "llm_only" && (
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  {/* Registry selector */}
                   <div className="space-y-2">
-                    <Label>Module Path</Label>
-                    <Input
-                      value={form.module_path ?? ""}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          module_path: e.target.value || undefined,
-                        }))
-                      }
-                      placeholder="strategies.harmonic.harmonic_strategy"
+                    <Label>Strategy Class</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Select a registered strategy. Parameters will appear below.
+                    </p>
+                    <StrategyClassSelector
+                      entries={registryEntries.filter(
+                        (e) => e.execution_mode === execMode
+                      )}
+                      value={form.strategy_key ?? null}
+                      onChange={selectRegistryEntry}
                     />
+                    {registryEntries.filter((e) => e.execution_mode === execMode).length === 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        No registered strategies for this execution mode yet.
+                      </p>
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    <Label>Class Name</Label>
-                    <Input
-                      value={form.class_name ?? ""}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          class_name: e.target.value || undefined,
-                        }))
-                      }
-                      placeholder="HarmonicStrategy"
-                    />
-                  </div>
-                  <div className="space-y-3">
-                    <Label>Risk Config (optional)</Label>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Lot size</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={form.lot_size ?? ""}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              lot_size: e.target.value
-                                ? Number(e.target.value)
-                                : undefined,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">SL pips</Label>
-                        <Input
-                          type="number"
-                          value={form.sl_pips ?? ""}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              sl_pips: e.target.value
-                                ? Number(e.target.value)
-                                : undefined,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">TP pips</Label>
-                        <Input
-                          type="number"
-                          value={form.tp_pips ?? ""}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              tp_pips: e.target.value
-                                ? Number(e.target.value)
-                                : undefined,
-                            }))
-                          }
-                        />
-                      </div>
+
+                  {/* Dynamic params for selected strategy */}
+                  {selectedEntry && selectedEntry.params.length > 0 && (
+                    <div className="space-y-3 rounded-lg border p-4">
+                      <p className="text-sm font-medium">
+                        {selectedEntry.display_name} — Parameters
+                      </p>
+                      <StrategyParamsForm
+                        params={selectedEntry.params}
+                        values={strategyParamValues}
+                        onChange={setStrategyParamValues}
+                      />
                     </div>
+                  )}
+
+                  {/* Custom class fallback */}
+                  <div className="border-t pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomClass((v) => !v)}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showCustomClass ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      Use a custom (unregistered) class instead
+                    </button>
+                    {showCustomClass && (
+                      <div className="mt-3 space-y-3">
+                        <div className="space-y-1.5">
+                          <Label>Module Path</Label>
+                          <Input
+                            value={form.module_path ?? ""}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                module_path: e.target.value || undefined,
+                                strategy_key: undefined,
+                              }))
+                            }
+                            placeholder="strategies.harmonic.harmonic_strategy"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Class Name</Label>
+                          <Input
+                            value={form.class_name ?? ""}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                class_name: e.target.value || undefined,
+                                strategy_key: undefined,
+                              }))
+                            }
+                            placeholder="HarmonicStrategy"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-3">
+
+              {/* Shared: Risk sizing */}
+              <div className="space-y-3 rounded-lg border p-4">
+                <p className="text-sm font-medium">Risk Sizing (optional)</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Lot Size</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={form.lot_size ?? ""}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          lot_size: e.target.value ? Number(e.target.value) : undefined,
+                        }))
+                      }
+                      placeholder="0.10"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">SL (pips)</Label>
+                    <Input
+                      type="number"
+                      value={form.sl_pips ?? ""}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          sl_pips: e.target.value ? Number(e.target.value) : undefined,
+                        }))
+                      }
+                      placeholder="20"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">TP (pips)</Label>
+                    <Input
+                      type="number"
+                      value={form.tp_pips ?? ""}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          tp_pips: e.target.value ? Number(e.target.value) : undefined,
+                        }))
+                      }
+                      placeholder="40"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium cursor-pointer" htmlFor="news_filter">
+                    News Filter
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Pause trading around high-impact news events
+                  </p>
+                </div>
                 <Switch
                   checked={form.news_filter ?? true}
                   onCheckedChange={(v) =>
@@ -541,7 +638,6 @@ export default function EditStrategyPage() {
                   }
                   id="news_filter"
                 />
-                <Label htmlFor="news_filter">News filter</Label>
               </div>
               <div className="flex items-center justify-between py-2 border-t">
                 <div>
