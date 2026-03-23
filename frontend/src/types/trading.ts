@@ -775,6 +775,7 @@ export interface OptimizationRequest {
 }
 
 export interface OptimizationMetrics {
+  [key: string]: number | null;
   total_trades: number;
   win_rate: number | null;
   profit_factor: number | null;

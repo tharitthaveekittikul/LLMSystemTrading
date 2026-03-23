@@ -231,8 +231,6 @@ async def _run_pipeline(
         llm_provider=strategy_instance.execution_mode,
         model_name=type(strategy_instance).__name__,
         strategy_id=strategy_id,
-        pattern_name=getattr(signal, "pattern_name", None),
-        pattern_metadata=getattr(signal, "pattern_metadata", None),
     )
     db.add(journal)
     await db.commit()

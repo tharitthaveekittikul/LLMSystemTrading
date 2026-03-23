@@ -989,6 +989,12 @@ class AITradingService:
             },
             duration_ms=int((time.monotonic() - t0) * 1000),
         )
+        _source = "ai"
+        if strategy_id:
+            from db.models import Strategy as _Strategy
+            _strat_rec = await db.get(_Strategy, strategy_id)
+            if _strat_rec:
+                _source = _strat_rec.name
         order_req = OrderRequest(
             symbol=mt5_symbol,  # broker-specific name resolved at OHLCV fetch time
             action=signal.action,
@@ -996,7 +1002,7 @@ class AITradingService:
             entry_price=signal.entry,
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
-            comment="AI-Trade",
+            comment=_source[:64],
             expiration_hours=pending_expiry_hours(timeframe),
         )
         await tracer.record(
@@ -1080,7 +1086,7 @@ class AITradingService:
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
             opened_at=datetime.now(UTC),
-            source="ai",
+            source=_source,
             is_paper_trade=account.paper_trade_enabled,
             strategy_id=strategy_id,
             order_type=_order_type,

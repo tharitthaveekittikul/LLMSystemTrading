@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -410,13 +410,14 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
 
     oldest_opened = min(t.opened_at for t in open_trades)
     now = datetime.now(timezone.utc)
+    hist_end = now + timedelta(seconds=30)  # buffer: include deals closed in the current second
 
     try:
         async with MT5Bridge(creds) as bridge:
             active_positions = await bridge.get_positions()
             active_orders    = await bridge.get_orders()
-            hist_orders      = await bridge.history_orders_get(oldest_opened, now)
-            hist_deals       = await bridge.history_deals_get(oldest_opened, now)
+            hist_orders      = await bridge.history_orders_get(oldest_opened, hist_end)
+            hist_deals       = await bridge.history_deals_get(oldest_opened, hist_end)
 
     except RuntimeError as exc:
         logger.error("MT5 unavailable (sync-orders) | account_id=%s | %s", account_id, exc)
@@ -447,8 +448,15 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
                 counts["unchanged"] += 1
                 continue
 
-            # Position no longer active — find its closing deal
-            deal = closing_deals.get(trade.ticket)
+            # Position no longer active — resolve position ticket then find closing deal.
+            # trade.ticket stores the order ticket from order_send(); in MT5 hedging mode
+            # the position ticket equals the order ticket, but hist_orders["position_id"]
+            # is the authoritative source.
+            hist_order = hist_orders_by_ticket.get(trade.ticket)
+            position_ticket = (
+                hist_order.get("position_id") or trade.ticket
+            ) if hist_order else trade.ticket
+            deal = closing_deals.get(position_ticket) or closing_deals.get(trade.ticket)
             if deal:
                 deal_time = deal.get("time")
                 trade.close_price = deal.get("price")
@@ -459,12 +467,16 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
                 )
             else:
                 trade.closed_at = now_ts  # fallback: no deal found
+                logger.warning(
+                    "No closing deal found | account_id=%s ticket=%s position_ticket=%s total_deals=%s",
+                    account_id, trade.ticket, position_ticket, len(hist_deals),
+                )
 
             newly_closed_trade_ids.append(trade.id)
             counts["positions_closed"] += 1
             logger.info(
-                "Position closed (manual) | account_id=%s ticket=%s close_price=%s profit=%s",
-                account_id, trade.ticket, trade.close_price, trade.profit,
+                "Position closed | account_id=%s ticket=%s position_ticket=%s close_price=%s profit=%s",
+                account_id, trade.ticket, position_ticket, trade.close_price, trade.profit,
             )
 
         # ── Case 2: pending order ─────────────────────────────────────────────
@@ -476,17 +488,54 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
             hist_order = hist_orders_by_ticket.get(trade.ticket)
             state = hist_order.get("state") if hist_order else None
 
-            if state == _ORDER_STATE_EXPIRED:
+            if state == _ORDER_STATE_FILLED:
+                # Pending order filled → a position was opened (may have been closed since)
+                position_ticket = (hist_order.get("position_id") or trade.ticket) if hist_order else trade.ticket
+                if position_ticket in active_position_tickets:
+                    # Position still open — upgrade status, leave closed_at=None
+                    trade.order_status = "filled"
+                    counts["unchanged"] += 1
+                    logger.info(
+                        "Pending order filled, position open | account_id=%s ticket=%s position=%s",
+                        account_id, trade.ticket, position_ticket,
+                    )
+                    continue
+                # Position was closed (SL / TP / manual)
+                trade.order_status = "filled"
+                deal = closing_deals.get(position_ticket)
+                if deal:
+                    deal_time = deal.get("time")
+                    trade.close_price = deal.get("price")
+                    trade.profit      = deal.get("profit")
+                    trade.closed_at   = (
+                        datetime.fromtimestamp(deal_time, tz=timezone.utc)
+                        if deal_time else now_ts
+                    )
+                else:
+                    trade.closed_at = now_ts
+                newly_closed_trade_ids.append(trade.id)
+                counts["positions_closed"] += 1
+                logger.info(
+                    "Pending order filled+closed | account_id=%s ticket=%s position=%s close_price=%s profit=%s",
+                    account_id, trade.ticket, position_ticket, trade.close_price, trade.profit,
+                )
+
+            elif state == _ORDER_STATE_EXPIRED:
                 trade.order_status = "expired"
+                trade.closed_at = now_ts
+                counts["orders_cancelled"] += 1
+                logger.info(
+                    "Pending order reconciled | account_id=%s ticket=%s state=%s -> expired",
+                    account_id, trade.ticket, state,
+                )
             else:
                 trade.order_status = "cancelled"
-
-            trade.closed_at = now_ts
-            counts["orders_cancelled"] += 1
-            logger.info(
-                "Pending order reconciled | account_id=%s ticket=%s state=%s -> %s",
-                account_id, trade.ticket, state, trade.order_status,
-            )
+                trade.closed_at = now_ts
+                counts["orders_cancelled"] += 1
+                logger.info(
+                    "Pending order reconciled | account_id=%s ticket=%s state=%s -> cancelled",
+                    account_id, trade.ticket, state,
+                )
 
     await db.commit()
 
