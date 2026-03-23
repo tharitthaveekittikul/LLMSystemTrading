@@ -737,8 +737,10 @@ class OptimizationRequest(BaseModel):
     spread_pips: float = Field(default=1.5, ge=0)
     execution_mode: str = Field(default="close_price")
     volume: float = Field(default=0.1, gt=0)
+    risk_pct: float | None = Field(default=None, ge=0, le=1)  # None=fixed lot; e.g. 0.01=1%
     commission_per_lot: float = Field(default=0.0, ge=0)
     tp_partial_close_ratio: float = Field(default=0.5, gt=0, le=1)
+    max_workers: int = Field(default=4, ge=1, le=16)
     csv_upload_id: str | None = None
     csv_uploads: dict[str, str] | None = None
     param_grid: dict[str, list] = Field(..., description="Search space: {param_name: [v1, v2, ...]}")
@@ -756,16 +758,20 @@ class OptimizationRunOut(BaseModel):
     spread_pips: float
     execution_mode: str
     volume: float
+    risk_pct: float | None
     commission_per_lot: float
     tp_partial_close_ratio: float
+    max_workers: int
     param_grid: dict
     optimize_metric: str
     status: str
     progress_pct: int
     total_combinations: int
     completed_combinations: int
+    started_at: str | None
+    estimated_seconds_remaining: float | None
     error_message: str | None
-    results: list[dict]
+    # results omitted here — use GET /optimize/{id}/results for paginated access
     best_params: dict | None
     created_at: str
 
@@ -773,6 +779,20 @@ class OptimizationRunOut(BaseModel):
 
     @classmethod
     def from_orm(cls, r: OptimizationRun) -> "OptimizationRunOut":
+        # Compute ETA from started_at + rate of completed combos
+        eta: float | None = None
+        if (
+            r.started_at
+            and r.status == "running"
+            and r.completed_combinations > 0
+            and r.total_combinations > r.completed_combinations
+        ):
+            elapsed = (datetime.now(UTC) - r.started_at).total_seconds()
+            rate = r.completed_combinations / elapsed if elapsed > 0 else None
+            if rate:
+                remaining = r.total_combinations - r.completed_combinations
+                eta = remaining / rate
+
         return cls(
             id=r.id,
             strategy_id=r.strategy_id,
@@ -784,16 +804,19 @@ class OptimizationRunOut(BaseModel):
             spread_pips=r.spread_pips,
             execution_mode=r.execution_mode,
             volume=r.volume,
+            risk_pct=r.risk_pct,
             commission_per_lot=r.commission_per_lot,
             tp_partial_close_ratio=r.tp_partial_close_ratio,
+            max_workers=r.max_workers,
             param_grid=json.loads(r.param_grid or "{}"),
             optimize_metric=r.optimize_metric,
             status=r.status,
             progress_pct=r.progress_pct,
             total_combinations=r.total_combinations,
             completed_combinations=r.completed_combinations,
+            started_at=r.started_at.isoformat() if r.started_at else None,
+            estimated_seconds_remaining=eta,
             error_message=r.error_message,
-            results=json.loads(r.results or "[]"),
             best_params=json.loads(r.best_params or "{}") if r.best_params else None,
             created_at=r.created_at.isoformat(),
         )
@@ -842,8 +865,10 @@ async def submit_optimization(
         spread_pips=req.spread_pips,
         execution_mode=req.execution_mode,
         volume=req.volume,
+        risk_pct=req.risk_pct,
         commission_per_lot=req.commission_per_lot,
         tp_partial_close_ratio=req.tp_partial_close_ratio,
+        max_workers=req.max_workers,
         csv_upload_id=req.csv_upload_id,
         csv_uploads=json.dumps(req.csv_uploads) if req.csv_uploads else None,
         param_grid=json.dumps(req.param_grid),
@@ -891,6 +916,62 @@ async def get_optimization(opt_id: int, db: AsyncSession = Depends(get_db)) -> O
     if not opt:
         raise HTTPException(status_code=404, detail="Optimization run not found")
     return OptimizationRunOut.from_orm(opt)
+
+
+_ALLOWED_SORT_METRICS = {
+    "sharpe_ratio", "profit_factor", "total_return_pct", "win_rate",
+    "expectancy", "max_drawdown_pct", "recovery_factor", "sortino_ratio",
+    "total_trades", "avg_win", "avg_loss",
+}
+_LOWER_IS_BETTER = {"max_drawdown_pct"}
+
+
+@router.get("/optimize/{opt_id}/results")
+async def get_optimization_results(
+    opt_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    sort_by: str = Query("sharpe_ratio"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return paginated, sortable optimization results.
+
+    Response: {total, page, page_size, pages, results: [{params, metrics}, ...]}
+    """
+    if sort_by not in _ALLOWED_SORT_METRICS:
+        raise HTTPException(400, f"sort_by must be one of: {sorted(_ALLOWED_SORT_METRICS)}")
+
+    opt = await db.get(OptimizationRun, opt_id)
+    if not opt:
+        raise HTTPException(404, "Optimization run not found")
+
+    all_results: list[dict] = json.loads(opt.results or "[]")
+    total = len(all_results)
+
+    # Sort
+    reverse = order == "desc"
+    lower_is_better = sort_by in _LOWER_IS_BETTER
+
+    def _key(r: dict) -> float:
+        v = r["metrics"].get(sort_by)
+        if v is None:
+            return float("inf") if (reverse != lower_is_better) else float("-inf")
+        return float(v)
+
+    all_results.sort(key=_key, reverse=reverse)
+
+    # Paginate
+    start = (page - 1) * page_size
+    page_results = all_results[start: start + page_size]
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": max(1, (total + page_size - 1) // page_size),
+        "results": page_results,
+    }
 
 
 def _timeframe_to_int(tf: str) -> int:

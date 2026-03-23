@@ -55,3 +55,6 @@ backend/alembic/versions/*.py
 data/backtests/
 
 documents/articles/
+
+# Uploads
+uploads/

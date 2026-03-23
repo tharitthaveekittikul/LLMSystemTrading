@@ -1,7 +1,8 @@
 """OptimizationService — parameter sweep for backtesting strategies.
 
-Runs multiple BacktestEngine calls (one per param combination) sequentially,
-collects metrics, ranks by the chosen metric, and persists the result grid.
+Runs BacktestEngine calls concurrently (bounded by opt.max_workers) using
+asyncio.Semaphore, collects metrics, ranks by the chosen metric, and persists
+the result grid.
 
 Usage:
     svc = OptimizationService()
@@ -9,11 +10,13 @@ Usage:
 """
 from __future__ import annotations
 
+import asyncio
 import importlib
 import io
 import itertools
 import json
 import logging
+import time
 from datetime import datetime, UTC
 from typing import Any
 
@@ -40,6 +43,7 @@ class OptimizationService:
                 return
 
             opt.status = "running"
+            opt.started_at = datetime.now(UTC)
             await db.commit()
 
             try:
@@ -58,33 +62,59 @@ class OptimizationService:
                 param_names = list(param_grid.keys())
                 param_values = [param_grid[k] for k in param_names]
                 combinations = list(itertools.product(*param_values))
+                total = len(combinations)
 
-                opt.total_combinations = len(combinations)
+                opt.total_combinations = total
                 await db.commit()
                 logger.info(
-                    "Optimization %d: %d combinations for strategy=%s symbol=%s",
-                    opt_run_id, len(combinations), strategy_db.name, opt.symbol,
+                    "Optimization %d: %d combinations | strategy=%s symbol=%s workers=%d",
+                    opt_run_id, total, strategy_db.name, opt.symbol, opt.max_workers,
                 )
 
-                # ── Run each combination sequentially ─────────────────────────
+                # ── Run combinations concurrently with semaphore ───────────────
                 results: list[dict] = []
-                for i, combo in enumerate(combinations):
+                completed_count = 0
+                start_time = time.monotonic()
+                lock = asyncio.Lock()
+                sem = asyncio.Semaphore(opt.max_workers)
+
+                async def _run_combo(i: int, combo: tuple) -> None:
+                    nonlocal completed_count
                     params = dict(zip(param_names, combo))
-                    try:
-                        result = await self._run_single(
-                            candles, context_candles, strategy_db, opt, params
-                        )
-                        results.append(result)
-                        logger.debug("Optimization %d combo %d/%d done: %s", opt_run_id, i + 1, len(combinations), params)
-                    except Exception as exc:
-                        logger.warning(
-                            "Optimization %d combo %d failed (params=%s): %s",
-                            opt_run_id, i + 1, params, exc,
+                    async with sem:
+                        try:
+                            result = await self._run_single(
+                                candles, context_candles, strategy_db, opt, params
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "Optimization %d combo %d/%d failed (params=%s): %s",
+                                opt_run_id, i + 1, total, params, exc,
+                            )
+                            result = None
+
+                    async with lock:
+                        nonlocal completed_count
+                        completed_count += 1
+                        if result is not None:
+                            results.append(result)
+
+                        # Update progress in DB every combo (small overhead, accurate ETA)
+                        elapsed = time.monotonic() - start_time
+                        pct = int(completed_count * 100 / total)
+                        logger.debug(
+                            "Optimization %d combo %d/%d done: %s",
+                            opt_run_id, completed_count, total, params,
                         )
 
-                    opt.completed_combinations = i + 1
-                    opt.progress_pct = int((i + 1) * 100 / len(combinations))
-                    await db.commit()
+                        async with AsyncSessionLocal() as progress_db:
+                            o = await progress_db.get(OptimizationRun, opt_run_id)
+                            if o:
+                                o.completed_combinations = completed_count
+                                o.progress_pct = pct
+                                await progress_db.commit()
+
+                await asyncio.gather(*[_run_combo(i, combo) for i, combo in enumerate(combinations)])
 
                 # ── Rank by optimize_metric ───────────────────────────────────
                 metric = opt.optimize_metric
@@ -102,10 +132,11 @@ class OptimizationService:
                 opt.best_params = json.dumps(results[0]["params"]) if results else "{}"
                 opt.status = "completed"
                 opt.progress_pct = 100
+                opt.completed_combinations = total
                 await db.commit()
                 logger.info(
-                    "Optimization %d completed — %d results, best=%s",
-                    opt_run_id, len(results), opt.best_params,
+                    "Optimization %d completed — %d/%d results, best=%s",
+                    opt_run_id, len(results), total, opt.best_params,
                 )
 
             except Exception as exc:
@@ -141,8 +172,7 @@ class OptimizationService:
 
         # Context candles (MTF strategies)
         context_candles: dict[str, list[dict]] | None = None
-        import json as _json
-        context_tfs: list[str] = _json.loads(strategy_db.context_tfs or "[]")
+        context_tfs: list[str] = json.loads(strategy_db.context_tfs or "[]")
         if csv_uploads and context_tfs:
             context_candles = {}
             for tf in context_tfs:
@@ -162,16 +192,13 @@ class OptimizationService:
         params: dict[str, Any],
     ) -> dict:
         """Instantiate strategy with `params`, run engine, return {params, metrics}."""
-        # Instantiate a fresh strategy for each combination
         mod = importlib.import_module(strategy_db.module_path)
         cls = getattr(mod, strategy_db.class_name)
         instance = cls()
 
-        # Apply base DB config (primary_tf, context_tfs, symbols, etc.)
         if hasattr(instance, "apply_db_config"):
             instance.apply_db_config(strategy_db)
 
-        # Override with sweep params
         for k, v in params.items():
             setattr(instance, k, v)
 
@@ -182,19 +209,26 @@ class OptimizationService:
             "spread_pips": opt.spread_pips,
             "execution_mode": opt.execution_mode,
             "volume": opt.volume,
-            "risk_pct": 0.0,
-            "max_llm_calls": 0,   # rule-only for optimization (no LLM cost)
+            "risk_pct": opt.risk_pct or 0.0,   # 0 = use fixed volume
+            "max_llm_calls": 0,                  # rule-only for optimization (no LLM cost)
             "commission_per_lot": opt.commission_per_lot,
             "tp_partial_close_ratio": opt.tp_partial_close_ratio,
         }
 
         engine = BacktestEngine()
-        result = await engine.run(
-            candles=candles,
-            strategy=instance,
-            config=config,
-            progress_cb=None,
-            context_candles=context_candles,
+        # engine.run() is CPU-bound (iterates all candles). Running it directly
+        # on the event loop blocks FastAPI. Offload to a thread so the event loop
+        # remains responsive during the sweep.
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: asyncio.run(engine.run(
+                candles=candles,
+                strategy=instance,
+                config=config,
+                progress_cb=None,
+                context_candles=context_candles,
+            )),
         )
 
         closed = [t for t in result["trades"] if t.get("profit") is not None]

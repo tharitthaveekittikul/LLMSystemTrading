@@ -7,7 +7,7 @@ import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { optimizationApi } from "@/lib/api";
-import type { OptimizationRunSummary, OptimizationResult } from "@/types/trading";
+import type { OptimizationRunSummary, OptimizationResult, OptimizationResultsPage } from "@/types/trading";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -15,7 +15,11 @@ import {
   Loader2,
   Clock,
   Trophy,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+
+const PAGE_SIZE = 50;
 
 const METRIC_LABELS: Record<string, string> = {
   sharpe_ratio: "Sharpe",
@@ -49,12 +53,23 @@ function fmt(val: number | null | undefined, key: string): string {
   return val.toFixed(3);
 }
 
+function fmtEta(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${(seconds / 3600).toFixed(1)}h`;
+}
+
 export default function OptimizeResultPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [run, setRun] = useState<OptimizationRunSummary | null>(null);
   const [sortKey, setSortKey] = useState<string>("");
   const [sortDesc, setSortDesc] = useState(true);
+
+  // Paginated results state
+  const [resultsPage, setResultsPage] = useState<OptimizationResultsPage | null>(null);
+  const [page, setPage] = useState(1);
+  const [loadingResults, setLoadingResults] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -64,7 +79,29 @@ export default function OptimizeResultPage() {
     } catch { /* ignore */ }
   }, [id, sortKey]);
 
+  const loadResults = useCallback(async (p: number, sk: string, desc: boolean) => {
+    setLoadingResults(true);
+    try {
+      const data = await optimizationApi.getResults(Number(id), {
+        page: p,
+        page_size: PAGE_SIZE,
+        sort_by: sk || "sharpe_ratio",
+        order: desc ? "desc" : "asc",
+      });
+      setResultsPage(data);
+    } catch { /* ignore */ } finally {
+      setLoadingResults(false);
+    }
+  }, [id]);
+
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // Load results when run is completed or when sort/page changes
+  useEffect(() => {
+    if (run?.status === "completed" && sortKey) {
+      void loadResults(page, sortKey, sortDesc);
+    }
+  }, [run?.status, page, sortKey, sortDesc, loadResults]);
 
   // Poll while running
   useEffect(() => {
@@ -85,18 +122,11 @@ export default function OptimizeResultPage() {
   }
 
   const paramNames = Object.keys(run.param_grid);
-  const results = [...run.results].sort((a, b) => {
-    const av = a.metrics[sortKey as keyof typeof a.metrics] as number | null ?? null;
-    const bv = b.metrics[sortKey as keyof typeof b.metrics] as number | null ?? null;
-    if (av === null && bv === null) return 0;
-    if (av === null) return 1;
-    if (bv === null) return -1;
-    return sortDesc ? bv - av : av - bv;
-  });
+  const results: OptimizationResult[] = resultsPage?.results ?? [];
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDesc((d) => !d);
-    else { setSortKey(key); setSortDesc(true); }
+    else { setSortKey(key); setSortDesc(true); setPage(1); }
   };
 
   return (
@@ -125,11 +155,17 @@ export default function OptimizeResultPage() {
                 />
               </div>
               <span>{run.progress_pct}%</span>
+              {run.estimated_seconds_remaining != null && run.estimated_seconds_remaining > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ~{fmtEta(run.estimated_seconds_remaining)} left
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">({run.max_workers}w)</span>
             </div>
           )}
           {run.status === "completed" && (
             <span className="text-sm text-muted-foreground">
-              {run.results.length} results · sorted by {METRIC_LABELS[run.optimize_metric] ?? run.optimize_metric}
+              {resultsPage?.total ?? "…"} results · sorted by {METRIC_LABELS[run.optimize_metric] ?? run.optimize_metric}
             </span>
           )}
         </div>
@@ -158,64 +194,99 @@ export default function OptimizeResultPage() {
         )}
 
         {/* ── Results table ── */}
-        {results.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-muted/50 border-b">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">#</th>
-                  {paramNames.map((p) => (
-                    <th key={p} className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">
-                      {p}
-                    </th>
-                  ))}
-                  {ALL_METRICS.map((m) => (
-                    <th
-                      key={m}
-                      className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap cursor-pointer hover:text-foreground select-none"
-                      onClick={() => toggleSort(m)}
-                    >
-                      {METRIC_LABELS[m] ?? m}
-                      {sortKey === m && (sortDesc ? " ↓" : " ↑")}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r, i) => {
-                  const isBest = i === 0 && run.status === "completed";
-                  return (
-                    <tr
-                      key={i}
-                      className={`border-b last:border-0 ${isBest ? "bg-green-500/5" : "hover:bg-muted/30"}`}
-                    >
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {isBest ? <Trophy className="h-3 w-3 text-green-500 inline" /> : i + 1}
+        {(results.length > 0 || loadingResults) && (
+          <div className="space-y-2">
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/50 border-b">
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">#</th>
+                    {paramNames.map((p) => (
+                      <th key={p} className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">
+                        {p}
+                      </th>
+                    ))}
+                    {ALL_METRICS.map((m) => (
+                      <th
+                        key={m}
+                        className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap cursor-pointer hover:text-foreground select-none"
+                        onClick={() => toggleSort(m)}
+                      >
+                        {METRIC_LABELS[m] ?? m}
+                        {sortKey === m && (sortDesc ? " ↓" : " ↑")}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingResults ? (
+                    <tr>
+                      <td colSpan={paramNames.length + ALL_METRICS.length + 1} className="text-center py-6 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Loading…
                       </td>
-                      {paramNames.map((p) => (
-                        <td key={p} className="px-3 py-2 font-mono">
-                          {String(r.params[p] ?? "—")}
-                        </td>
-                      ))}
-                      {ALL_METRICS.map((m) => (
-                        <MetricCell
-                          key={m}
-                          metricKey={m}
-                          value={r.metrics[m] as number | null}
-                          isOptimizeTarget={m === run.optimize_metric}
-                          rank={i}
-                          allResults={results}
-                        />
-                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ) : results.map((r, i) => {
+                    const globalRank = (page - 1) * PAGE_SIZE + i;
+                    const isBest = globalRank === 0 && run.status === "completed";
+                    return (
+                      <tr
+                        key={i}
+                        className={`border-b last:border-0 ${isBest ? "bg-green-500/5" : "hover:bg-muted/30"}`}
+                      >
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {isBest ? <Trophy className="h-3 w-3 text-green-500 inline" /> : globalRank + 1}
+                        </td>
+                        {paramNames.map((p) => (
+                          <td key={p} className="px-3 py-2 font-mono">
+                            {String(r.params[p] ?? "—")}
+                          </td>
+                        ))}
+                        {ALL_METRICS.map((m) => (
+                          <MetricCell
+                            key={m}
+                            metricKey={m}
+                            value={r.metrics[m] as number | null}
+                            isOptimizeTarget={m === run.optimize_metric}
+                            rank={globalRank}
+                            allResults={results}
+                          />
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── Pagination controls ── */}
+            {resultsPage && resultsPage.pages > 1 && (
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, resultsPage.total)} of {resultsPage.total}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline" size="sm" className="h-7 w-7 p-0"
+                    disabled={page === 1}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                  </Button>
+                  <span className="px-2">Page {page} / {resultsPage.pages}</span>
+                  <Button
+                    variant="outline" size="sm" className="h-7 w-7 p-0"
+                    disabled={page >= resultsPage.pages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {run.status === "completed" && results.length === 0 && (
+        {run.status === "completed" && !loadingResults && results.length === 0 && (
           <p className="text-sm text-muted-foreground py-8 text-center">
             No valid results — all combinations may have produced zero trades.
           </p>

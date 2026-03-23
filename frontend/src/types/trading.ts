@@ -763,8 +763,10 @@ export interface OptimizationRequest {
   spread_pips?: number;
   execution_mode?: "close_price" | "intra_candle";
   volume?: number;
+  risk_pct?: number | null;       // null = fixed lot; e.g. 0.01 = 1% risk per trade
   commission_per_lot?: number;
   tp_partial_close_ratio?: number;
+  max_workers?: number;           // concurrent combinations (1-16)
   csv_upload_id?: string;
   csv_uploads?: Record<string, string>;
   /** Search space: { param_name: [v1, v2, ...] } */
@@ -804,18 +806,29 @@ export interface OptimizationRunSummary {
   spread_pips: number;
   execution_mode: string;
   volume: number;
+  risk_pct: number | null;
   commission_per_lot: number;
   tp_partial_close_ratio: number;
+  max_workers: number;
   param_grid: Record<string, unknown[]>;
   optimize_metric: string;
   status: "pending" | "running" | "completed" | "failed";
   progress_pct: number;
   total_combinations: number;
   completed_combinations: number;
+  started_at: string | null;
+  estimated_seconds_remaining: number | null;
   error_message: string | null;
-  results: OptimizationResult[];
   best_params: Record<string, unknown> | null;
   created_at: string;
+}
+
+export interface OptimizationResultsPage {
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  results: OptimizationResult[];
 }
 
 // ── Trade Markers (backtest replay) ───────────────────────────────────────────

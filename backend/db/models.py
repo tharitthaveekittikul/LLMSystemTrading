@@ -465,8 +465,10 @@ class OptimizationRun(Base):
     spread_pips: Mapped[float] = mapped_column(Float, default=1.5)
     execution_mode: Mapped[str] = mapped_column(String(20), default="close_price")
     volume: Mapped[float] = mapped_column(Float, default=0.1)
+    risk_pct: Mapped[float | None] = mapped_column(Float, nullable=True)     # None=fixed lot; 0.01=1% risk per trade
     commission_per_lot: Mapped[float] = mapped_column(Float, default=0.0)
     tp_partial_close_ratio: Mapped[float] = mapped_column(Float, default=0.5)
+    max_workers: Mapped[int] = mapped_column(Integer, default=4)             # concurrent combinations
     csv_upload_id: Mapped[str | None] = mapped_column(Text, nullable=True)   # primary TF CSV path
     csv_uploads: Mapped[str | None] = mapped_column(Text, nullable=True)     # JSON {tf: path}
     param_grid: Mapped[str] = mapped_column(Text, default="{}")              # JSON search space
@@ -475,6 +477,7 @@ class OptimizationRun(Base):
     progress_pct: Mapped[int] = mapped_column(Integer, default=0)
     total_combinations: Mapped[int] = mapped_column(Integer, default=0)
     completed_combinations: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     results: Mapped[str | None] = mapped_column(Text, nullable=True)         # JSON ranked list
     best_params: Mapped[str | None] = mapped_column(Text, nullable=True)     # JSON top params

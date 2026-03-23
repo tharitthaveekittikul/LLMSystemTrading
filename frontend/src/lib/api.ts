@@ -394,6 +394,21 @@ export const optimizationApi = {
   get: (id: number) =>
     apiRequest<import("@/types/trading").OptimizationRunSummary>(`/backtest/optimize/${id}`),
 
+  getResults: (
+    id: number,
+    params?: { page?: number; page_size?: number; sort_by?: string; order?: "asc" | "desc" },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.page != null) query.set("page", String(params.page));
+    if (params?.page_size != null) query.set("page_size", String(params.page_size));
+    if (params?.sort_by) query.set("sort_by", params.sort_by);
+    if (params?.order) query.set("order", params.order);
+    const qs = query.toString();
+    return apiRequest<import("@/types/trading").OptimizationResultsPage>(
+      `/backtest/optimize/${id}/results${qs ? `?${qs}` : ""}`,
+    );
+  },
+
   uploadCsv: async (file: File): Promise<{ upload_id: string; size_bytes: number; avg_spread_pts?: number }> => {
     const form = new FormData();
     form.append("file", file);
