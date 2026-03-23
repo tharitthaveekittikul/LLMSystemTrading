@@ -55,6 +55,7 @@ backend/alembic/versions/*.py
 data/backtests/
 
 documents/articles/
+documents/ea-community/
 
 # Uploads
 uploads/
