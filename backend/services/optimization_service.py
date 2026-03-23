@@ -93,8 +93,12 @@ def _worker_run_combo(worker_args: dict) -> dict:
 
 class OptimizationService:
 
-    async def run(self, opt_run_id: int) -> None:
-        """Execute the full sweep for a given OptimizationRun row."""
+    async def run(self, opt_run_id: int, resume: bool = False) -> None:
+        """Execute the full sweep for a given OptimizationRun row.
+
+        If resume=True, loads existing partial results and skips already-completed
+        parameter combinations, continuing from where the run was cancelled.
+        """
         async with AsyncSessionLocal() as db:
             opt = await db.get(OptimizationRun, opt_run_id)
             if not opt:
@@ -103,6 +107,7 @@ class OptimizationService:
 
             opt.status = "running"
             opt.started_at = datetime.now(UTC)
+            opt.completed_at = None
             await db.commit()
 
             try:
@@ -125,6 +130,23 @@ class OptimizationService:
 
                 opt.total_combinations = total
                 await db.commit()
+
+                # ── Resume: load existing results and skip done combos ────────
+                existing_results: list[dict] = []
+                done_params: set[frozenset] = set()
+                if resume and opt.results:
+                    existing_results = json.loads(opt.results)
+                    done_params = {frozenset(r["params"].items()) for r in existing_results}
+                    logger.info(
+                        "Optimization %d resuming — %d already done, %d remaining",
+                        opt_run_id, len(existing_results), total - len(existing_results),
+                    )
+                    # Sync DB progress to the correct resume starting point so the
+                    # UI shows the right count instead of jumping back to 0%.
+                    opt.completed_combinations = len(existing_results)
+                    opt.progress_pct = int(len(existing_results) * 100 / total) if total > 0 else 0
+                    await db.commit()
+
                 logger.info(
                     "Optimization %d: %d combinations | strategy=%s symbol=%s workers=%d",
                     opt_run_id, total, strategy_db.name, opt.symbol, opt.max_workers,
@@ -157,6 +179,7 @@ class OptimizationService:
                         "initial_balance": opt.initial_balance,
                     }
                     for combo in combinations
+                    if frozenset(zip(param_names, combo)) not in done_params
                 ]
 
                 # ── Rank key (defined early; used for both completed and cancelled) ─
@@ -170,11 +193,11 @@ class OptimizationService:
                     return float(v)
 
                 # ── Run combinations in process pool ──────────────────────────
-                # ProcessPoolExecutor gives true CPU parallelism (one OS process per
-                # worker), bypassing the GIL that limits ThreadPoolExecutor for
-                # CPU-bound Python work like the backtest candle loop.
-                results: list[dict] = []
-                completed_count = 0
+                # Bounded pending set (max_workers futures at a time) instead of
+                # submitting all combinations upfront — avoids overwhelming asyncio
+                # with tens-of-thousands of futures and keeps cancellation responsive.
+                results: list[dict] = list(existing_results)
+                completed_count = len(existing_results)
                 should_cancel = False
                 loop = asyncio.get_running_loop()
 
@@ -183,46 +206,70 @@ class OptimizationService:
                     initializer=_worker_initializer,
                     initargs=(sys.path,),
                 ) as executor:
-                    futures = [
-                        loop.run_in_executor(executor, _worker_run_combo, args)
-                        for args in worker_args_list
-                    ]
+                    worker_iter = iter(worker_args_list)
+                    pending: set = set()
 
-                    for fut in asyncio.as_completed(futures):
-                        try:
-                            result = await fut
-                            results.append(result)
-                        except Exception as exc:
-                            logger.warning(
-                                "Optimization %d combo failed: %s",
-                                opt_run_id, exc,
-                            )
+                    # Prime the pool with the first batch of tasks
+                    for args in itertools.islice(worker_iter, opt.max_workers):
+                        pending.add(loop.run_in_executor(executor, _worker_run_combo, args))
 
-                        completed_count += 1
-                        pct = int(completed_count * 100 / total)
-                        logger.debug(
-                            "Optimization %d combo %d/%d done",
-                            opt_run_id, completed_count, total,
+                    while pending:
+                        done, pending = await asyncio.wait(
+                            pending, return_when=asyncio.FIRST_COMPLETED
                         )
 
-                        async with AsyncSessionLocal() as progress_db:
-                            o = await progress_db.get(OptimizationRun, opt_run_id)
-                            if o:
-                                o.completed_combinations = completed_count
-                                o.progress_pct = pct
-                                await progress_db.commit()
-                                if o.status == "cancelling":
-                                    should_cancel = True
+                        for fut in done:
+                            try:
+                                result = fut.result()
+                                results.append(result)
+                            except Exception as exc:
+                                logger.warning(
+                                    "Optimization %d combo failed: %s",
+                                    opt_run_id, exc,
+                                )
+
+                            # Keep pool full — submit next item as soon as one finishes
+                            try:
+                                pending.add(loop.run_in_executor(
+                                    executor, _worker_run_combo, next(worker_iter)
+                                ))
+                            except StopIteration:
+                                pass
+
+                            completed_count += 1
+                            pct = int(completed_count * 100 / total)
+                            logger.debug(
+                                "Optimization %d combo %d/%d done",
+                                opt_run_id, completed_count, total,
+                            )
+
+                            async with AsyncSessionLocal() as progress_db:
+                                o = await progress_db.get(OptimizationRun, opt_run_id)
+                                if o:
+                                    o.completed_combinations = completed_count
+                                    o.progress_pct = pct
+                                    # Persist partial results every 10 combos so a
+                                    # force-killed backend loses at most ~10 combos.
+                                    if completed_count % 10 == 0 and results:
+                                        partial = sorted(results, key=_sort_key, reverse=reverse)
+                                        o.results = json.dumps(partial)
+                                        o.best_params = json.dumps(partial[0]["params"])
+                                    await progress_db.commit()
+                                    if o.status == "cancelling":
+                                        should_cancel = True
+
+                            if should_cancel:
+                                break  # stop processing current done batch
 
                         if should_cancel:
                             logger.info(
                                 "Optimization %d: cancellation requested, stopping after %d/%d combos",
                                 opt_run_id, completed_count, total,
                             )
-                            # Cancel queued (not-yet-started) futures and don't wait for
-                            # running workers — the with-block __exit__ will still drain
-                            # the max_workers currently-running processes quickly.
+                            for f in pending:
+                                f.cancel()
                             executor.shutdown(wait=False, cancel_futures=True)
+                            pending.clear()
                             break
 
                 # ── Save results (partial on cancel, full on completion) ───────

@@ -961,6 +961,35 @@ async def cancel_optimization(opt_id: int, db: AsyncSession = Depends(get_db)) -
     return OptimizationRunOut.from_orm(opt)
 
 
+@router.post("/optimize/{opt_id}/resume", response_model=OptimizationRunOut)
+async def resume_optimization(
+    opt_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> OptimizationRunOut:
+    """Resume a cancelled optimization from where it left off.
+
+    Loads existing partial results and skips already-completed combinations.
+    Only allowed when status is 'cancelled'.
+    """
+    opt = await db.get(OptimizationRun, opt_id)
+    if not opt:
+        raise HTTPException(status_code=404, detail="Optimization run not found")
+    if opt.status != "cancelled":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot resume optimization in status '{opt.status}'",
+        )
+    opt.status = "running"
+    await db.commit()
+    await db.refresh(opt)
+    from services.optimization_service import OptimizationService
+    svc = OptimizationService()
+    background_tasks.add_task(svc.run, opt.id, True)
+    logger.info("Optimization %d resume requested", opt_id)
+    return OptimizationRunOut.from_orm(opt)
+
+
 _ALLOWED_SORT_METRICS = {
     "sharpe_ratio", "profit_factor", "total_return_pct", "win_rate",
     "expectancy", "max_drawdown_pct", "recovery_factor", "sortino_ratio",

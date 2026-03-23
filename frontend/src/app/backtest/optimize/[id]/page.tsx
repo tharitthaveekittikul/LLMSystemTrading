@@ -23,6 +23,7 @@ import {
   Cpu,
   Settings2,
   Square,
+  Play,
 } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -118,6 +119,7 @@ export default function OptimizeResultPage() {
   const [loadingResults, setLoadingResults] = useState(false);
   const [showQualifiedOnly, setShowQualifiedOnly] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -134,6 +136,16 @@ export default function OptimizeResultPage() {
       await refresh();
     } catch { /* ignore */ } finally {
       setStopping(false);
+    }
+  }, [id, refresh]);
+
+  const handleResume = useCallback(async () => {
+    setResuming(true);
+    try {
+      await optimizationApi.resume(Number(id));
+      await refresh();
+    } catch { /* ignore */ } finally {
+      setResuming(false);
     }
   }, [id, refresh]);
 
@@ -242,6 +254,18 @@ export default function OptimizeResultPage() {
               <span className="text-sm text-muted-foreground">
                 {resultsPage?.total ?? "…"} results{run.status === "cancelled" ? ` (partial — ${run.completed_combinations}/${run.total_combinations} combos run)` : ""} · sorted by {METRIC_LABELS[run.optimize_metric] ?? run.optimize_metric}
               </span>
+              {run.status === "cancelled" && run.completed_combinations < run.total_combinations && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={handleResume}
+                  disabled={resuming}
+                >
+                  {resuming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-current" />}
+                  Resume
+                </Button>
+              )}
               <Button
                 variant={showQualifiedOnly ? "default" : "outline"}
                 size="sm"

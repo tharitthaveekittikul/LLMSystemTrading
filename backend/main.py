@@ -41,6 +41,28 @@ async def lifespan(app: FastAPI):
     await init_questdb()
     logger.info("Database tables ready")
 
+    # ── Recover optimization runs interrupted by a backend restart ────────────
+    # Runs stuck in "running"/"cancelling" will never finish; mark them cancelled
+    # so the UI unblocks and the user can resume from partial results.
+    from db.postgres import AsyncSessionLocal as _AsyncSessionLocal
+    from db.models import OptimizationRun
+    from sqlalchemy import select as _sa_select
+    async with _AsyncSessionLocal() as _db:
+        _stuck = (await _db.execute(
+            _sa_select(OptimizationRun).where(
+                OptimizationRun.status.in_(["running", "cancelling"])
+            )
+        )).scalars().all()
+        for _o in _stuck:
+            _o.status = "cancelled"
+            _o.error_message = "Backend restarted while optimization was running"
+        if _stuck:
+            await _db.commit()
+            logger.warning(
+                "Reset %d stuck optimization run(s) to 'cancelled' on startup",
+                len(_stuck),
+            )
+
     # ── Load persisted global settings from DB ────────────────────────────────
     from db.postgres import AsyncSessionLocal
     from db.models import GlobalSettings as GlobalSettingsModel, TelegramSettings as TelegramSettingsModel

@@ -399,6 +399,11 @@ export const optimizationApi = {
       method: "POST",
     }),
 
+  resume: (id: number) =>
+    apiRequest<import("@/types/trading").OptimizationRunSummary>(`/backtest/optimize/${id}/resume`, {
+      method: "POST",
+    }),
+
   getResults: (
     id: number,
     params?: { page?: number; page_size?: number; sort_by?: string; order?: "asc" | "desc" },
