@@ -1,8 +1,11 @@
 """OptimizationService — parameter sweep for backtesting strategies.
 
-Runs BacktestEngine calls concurrently (bounded by opt.max_workers) using
-asyncio.Semaphore, collects metrics, ranks by the chosen metric, and persists
-the result grid.
+Runs BacktestEngine calls concurrently using ProcessPoolExecutor for true
+CPU parallelism (bypasses Python GIL), bounded by opt.max_workers.
+
+On Windows, ProcessPoolExecutor uses the 'spawn' start method, so each worker
+process re-initialises Python from scratch. The _worker_initializer copies the
+parent's sys.path so backend imports resolve correctly in subprocesses.
 
 Usage:
     svc = OptimizationService()
@@ -16,8 +19,10 @@ import io
 import itertools
 import json
 import logging
-import time
+import sys
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, UTC
+from types import SimpleNamespace
 from typing import Any
 
 from db.models import OptimizationRun, Strategy
@@ -31,6 +36,60 @@ logger = logging.getLogger(__name__)
 # Metrics where lower is better (all others: higher is better)
 _LOWER_IS_BETTER = {"max_drawdown_pct"}
 
+
+# ── Module-level workers — must be top-level functions to be picklable ────────
+
+def _worker_initializer(sys_path: list[str]) -> None:
+    """Called once per worker process at startup.
+
+    Copies the parent's sys.path so backend modules are importable in the
+    spawned subprocess (critical on Windows where 'spawn' creates a clean env).
+    """
+    import sys as _sys
+    for p in sys_path:
+        if p not in _sys.path:
+            _sys.path.insert(0, p)
+
+
+def _worker_run_combo(worker_args: dict) -> dict:
+    """Execute one backtest combination in a worker subprocess.
+
+    Receives only picklable primitives (no SQLAlchemy models, no closures).
+    Returns {"params": ..., "metrics": ...} or raises on failure.
+    """
+    import asyncio
+    import importlib
+    from types import SimpleNamespace
+    from services.backtest_engine import BacktestEngine
+    from services.backtest_metrics import compute_metrics
+
+    mod = importlib.import_module(worker_args["module_path"])
+    cls = getattr(mod, worker_args["class_name"])
+    instance = cls()
+
+    # Reconstruct strategy DB config from primitive dict (no SQLAlchemy in subprocess)
+    if hasattr(instance, "apply_db_config"):
+        instance.apply_db_config(SimpleNamespace(**worker_args["strategy_fields"]))
+
+    # Apply the parameter combination for this sweep slot
+    for k, v in worker_args["params"].items():
+        setattr(instance, k, v)
+
+    engine = BacktestEngine()
+    result = asyncio.run(engine.run(
+        candles=worker_args["candles"],
+        strategy=instance,
+        config=worker_args["config"],
+        progress_cb=None,
+        context_candles=worker_args.get("context_candles"),
+    ))
+
+    closed = [t for t in result["trades"] if t.get("profit") is not None]
+    metrics = compute_metrics(closed, worker_args["initial_balance"])
+    return {"params": worker_args["params"], "metrics": metrics}
+
+
+# ── Service ───────────────────────────────────────────────────────────────────
 
 class OptimizationService:
 
@@ -54,7 +113,7 @@ class OptimizationService:
                 # ── Load OHLCV data once (shared across all combinations) ──────
                 candles, context_candles = await self._load_data(opt, strategy_db)
 
-                # ── Generate cartesian product of param_grid ─────────────────
+                # ── Generate cartesian product of param_grid ──────────────────
                 param_grid: dict[str, list[Any]] = json.loads(opt.param_grid or "{}")
                 if not param_grid:
                     raise ValueError("param_grid is empty — nothing to optimize")
@@ -71,40 +130,68 @@ class OptimizationService:
                     opt_run_id, total, strategy_db.name, opt.symbol, opt.max_workers,
                 )
 
-                # ── Run combinations concurrently with semaphore ───────────────
+                # ── Build picklable worker args (no SQLAlchemy objects) ───────
+                strategy_fields = self._extract_strategy_fields(strategy_db)
+                opt_config = {
+                    "symbol": opt.symbol,
+                    "timeframe": opt.timeframe,
+                    "initial_balance": opt.initial_balance,
+                    "spread_pips": opt.spread_pips,
+                    "execution_mode": opt.execution_mode,
+                    "volume": opt.volume,
+                    "risk_pct": opt.risk_pct or 0.0,
+                    "max_llm_calls": 0,          # rule-only for optimization (no LLM cost)
+                    "commission_per_lot": opt.commission_per_lot,
+                    "tp_partial_close_ratio": opt.tp_partial_close_ratio,
+                }
+
+                worker_args_list = [
+                    {
+                        "module_path": strategy_db.module_path,
+                        "class_name": strategy_db.class_name,
+                        "strategy_fields": strategy_fields,
+                        "params": dict(zip(param_names, combo)),
+                        "candles": candles,
+                        "context_candles": context_candles,
+                        "config": opt_config,
+                        "initial_balance": opt.initial_balance,
+                    }
+                    for combo in combinations
+                ]
+
+                # ── Run combinations in process pool ──────────────────────────
+                # ProcessPoolExecutor gives true CPU parallelism (one OS process per
+                # worker), bypassing the GIL that limits ThreadPoolExecutor for
+                # CPU-bound Python work like the backtest candle loop.
                 results: list[dict] = []
                 completed_count = 0
-                start_time = time.monotonic()
-                lock = asyncio.Lock()
-                sem = asyncio.Semaphore(opt.max_workers)
+                loop = asyncio.get_running_loop()
 
-                async def _run_combo(i: int, combo: tuple) -> None:
-                    nonlocal completed_count
-                    params = dict(zip(param_names, combo))
-                    async with sem:
+                with ProcessPoolExecutor(
+                    max_workers=opt.max_workers,
+                    initializer=_worker_initializer,
+                    initargs=(sys.path,),
+                ) as executor:
+                    futures = [
+                        loop.run_in_executor(executor, _worker_run_combo, args)
+                        for args in worker_args_list
+                    ]
+
+                    for fut in asyncio.as_completed(futures):
                         try:
-                            result = await self._run_single(
-                                candles, context_candles, strategy_db, opt, params
-                            )
+                            result = await fut
+                            results.append(result)
                         except Exception as exc:
                             logger.warning(
-                                "Optimization %d combo %d/%d failed (params=%s): %s",
-                                opt_run_id, i + 1, total, params, exc,
+                                "Optimization %d combo failed: %s",
+                                opt_run_id, exc,
                             )
-                            result = None
 
-                    async with lock:
-                        nonlocal completed_count
                         completed_count += 1
-                        if result is not None:
-                            results.append(result)
-
-                        # Update progress in DB every combo (small overhead, accurate ETA)
-                        elapsed = time.monotonic() - start_time
                         pct = int(completed_count * 100 / total)
                         logger.debug(
-                            "Optimization %d combo %d/%d done: %s",
-                            opt_run_id, completed_count, total, params,
+                            "Optimization %d combo %d/%d done",
+                            opt_run_id, completed_count, total,
                         )
 
                         async with AsyncSessionLocal() as progress_db:
@@ -113,8 +200,6 @@ class OptimizationService:
                                 o.completed_combinations = completed_count
                                 o.progress_pct = pct
                                 await progress_db.commit()
-
-                await asyncio.gather(*[_run_combo(i, combo) for i, combo in enumerate(combinations)])
 
                 # ── Rank by optimize_metric ───────────────────────────────────
                 metric = opt.optimize_metric
@@ -146,6 +231,21 @@ class OptimizationService:
                 await db.commit()
 
     # ── Private helpers ───────────────────────────────────────────────────────
+
+    def _extract_strategy_fields(self, strategy_db: Strategy) -> dict:
+        """Serialize SQLAlchemy model fields to a plain dict for subprocess pickling.
+
+        Only includes the fields that apply_db_config() reads — keeps payload small.
+        """
+        return {
+            "primary_tf": strategy_db.primary_tf,
+            "context_tfs": strategy_db.context_tfs,
+            "symbols": strategy_db.symbols,
+            "skip_hours_timezone": strategy_db.skip_hours_timezone,
+            "skip_hours": strategy_db.skip_hours,
+            "skip_weekdays": strategy_db.skip_weekdays,
+            "strategy_params": strategy_db.strategy_params,
+        }
 
     async def _load_data(
         self,
@@ -182,56 +282,3 @@ class OptimizationService:
                         context_candles[tf] = await data_svc.load_from_csv(io.StringIO(f.read()))
 
         return candles, context_candles
-
-    async def _run_single(
-        self,
-        candles: list[dict],
-        context_candles: dict[str, list[dict]] | None,
-        strategy_db: Strategy,
-        opt: OptimizationRun,
-        params: dict[str, Any],
-    ) -> dict:
-        """Instantiate strategy with `params`, run engine, return {params, metrics}."""
-        mod = importlib.import_module(strategy_db.module_path)
-        cls = getattr(mod, strategy_db.class_name)
-        instance = cls()
-
-        if hasattr(instance, "apply_db_config"):
-            instance.apply_db_config(strategy_db)
-
-        for k, v in params.items():
-            setattr(instance, k, v)
-
-        config = {
-            "symbol": opt.symbol,
-            "timeframe": opt.timeframe,
-            "initial_balance": opt.initial_balance,
-            "spread_pips": opt.spread_pips,
-            "execution_mode": opt.execution_mode,
-            "volume": opt.volume,
-            "risk_pct": opt.risk_pct or 0.0,   # 0 = use fixed volume
-            "max_llm_calls": 0,                  # rule-only for optimization (no LLM cost)
-            "commission_per_lot": opt.commission_per_lot,
-            "tp_partial_close_ratio": opt.tp_partial_close_ratio,
-        }
-
-        engine = BacktestEngine()
-        # engine.run() is CPU-bound (iterates all candles). Running it directly
-        # on the event loop blocks FastAPI. Offload to a thread so the event loop
-        # remains responsive during the sweep.
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: asyncio.run(engine.run(
-                candles=candles,
-                strategy=instance,
-                config=config,
-                progress_cb=None,
-                context_candles=context_candles,
-            )),
-        )
-
-        closed = [t for t in result["trades"] if t.get("profit") is not None]
-        metrics = compute_metrics(closed, opt.initial_balance)
-
-        return {"params": params, "metrics": metrics}

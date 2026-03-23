@@ -17,6 +17,26 @@ import {
 import { optimizationApi, API_BASE_URL } from "@/lib/api";
 import type { StrategyRegistryEntry } from "@/types/trading";
 
+/** Parse MT5 tab-separated CSV to extract start/end date strings (YYYY-MM-DD). */
+function parseMt5CsvDates(file: File): Promise<{ startDate: string; endDate: string } | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const dataLines = text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("<"));
+        if (dataLines.length === 0) { resolve(null); return; }
+        const toDate = (line: string) => line.split("\t")[0]?.replace(/\./g, "-") ?? null;
+        const start = toDate(dataLines[0]);
+        const end = toDate(dataLines[dataLines.length - 1]);
+        resolve(start && end ? { startDate: start, endDate: end } : null);
+      } catch { resolve(null); }
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsText(file);
+  });
+}
+
 interface StrategyItem {
   id: number;
   name: string;
@@ -480,7 +500,17 @@ export default function NewOptimizePage() {
                 type="file"
                 accept=".csv"
                 className="h-8 text-xs"
-                onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setCsvFile(file);
+                  if (file) {
+                    const dates = await parseMt5CsvDates(file);
+                    if (dates) {
+                      setStartDate(dates.startDate);
+                      setEndDate(dates.endDate);
+                    }
+                  }
+                }}
               />
             </div>
           </section>

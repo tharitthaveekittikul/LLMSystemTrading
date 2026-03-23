@@ -385,8 +385,10 @@ async def upload_csv(file: UploadFile = File(...)) -> dict:
         f.write(content)
         tmp_path = f.name
 
-    # Compute avg spread for display in the UI (informational only — never fail upload)
+    # Compute avg spread and date range from the CSV (informational — never fail upload)
     avg_spread_pts: float | None = None
+    start_date_str: str | None = None
+    end_date_str: str | None = None
     try:
         from services.backtest_data import BacktestDataService
         svc = BacktestDataService()
@@ -394,14 +396,26 @@ async def upload_csv(file: UploadFile = File(...)) -> dict:
         spreads = [c["spread"] for c in candles if c.get("spread", 0) > 0]
         if spreads:
             avg_spread_pts = round(sum(spreads) / len(spreads), 1)
+        # Extract date range from raw text (format: YYYY.MM.DD\t...)
+        lines = content.decode("utf-8", errors="replace").splitlines()
+        data_lines = [l for l in lines if l.strip() and not l.startswith("<")]
+        if data_lines:
+            start_date_str = data_lines[0].split("\t")[0].replace(".", "-")
+            end_date_str = data_lines[-1].split("\t")[0].replace(".", "-")
     except Exception:
-        pass  # avg_spread is informational — never fail the upload for it
+        pass  # all fields are informational — never fail the upload
 
     logger.info(
-        "CSV uploaded: %s (%d bytes, avg_spread=%.1f pts)",
-        tmp_path, len(content), avg_spread_pts or 0,
+        "CSV uploaded: %s (%d bytes, avg_spread=%.1f pts, %s → %s)",
+        tmp_path, len(content), avg_spread_pts or 0, start_date_str, end_date_str,
     )
-    return {"upload_id": tmp_path, "size_bytes": len(content), "avg_spread_pts": avg_spread_pts}
+    return {
+        "upload_id": tmp_path,
+        "size_bytes": len(content),
+        "avg_spread_pts": avg_spread_pts,
+        "start_date": start_date_str,
+        "end_date": end_date_str,
+    }
 
 
 # ── Analytics endpoints ────────────────────────────────────────────────────────
