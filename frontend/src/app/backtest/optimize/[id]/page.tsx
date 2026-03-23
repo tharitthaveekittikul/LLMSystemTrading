@@ -17,6 +17,8 @@ import {
   Trophy,
   ChevronLeft,
   ChevronRight,
+  Filter,
+  ShieldCheck,
 } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -31,6 +33,28 @@ const METRIC_LABELS: Record<string, string> = {
   recovery_factor: "Recovery",
   sortino_ratio: "Sortino",
 };
+
+// ── Quality thresholds ("Good" tier) ──────────────────────────────────────
+const THRESHOLDS: Record<string, { value: number; lowerIsBetter: boolean; label: string }> = {
+  sharpe_ratio:     { value: 1.5,  lowerIsBetter: false, label: "Sharpe ≥ 1.5"   },
+  profit_factor:    { value: 1.75, lowerIsBetter: false, label: "PF ≥ 1.75"       },
+  win_rate:         { value: 0.55, lowerIsBetter: false, label: "Win ≥ 55%"       },
+  max_drawdown_pct: { value: 20,   lowerIsBetter: true,  label: "MDD ≤ 20%"       },
+  recovery_factor:  { value: 2.0,  lowerIsBetter: false, label: "RF ≥ 2.0"        },
+  total_return_pct: { value: 10,   lowerIsBetter: false, label: "Return ≥ 10%"    },
+  total_trades:     { value: 20,   lowerIsBetter: false, label: "Trades ≥ 20"     },
+};
+
+function qualityScore(metrics: { [key: string]: number | null }): { passed: number; total: number; allPassed: boolean } {
+  let passed = 0;
+  const total = Object.keys(THRESHOLDS).length;
+  for (const [key, t] of Object.entries(THRESHOLDS)) {
+    const v = metrics[key];
+    if (v == null) continue;
+    if (t.lowerIsBetter ? v <= t.value : v >= t.value) passed++;
+  }
+  return { passed, total, allPassed: passed === total };
+}
 
 const ALL_METRICS = [
   "total_trades",
@@ -70,6 +94,7 @@ export default function OptimizeResultPage() {
   const [resultsPage, setResultsPage] = useState<OptimizationResultsPage | null>(null);
   const [page, setPage] = useState(1);
   const [loadingResults, setLoadingResults] = useState(false);
+  const [showQualifiedOnly, setShowQualifiedOnly] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -123,6 +148,10 @@ export default function OptimizeResultPage() {
 
   const paramNames = Object.keys(run.param_grid);
   const results: OptimizationResult[] = resultsPage?.results ?? [];
+  const filteredResults = showQualifiedOnly
+    ? results.filter((r) => qualityScore(r.metrics).allPassed)
+    : results;
+  const qualifiedCount = results.filter((r) => qualityScore(r.metrics).allPassed).length;
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDesc((d) => !d);
@@ -164,9 +193,25 @@ export default function OptimizeResultPage() {
             </div>
           )}
           {run.status === "completed" && (
-            <span className="text-sm text-muted-foreground">
-              {resultsPage?.total ?? "…"} results · sorted by {METRIC_LABELS[run.optimize_metric] ?? run.optimize_metric}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">
+                {resultsPage?.total ?? "…"} results · sorted by {METRIC_LABELS[run.optimize_metric] ?? run.optimize_metric}
+              </span>
+              <Button
+                variant={showQualifiedOnly ? "default" : "outline"}
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => setShowQualifiedOnly((v) => !v)}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Qualified only
+                {qualifiedCount > 0 && (
+                  <span className={`rounded-full px-1.5 py-0 text-[10px] font-semibold ${showQualifiedOnly ? "bg-white/20 text-white" : "bg-green-500/15 text-green-700 dark:text-green-400"}`}>
+                    {qualifiedCount}
+                  </span>
+                )}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -194,13 +239,14 @@ export default function OptimizeResultPage() {
         )}
 
         {/* ── Results table ── */}
-        {(results.length > 0 || loadingResults) && (
+        {(filteredResults.length > 0 || loadingResults) && (
           <div className="space-y-2">
             <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-muted/50 border-b">
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">#</th>
+                    <th className="text-center px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">Qual</th>
                     {paramNames.map((p) => (
                       <th key={p} className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">
                         {p}
@@ -225,7 +271,7 @@ export default function OptimizeResultPage() {
                         <Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Loading…
                       </td>
                     </tr>
-                  ) : results.map((r, i) => {
+                  ) : filteredResults.map((r, i) => {
                     const globalRank = (page - 1) * PAGE_SIZE + i;
                     const isBest = globalRank === 0 && run.status === "completed";
                     return (
@@ -235,6 +281,9 @@ export default function OptimizeResultPage() {
                       >
                         <td className="px-3 py-2 text-muted-foreground">
                           {isBest ? <Trophy className="h-3 w-3 text-green-500 inline" /> : globalRank + 1}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <QualityBadge metrics={r.metrics} />
                         </td>
                         {paramNames.map((p) => (
                           <td key={p} className="px-3 py-2 font-mono">
@@ -291,6 +340,11 @@ export default function OptimizeResultPage() {
             No valid results — all combinations may have produced zero trades.
           </p>
         )}
+        {run.status === "completed" && !loadingResults && results.length > 0 && filteredResults.length === 0 && (
+          <p className="text-sm text-muted-foreground py-8 text-center">
+            No combinations passed all quality thresholds on this page. Try turning off the filter or going to the next page.
+          </p>
+        )}
       </div>
     </SidebarInset>
   );
@@ -301,6 +355,32 @@ function StatusBadge({ status }: { status: string }) {
   if (status === "failed") return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Failed</Badge>;
   if (status === "running") return <Badge className="gap-1 bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30"><Loader2 className="h-3 w-3 animate-spin" />Running</Badge>;
   return <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" />Pending</Badge>;
+}
+
+function QualityBadge({ metrics }: { metrics: { [key: string]: number | null } }) {
+  const { passed, total, allPassed } = qualityScore(metrics);
+  const failedLabels = Object.entries(THRESHOLDS)
+    .filter(([key, t]) => {
+      const v = metrics[key];
+      if (v == null) return false;
+      return t.lowerIsBetter ? v > t.value : v < t.value;
+    })
+    .map(([, t]) => t.label);
+
+  if (allPassed) {
+    return (
+      <span title={`All ${total} criteria passed`} className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 font-semibold text-xs">
+        <ShieldCheck className="h-3.5 w-3.5" />
+        {passed}/{total}
+      </span>
+    );
+  }
+  return (
+    <span title={`Failed: ${failedLabels.join(", ")}`} className={`inline-flex items-center gap-1 text-xs font-mono ${passed >= total - 1 ? "text-yellow-600 dark:text-yellow-400" : "text-muted-foreground"}`}>
+      <Filter className="h-3 w-3" />
+      {passed}/{total}
+    </span>
+  );
 }
 
 function MetricCell({
