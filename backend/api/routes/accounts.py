@@ -545,7 +545,7 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
         from services.trade_analyzer import analyze_closed_trade
         from services.research_loop import maybe_run
         for tid in newly_closed_trade_ids:
-            asyncio.ensure_future(analyze_closed_trade(tid, db))
+            asyncio.ensure_future(analyze_closed_trade(tid))
         asyncio.ensure_future(maybe_run(account_id, db))
 
     return SyncOrdersResponse(
@@ -586,6 +586,16 @@ async def sync_account_history(
         "History sync complete | account_id=%s imported=%s total=%s",
         account_id, result["imported"], result["total_fetched"],
     )
+
+    # ── Fire post-trade analysis for newly imported/updated trades ────────────
+    new_ids: list[int] = result.get("new_trade_ids", [])
+    if new_ids:
+        import asyncio
+        from services.trade_analyzer import analyze_closed_trade
+        for tid in new_ids:
+            asyncio.ensure_future(analyze_closed_trade(tid))
+        logger.info("Post-trade analysis queued | account_id=%s count=%s", account_id, len(new_ids))
+
     return result
 
 

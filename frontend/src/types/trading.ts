@@ -116,6 +116,15 @@ export interface Trade {
   order_type?: "market" | "limit" | "stop";
   order_status?: "pending" | "filled" | "cancelled" | "expired";
   maintenance_enabled?: boolean;
+  trade_analysis?: string | null; // JSON string from post-trade LLM analysis
+}
+
+export interface TradeAnalysis {
+  correct_signals: string[];
+  wrong_signals: string[];
+  key_factor: string;
+  lesson: string;
+  confidence_justified: boolean;
 }
 
 // ── AI Signals ────────────────────────────────────────────────────────────────

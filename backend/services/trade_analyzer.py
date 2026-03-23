@@ -21,23 +21,25 @@ from __future__ import annotations
 
 import json
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 
-async def analyze_closed_trade(trade_id: int, db: AsyncSession) -> None:
+async def analyze_closed_trade(trade_id: int) -> None:
     """Run post-trade LLM analysis for a single closed trade and persist results.
 
-    Safe to call fire-and-forget — catches all exceptions internally.
+    Creates its own DB session — safe to fire-and-forget after the route session closes.
+    Catches all exceptions internally.
     """
+    from db.postgres import AsyncSessionLocal
     try:
-        await _analyze(trade_id, db)
+        async with AsyncSessionLocal() as db:
+            await _analyze(trade_id, db)
     except Exception:
         logger.exception("post-trade analysis failed | trade_id=%s", trade_id)
 
 
-async def _analyze(trade_id: int, db: AsyncSession) -> None:
+async def _analyze(trade_id: int, db) -> None:
     from db.models import AIJournal, Trade
     from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -118,8 +120,14 @@ async def _analyze(trade_id: int, db: AsyncSession) -> None:
     )
 
     # ── Get configured LLM for post_trade_analysis ───────────────────────────
-    from services.ai_trading import _get_task_llm  # local import avoids circular at module level
+    from services.ai_trading import _get_task_llm
+    from ai.orchestrator import _build_llm
+    from core.config import settings
     llm = await _get_task_llm("post_trade_analysis", db)
+    if llm is None:
+        # No task assignment configured — fall back to env-var default (e.g. Ollama/Qwen)
+        llm = _build_llm(provider=settings.llm_provider, api_key=None, model=None)
+        logger.debug("post-trade analysis: using default LLM provider=%s", settings.llm_provider)
 
     # ── Call LLM ─────────────────────────────────────────────────────────────
     messages = [SystemMessage(content=system), HumanMessage(content=human)]

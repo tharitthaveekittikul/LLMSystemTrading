@@ -29,6 +29,7 @@ class TradeResponse(BaseModel):
     opened_at: datetime
     closed_at: datetime | None
     source: str
+    trade_analysis: str | None = None
 
 
 @router.get("", response_model=list[TradeResponse])
@@ -84,6 +85,7 @@ async def list_trades(
                 opened_at=trade.opened_at,
                 closed_at=trade.closed_at,
                 source=trade.source,
+                trade_analysis=trade.trade_analysis,
             ))
         return out
     else:
@@ -120,3 +122,35 @@ async def patch_trade(
     await db.commit()
     logger.info("Trade patched | id=%s maintenance_enabled=%s", trade_id, trade.maintenance_enabled)
     return {"id": trade_id, "maintenance_enabled": trade.maintenance_enabled}
+
+
+@router.get("/{trade_id}", response_model=TradeResponse)
+async def get_trade(trade_id: int, db: AsyncSession = Depends(get_db)):
+    """Fetch a single trade by ID."""
+    trade = await db.get(Trade, trade_id)
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    return trade
+
+
+@router.post("/{trade_id}/analyze", response_model=dict)
+async def trigger_trade_analysis(trade_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    """Manually trigger post-trade LLM analysis for a closed trade.
+
+    Clears any existing analysis first so it is always re-run.
+    Returns immediately — analysis runs in the background.
+    """
+    trade = await db.get(Trade, trade_id)
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    if trade.closed_at is None:
+        raise HTTPException(status_code=400, detail="Trade is not closed yet")
+    # Clear existing so _analyze doesn't skip it
+    trade.trade_analysis = None
+    await db.commit()
+
+    import asyncio
+    from services.trade_analyzer import analyze_closed_trade
+    asyncio.ensure_future(analyze_closed_trade(trade_id))
+    logger.info("Post-trade analysis triggered | trade_id=%s", trade_id)
+    return {"trade_id": trade_id, "status": "queued"}

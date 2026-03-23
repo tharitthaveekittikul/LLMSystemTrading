@@ -65,13 +65,16 @@ class HistoryService:
           This handles AI trades placed by the system that were never marked closed.
         - Matching ticket already closed → skip (idempotent).
 
-        Returns {"imported": N, "updated": U, "total_fetched": M}.
+        Returns {"imported": N, "updated": U, "total_fetched": M, "new_trade_ids": [...]}.
+        new_trade_ids contains IDs of newly imported/updated trades that need post-trade analysis.
         """
         deals = await self.get_raw_deals(account, days)
         out_deals, in_by_pos = self._pair_deals(deals)
 
         imported = 0
         updated = 0
+        new_trade_objects: list[Trade] = []
+        updated_trade_ids: list[int] = []
         try:
             for out_deal in out_deals:
                 position_id: int = out_deal["position_id"]
@@ -101,6 +104,7 @@ class HistoryService:
                     existing.profit = profit
                     existing.closed_at = closed_at
                     updated += 1
+                    updated_trade_ids.append(existing.id)
                     logger.debug(
                         "Closing open trade | account_id=%s ticket=%s profit=%s",
                         account.id, position_id, profit,
@@ -142,10 +146,14 @@ class HistoryService:
                     is_paper_trade=False,
                 )
                 db.add(trade)
+                new_trade_objects.append(trade)
                 imported += 1
 
             if imported or updated:
                 await db.commit()
+                # Flush to get IDs for newly inserted rows
+                for t in new_trade_objects:
+                    await db.refresh(t)
                 logger.info(
                     "History sync complete | account_id=%s imported=%s updated=%s",
                     account.id, imported, updated,
@@ -155,7 +163,8 @@ class HistoryService:
             logger.error("sync_to_db failed — rolled back | account_id=%s", account.id, exc_info=True)
             raise
 
-        return {"imported": imported, "updated": updated, "total_fetched": len(deals)}
+        new_trade_ids = [t.id for t in new_trade_objects] + updated_trade_ids
+        return {"imported": imported, "updated": updated, "total_fetched": len(deals), "new_trade_ids": new_trade_ids}
 
     # ── Pure helper methods (no I/O) ──────────────────────────────────────
 

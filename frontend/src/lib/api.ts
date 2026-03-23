@@ -70,6 +70,15 @@ export const tradesApi = {
       `/trades/${tradeId}`,
       { method: "PATCH", body: JSON.stringify(body) }
     ),
+
+  get: (tradeId: number) =>
+    apiRequest<import("@/types/trading").Trade>(`/trades/${tradeId}`),
+
+  analyze: (tradeId: number) =>
+    apiRequest<{ trade_id: number; status: string }>(
+      `/trades/${tradeId}/analyze`,
+      { method: "POST" }
+    ),
 };
 
 // ── Signals ───────────────────────────────────────────────────────────────────
