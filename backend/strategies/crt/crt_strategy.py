@@ -20,20 +20,32 @@ logger = logging.getLogger(__name__)
 class CRTStrategy(RuleOnlyStrategy):
     execution_mode = "rule_only"
 
-    # Configurable parameters
-    target_rr: float = 2.0  # Take profit Risk:Reward ratio based on sweep size
+    # ── Configurable parameters (loaded from strategy_params JSON via base apply_db_config) ──
+    target_rr: float = 2.0
+    """Risk:Reward ratio. TP = entry ± (entry - SL) × target_rr."""
+
+    sweep_buffer_pips: float = 0.0
+    """Extra price units beyond the range boundary required to count as a real sweep.
+    Filters noise wicks that barely poke beyond the range. Units are raw price
+    (approximate pips; for XAUUSD use ~0.1–0.5, for FX majors use ~0.0001–0.0003)."""
+
+    min_range_pips: float = 0.0
+    """Minimum reference candle range size (price units) to consider the setup valid.
+    Filters tiny, low-significance reference candles."""
+
+    max_candles_after_sweep: int = 10
+    """Maximum number of primary-TF candles after the first sweep to still accept a
+    reclaim signal. Prevents acting on stale setups."""
 
     def apply_db_config(self, strategy_db: "Strategy") -> None:
+        # Base class loads primary_tf, context_tfs, symbols, skip filters, and
+        # strategy_params JSON → setattr for all params above.
         super().apply_db_config(strategy_db)
-        
-        # Ensure we have enough context candles for the reference timeframe
-        counts = {self.primary_tf: 20} # We usually don't need too many primary candles for the scan
-        
-        # We need at least 2 completed context candles (one to act as the reference, 
-        # and checking the prior one to ensure we have historical data)
+
+        # Ensure enough candles are fetched for the scan
+        counts = {self.primary_tf: max(self.max_candles_after_sweep + 5, 20)}
         for tf in self.context_tfs:
-            counts[tf] = 5 
-            
+            counts[tf] = 5
         self.candle_counts = counts
 
     def check_rule(self, market_data: MTFMarketData) -> StrategyResult | None:
@@ -41,148 +53,126 @@ class CRTStrategy(RuleOnlyStrategy):
         if not primary_data or len(primary_data.candles) < 2:
             return None
 
-        # The user's input clarified that the "reference_tf" is essentially the context_tf.
-        # So we use the first context_tf as our reference timeframe (e.g., H4 or D1).
         if not self.context_tfs:
-            logger.warning("CRTStrategy requires at least one context_tfs (e.g., H4) to act as the reference timeframe.")
+            logger.warning("CRTStrategy requires at least one context_tf (e.g., H4).")
             return None
-            
+
         reference_tf = self.context_tfs[0]
         ref_data = market_data.timeframes.get(reference_tf)
-        
-        # We need at least one completed reference candle
         if not ref_data or not ref_data.candles:
             return None
 
-        # The latest completed reference candle defines our range
+        # Last closed reference candle defines the range
         ref_candle = ref_data.candles[-1]
         ref_high = ref_candle.high
         ref_low = ref_candle.low
-        
-        # We only care about primary candles that occurred AFTER the reference candle closed (in a real scenario,
-        # MTFMarketData already ensures `candles` are completed. The reference_tf candle[-1] is the *last closed* candle
-        # of that timeframe, meaning the *current* open reference candle is forming right now, and the primary
-        # candles are forming inside it).
-        
-        # To find a sweep and reclaim, we look at the most recent primary candle that just closed.
-        last_primary = primary_data.candles[-1]
-        
-        # If the last closed primary candle is still outside the range, or hasn't swept, we do nothing.
-        # We need to find if there was a recent sweep that has now been reclaimed.
-        
-        # We'll look back through recent primary candles (since the reference candle closed)
-        # to see if a sweep occurred, and if the *last* candle confirmed the reclaim.
-        
-        # Gather primary candles that occurred after the reference candle opened
-        # (Technically after the *previous* reference candle closed, so during the *current* reference candle's formation).
-        # Since ref_candle is the *last closed*, its time is when it opened.
-        # Wait, if ref_candle is the last closed H4, then the *current* time is after ref_candle.time + 4H.
-        # Let's just find the max/min of primary candles since the reference candle closed.
-        
-        # Time when the ref_candle closed (approximate, depending on your system's exact OHLCV timestamp semantics. 
-        # Usually `time` is the open time. But we can just use the latest sequence of primary candles.)
-        # Let's assume we are monitoring the *current* forming reference candle's range. 
-        # Actually CRT usually uses the *previous* period's range (e.g. Previous Daily High/Low).
-        # Since ref_candle is the last *closed* candle, it is exactly the "previous" period.
-        
-        sweep_high = -float('inf')
-        sweep_low = float('inf')
-        has_swept_high = False
-        has_swept_low = False
-        
-        # Check primary candles that opened AFTER or AT the same time the new reference period started.
-        # This properly handles backtesting semantics where the ref_candle.time represents the start of the period.
-        relevant_primary_candles = [c for c in primary_data.candles if c.time >= ref_candle.time]
-        
-        if not relevant_primary_candles:
+
+        # Filter: ignore tiny reference candles
+        ref_range = ref_high - ref_low
+        if ref_range < self.min_range_pips:
             return None
-            
-        # Scan for sweeps in the current period
-        for c in relevant_primary_candles:
-            if c.high > ref_high:
-                has_swept_high = True
-                sweep_high = max(sweep_high, c.high)
-            if c.low < ref_low:
-                has_swept_low = True
-                sweep_low = min(sweep_low, c.low)
-                
-        # Now check if the *most recent* closed primary candle just reclaimed the range.
-        current_close = last_primary.close
-        
-        # Bullish CRT: Swept Low, then reclaimed (closed back above ref_low)
-        bullish_reclaim = has_swept_low and current_close > ref_low
-        
-        # Bearish CRT: Swept High, then reclaimed (closed back below ref_high)
-        bearish_reclaim = has_swept_high and current_close < ref_high
-        
-        # To avoid entering multiple times after a sweep, we should ideally check if the *previous* primary candle
-        # was still below/above the range (the actual moment of crossing).
-        # For simplicity, if the last candle closed inside, and a sweep happened, we trigger.
-        # A stricter check: only trigger if the *previous* candle closed outside, and *this* candle closed inside.
-        if len(relevant_primary_candles) >= 2:
-            prev_primary = relevant_primary_candles[-2]
-            bullish_trigger = has_swept_low and prev_primary.close <= ref_low and current_close > ref_low
-            bearish_trigger = has_swept_high and prev_primary.close >= ref_high and current_close < ref_high
-        else:
-            # Not enough candles to confirm the moment of crossing
-            bullish_trigger = False
-            bearish_trigger = False
-            
-        if bullish_trigger and not bearish_trigger:
-            # Calculate Risk & Reward
-            entry_price = current_close
-            stop_loss = sweep_low # Stop loss at the absolute bottom of the sweep
-            
-            # Avoid divide by zero or negative risk
-            if stop_loss >= entry_price:
+
+        # Primary candles inside the current reference period
+        relevant = [c for c in primary_data.candles if c.time >= ref_candle.time]
+        if len(relevant) < 2:
+            return None
+
+        # ── Sweep detection ───────────────────────────────────────────────────
+        sweep_high_threshold = ref_high + self.sweep_buffer_pips
+        sweep_low_threshold = ref_low - self.sweep_buffer_pips
+
+        sweep_high_price = -float("inf")
+        sweep_low_price = float("inf")
+        first_sweep_high_idx: int | None = None
+        first_sweep_low_idx: int | None = None
+
+        for idx, c in enumerate(relevant):
+            if c.high > sweep_high_threshold:
+                sweep_high_price = max(sweep_high_price, c.high)
+                if first_sweep_high_idx is None:
+                    first_sweep_high_idx = idx
+            if c.low < sweep_low_threshold:
+                sweep_low_price = min(sweep_low_price, c.low)
+                if first_sweep_low_idx is None:
+                    first_sweep_low_idx = idx
+
+        has_swept_high = first_sweep_high_idx is not None
+        has_swept_low = first_sweep_low_idx is not None
+
+        # ── Staleness filter ──────────────────────────────────────────────────
+        last_idx = len(relevant) - 1
+        if has_swept_high and (last_idx - first_sweep_high_idx) > self.max_candles_after_sweep:
+            has_swept_high = False
+        if has_swept_low and (last_idx - first_sweep_low_idx) > self.max_candles_after_sweep:
+            has_swept_low = False
+
+        # ── Reclaim trigger: previous candle outside, current candle inside ──
+        current = relevant[-1]
+        prev = relevant[-2]
+        current_close = current.close
+
+        bullish_trigger = (
+            has_swept_low
+            and prev.close <= ref_low
+            and current_close > ref_low
+        )
+        bearish_trigger = (
+            has_swept_high
+            and prev.close >= ref_high
+            and current_close < ref_high
+        )
+
+        # Avoid ambiguous simultaneous signals
+        if bullish_trigger and bearish_trigger:
+            return None
+
+        if bullish_trigger:
+            entry = current_close
+            stop_loss = sweep_low_price
+            if stop_loss >= entry:
                 return None
-                
-            range_size = ref_high - ref_low
-            tp1 = entry_price + (range_size * 0.5)
-            tp2 = ref_high # Opposite extreme of reference range
-            
-            # If for some reason TP2 is lower than TP1 (e.g., massive sweep), prioritize TP1
-            if tp2 <= tp1:
-                tp2 = tp1 + (entry_price - stop_loss)
-            
+            risk = entry - stop_loss
+            tp1 = entry + ref_range * 0.5
+            tp2 = entry + risk * self.target_rr
+            # Take the farther of the two as the primary TP
+            take_profit = max(tp1, tp2)
             return StrategyResult(
                 action="BUY",
-                entry=entry_price,
+                entry=entry,
                 stop_loss=stop_loss,
-                take_profit=tp2, # Fallback single TP is the extreme
+                take_profit=take_profit,
                 take_profit_levels=[tp1, tp2],
                 confidence=0.85,
-                rationale=f"Bullish CRT: Swept {reference_tf} Low ({ref_low}) to {sweep_low} and reclaimed.",
+                rationale=(
+                    f"Bullish CRT: swept {reference_tf} low {ref_low:.5f} → {sweep_low_price:.5f}, "
+                    f"reclaimed. RR={self.target_rr}"
+                ),
                 timeframe=self.primary_tf,
-                pattern_name="CRT_Bullish_Sweep"
+                pattern_name="CRT_Bullish_Sweep",
             )
-            
-        elif bearish_trigger and not bullish_trigger:
-            # Calculate Risk & Reward
-            entry_price = current_close
-            stop_loss = sweep_high # Stop loss at the absolute top of the sweep
-            
-            if stop_loss <= entry_price:
+
+        if bearish_trigger:
+            entry = current_close
+            stop_loss = sweep_high_price
+            if stop_loss <= entry:
                 return None
-                
-            range_size = ref_high - ref_low
-            tp1 = entry_price - (range_size * 0.5)
-            tp2 = ref_low # Opposite extreme of reference range
-            
-            # If for some reason TP2 is higher than TP1, prioritize TP1
-            if tp2 >= tp1:
-                tp2 = tp1 - (stop_loss - entry_price)
-            
+            risk = stop_loss - entry
+            tp1 = entry - ref_range * 0.5
+            tp2 = entry - risk * self.target_rr
+            take_profit = min(tp1, tp2)
             return StrategyResult(
                 action="SELL",
-                entry=entry_price,
+                entry=entry,
                 stop_loss=stop_loss,
-                take_profit=tp2,
+                take_profit=take_profit,
                 take_profit_levels=[tp1, tp2],
                 confidence=0.85,
-                rationale=f"Bearish CRT: Swept {reference_tf} High ({ref_high}) to {sweep_high} and reclaimed.",
+                rationale=(
+                    f"Bearish CRT: swept {reference_tf} high {ref_high:.5f} → {sweep_high_price:.5f}, "
+                    f"reclaimed. RR={self.target_rr}"
+                ),
                 timeframe=self.primary_tf,
-                pattern_name="CRT_Bearish_Sweep"
+                pattern_name="CRT_Bearish_Sweep",
             )
 
         return None

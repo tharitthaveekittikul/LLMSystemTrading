@@ -159,12 +159,23 @@ class OptimizationService:
                     for combo in combinations
                 ]
 
+                # ── Rank key (defined early; used for both completed and cancelled) ─
+                metric = opt.optimize_metric
+                reverse = metric not in _LOWER_IS_BETTER
+
+                def _sort_key(r: dict) -> float:
+                    v = r["metrics"].get(metric)
+                    if v is None:
+                        return float("inf") if not reverse else float("-inf")
+                    return float(v)
+
                 # ── Run combinations in process pool ──────────────────────────
                 # ProcessPoolExecutor gives true CPU parallelism (one OS process per
                 # worker), bypassing the GIL that limits ThreadPoolExecutor for
                 # CPU-bound Python work like the backtest candle loop.
                 results: list[dict] = []
                 completed_count = 0
+                should_cancel = False
                 loop = asyncio.get_running_loop()
 
                 with ProcessPoolExecutor(
@@ -200,30 +211,43 @@ class OptimizationService:
                                 o.completed_combinations = completed_count
                                 o.progress_pct = pct
                                 await progress_db.commit()
+                                if o.status == "cancelling":
+                                    should_cancel = True
 
-                # ── Rank by optimize_metric ───────────────────────────────────
-                metric = opt.optimize_metric
-                reverse = metric not in _LOWER_IS_BETTER
+                        if should_cancel:
+                            logger.info(
+                                "Optimization %d: cancellation requested, stopping after %d/%d combos",
+                                opt_run_id, completed_count, total,
+                            )
+                            # Cancel queued (not-yet-started) futures and don't wait for
+                            # running workers — the with-block __exit__ will still drain
+                            # the max_workers currently-running processes quickly.
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            break
 
-                def _sort_key(r: dict) -> float:
-                    v = r["metrics"].get(metric)
-                    if v is None:
-                        return float("inf") if not reverse else float("-inf")
-                    return float(v)
-
+                # ── Save results (partial on cancel, full on completion) ───────
                 results.sort(key=_sort_key, reverse=reverse)
-
                 opt.results = json.dumps(results)
                 opt.best_params = json.dumps(results[0]["params"]) if results else "{}"
-                opt.status = "completed"
                 opt.completed_at = datetime.now(UTC)
-                opt.progress_pct = 100
-                opt.completed_combinations = total
-                await db.commit()
-                logger.info(
-                    "Optimization %d completed — %d/%d results, best=%s",
-                    opt_run_id, len(results), total, opt.best_params,
-                )
+
+                if should_cancel:
+                    opt.status = "cancelled"
+                    opt.progress_pct = pct if total > 0 else 0
+                    await db.commit()
+                    logger.info(
+                        "Optimization %d cancelled — %d partial results saved (%d/%d combos run)",
+                        opt_run_id, len(results), completed_count, total,
+                    )
+                else:
+                    opt.status = "completed"
+                    opt.progress_pct = 100
+                    opt.completed_combinations = total
+                    await db.commit()
+                    logger.info(
+                        "Optimization %d completed — %d/%d results, best=%s",
+                        opt_run_id, len(results), total, opt.best_params,
+                    )
 
             except Exception as exc:
                 logger.error("Optimization %d failed: %s", opt_run_id, exc, exc_info=True)

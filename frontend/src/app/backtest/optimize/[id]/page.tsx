@@ -22,6 +22,7 @@ import {
   CalendarRange,
   Cpu,
   Settings2,
+  Square,
 } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -116,6 +117,7 @@ export default function OptimizeResultPage() {
   const [page, setPage] = useState(1);
   const [loadingResults, setLoadingResults] = useState(false);
   const [showQualifiedOnly, setShowQualifiedOnly] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -124,6 +126,16 @@ export default function OptimizeResultPage() {
       if (!sortKey) setSortKey(data.optimize_metric);
     } catch { /* ignore */ }
   }, [id, sortKey]);
+
+  const handleStop = useCallback(async () => {
+    setStopping(true);
+    try {
+      await optimizationApi.cancel(Number(id));
+      await refresh();
+    } catch { /* ignore */ } finally {
+      setStopping(false);
+    }
+  }, [id, refresh]);
 
   const loadResults = useCallback(async (p: number, sk: string, desc: boolean) => {
     setLoadingResults(true);
@@ -142,16 +154,16 @@ export default function OptimizeResultPage() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  // Load results when run is completed or when sort/page changes
+  // Load results when run is completed/cancelled or when sort/page changes
   useEffect(() => {
-    if (run?.status === "completed" && sortKey) {
+    if ((run?.status === "completed" || run?.status === "cancelled") && sortKey) {
       void loadResults(page, sortKey, sortDesc);
     }
   }, [run?.status, page, sortKey, sortDesc, loadResults]);
 
-  // Poll while running
+  // Poll while pending, running, or cancelling
   useEffect(() => {
-    if (!run || (run.status !== "pending" && run.status !== "running")) return;
+    if (!run || !["pending", "running", "cancelling"].includes(run.status)) return;
     const timer = setInterval(refresh, 2000);
     return () => clearInterval(timer);
   }, [run, refresh]);
@@ -195,7 +207,7 @@ export default function OptimizeResultPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <StatusBadge status={run.status} />
-          {(run.status === "pending" || run.status === "running") && (
+          {(run.status === "pending" || run.status === "running" || run.status === "cancelling") && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>{run.completed_combinations}/{run.total_combinations} combos</span>
               <div className="w-32 bg-muted rounded-full h-2">
@@ -205,18 +217,30 @@ export default function OptimizeResultPage() {
                 />
               </div>
               <span>{run.progress_pct}%</span>
-              {run.estimated_seconds_remaining != null && run.estimated_seconds_remaining > 0 && (
+              {run.estimated_seconds_remaining != null && run.estimated_seconds_remaining > 0 && run.status !== "cancelling" && (
                 <span className="text-xs text-muted-foreground">
                   ~{fmtEta(run.estimated_seconds_remaining)} left
                 </span>
               )}
               <span className="text-xs text-muted-foreground">({run.max_workers}w)</span>
+              {run.status === "running" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs border-destructive/50 text-destructive hover:bg-destructive/10"
+                  onClick={handleStop}
+                  disabled={stopping}
+                >
+                  {stopping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3 fill-current" />}
+                  Stop
+                </Button>
+              )}
             </div>
           )}
-          {run.status === "completed" && (
+          {(run.status === "completed" || run.status === "cancelled") && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-muted-foreground">
-                {resultsPage?.total ?? "…"} results · sorted by {METRIC_LABELS[run.optimize_metric] ?? run.optimize_metric}
+                {resultsPage?.total ?? "…"} results{run.status === "cancelled" ? ` (partial — ${run.completed_combinations}/${run.total_combinations} combos run)` : ""} · sorted by {METRIC_LABELS[run.optimize_metric] ?? run.optimize_metric}
               </span>
               <Button
                 variant={showQualifiedOnly ? "default" : "outline"}
@@ -491,6 +515,8 @@ function StatusBadge({ status }: { status: string }) {
   if (status === "completed") return <Badge className="gap-1 bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30"><CheckCircle2 className="h-3 w-3" />Completed</Badge>;
   if (status === "failed") return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Failed</Badge>;
   if (status === "running") return <Badge className="gap-1 bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30"><Loader2 className="h-3 w-3 animate-spin" />Running</Badge>;
+  if (status === "cancelling") return <Badge className="gap-1 bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30"><Loader2 className="h-3 w-3 animate-spin" />Stopping…</Badge>;
+  if (status === "cancelled") return <Badge className="gap-1 bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30"><Square className="h-3 w-3 fill-current" />Stopped</Badge>;
   return <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" />Pending</Badge>;
 }
 

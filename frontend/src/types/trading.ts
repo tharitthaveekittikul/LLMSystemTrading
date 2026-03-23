@@ -813,7 +813,7 @@ export interface OptimizationRunSummary {
   max_workers: number;
   param_grid: Record<string, unknown[]>;
   optimize_metric: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "cancelling" | "cancelled" | "completed" | "failed";
   progress_pct: number;
   total_combinations: number;
   completed_combinations: number;

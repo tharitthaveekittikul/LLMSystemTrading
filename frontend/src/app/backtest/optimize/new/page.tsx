@@ -41,6 +41,7 @@ interface StrategyItem {
   id: number;
   name: string;
   primary_tf: string;
+  context_tfs: string[];
   strategy_key: string | null;
 }
 
@@ -129,6 +130,7 @@ export default function NewOptimizePage() {
   const [maxWorkers, setMaxWorkers] = useState("4");
 
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [contextCsvFiles, setContextCsvFiles] = useState<Record<string, File | null>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,8 +147,15 @@ export default function NewOptimizePage() {
     })();
   }, []);
 
+  const selectedStrategy = strategies.find((s) => String(s.id) === strategyId);
+  // Exclude primary TF from context list (it's uploaded separately as primary CSV)
+  const contextTfs = (selectedStrategy?.context_tfs ?? []).filter(
+    (tf) => tf !== selectedStrategy?.primary_tf,
+  );
+
   // When strategy changes, fetch its registry params
   useEffect(() => {
+    setContextCsvFiles({});
     if (!strategyId) {
       setRegistryParams([]);
       setSweepRows([]);
@@ -259,6 +268,19 @@ export default function NewOptimizePage() {
         csvUploadId = r.upload_id;
       }
 
+      // Upload context TF CSVs if provided
+      let csvUploads: Record<string, string> | undefined;
+      const ctxEntries = Object.entries(contextCsvFiles).filter(([, f]) => f != null);
+      if (ctxEntries.length > 0) {
+        csvUploads = {};
+        for (const [tf, file] of ctxEntries) {
+          if (file) {
+            const r = await optimizationApi.uploadCsv(file);
+            csvUploads[tf] = r.upload_id;
+          }
+        }
+      }
+
       const run = await optimizationApi.submit({
         strategy_id: Number(strategyId),
         symbol,
@@ -273,6 +295,7 @@ export default function NewOptimizePage() {
         tp_partial_close_ratio: Number(tpPartialCloseRatio),
         max_workers: Number(maxWorkers),
         csv_upload_id: csvUploadId,
+        csv_uploads: csvUploads,
         param_grid,
         optimize_metric: metric,
       });
@@ -513,6 +536,27 @@ export default function NewOptimizePage() {
                 }}
               />
             </div>
+            {contextTfs.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Context TF CSVs — required for this strategy
+                </p>
+                {contextTfs.map((tf) => (
+                  <div key={tf} className="space-y-1">
+                    <Label className="text-xs">{tf} CSV (MT5 export)</Label>
+                    <Input
+                      type="file"
+                      accept=".csv"
+                      className="h-8 text-xs"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        setContextCsvFiles((prev) => ({ ...prev, [tf]: file }));
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* ── Parameter Sweep Builder ── */}

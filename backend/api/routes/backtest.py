@@ -805,7 +805,7 @@ class OptimizationRunOut(BaseModel):
         eta: float | None = None
         if (
             r.started_at
-            and r.status == "running"
+            and r.status in ("running", "cancelling")
             and r.completed_combinations > 0
             and r.total_combinations > r.completed_combinations
             and elapsed_seconds
@@ -939,6 +939,25 @@ async def get_optimization(opt_id: int, db: AsyncSession = Depends(get_db)) -> O
     opt = await db.get(OptimizationRun, opt_id)
     if not opt:
         raise HTTPException(status_code=404, detail="Optimization run not found")
+    return OptimizationRunOut.from_orm(opt)
+
+
+@router.post("/optimize/{opt_id}/cancel", response_model=OptimizationRunOut)
+async def cancel_optimization(opt_id: int, db: AsyncSession = Depends(get_db)) -> OptimizationRunOut:
+    """Request early stop of a running optimization. Sets status to 'cancelling'; the
+    background worker will finish its current batch and save partial results."""
+    opt = await db.get(OptimizationRun, opt_id)
+    if not opt:
+        raise HTTPException(status_code=404, detail="Optimization run not found")
+    if opt.status not in ("pending", "running"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot cancel optimization in status '{opt.status}'",
+        )
+    opt.status = "cancelling"
+    await db.commit()
+    await db.refresh(opt)
+    logger.info("Optimization %d cancel requested", opt_id)
     return OptimizationRunOut.from_orm(opt)
 
 

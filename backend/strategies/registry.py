@@ -76,6 +76,67 @@ class StrategyMeta:
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 REGISTRY: dict[str, StrategyMeta] = {
+    "crt": StrategyMeta(
+        key="crt",
+        display_name="Candle Range Theory (CRT)",
+        description=(
+            "Sweep-and-reclaim setups using a higher-timeframe reference candle (e.g., H4/D1). "
+            "Detects liquidity sweeps beyond the reference range then enters on reclaim. "
+            "Zero LLM cost."
+        ),
+        execution_mode="rule_only",
+        module_path="strategies.crt.crt_strategy",
+        class_name="CRTStrategy",
+        params=[
+            ParamField(
+                name="target_rr",
+                label="Target R:R",
+                type="float",
+                default=2.0,
+                min=1.0,
+                max=5.0,
+                step=0.5,
+                description="Risk:Reward ratio for take-profit calculation. TP = entry ± risk × R:R.",
+                optimize=True,
+            ),
+            ParamField(
+                name="sweep_buffer_pips",
+                label="Sweep Buffer (pips)",
+                type="float",
+                default=0.0,
+                min=0.0,
+                max=10.0,
+                step=0.5,
+                description=(
+                    "Extra price units beyond range boundary required to confirm a real sweep "
+                    "(filters noise wicks). Raw price units — ~0.5 for XAUUSD, ~0.0003 for FX majors."
+                ),
+                optimize=True,
+            ),
+            ParamField(
+                name="min_range_pips",
+                label="Min Range (pips)",
+                type="float",
+                default=0.0,
+                min=0.0,
+                max=50.0,
+                step=5.0,
+                description="Minimum reference candle range size to consider the setup significant (0 = no filter).",
+                optimize=True,
+            ),
+            ParamField(
+                name="max_candles_after_sweep",
+                label="Max Candles After Sweep",
+                type="int",
+                default=10,
+                min=1,
+                max=30,
+                step=1,
+                description="Maximum primary-TF candles after first sweep to still accept a reclaim entry. Prevents stale signals.",
+                optimize=True,
+            ),
+        ],
+    ),
     "harmonic": StrategyMeta(
         key="harmonic",
         display_name="Harmonic Patterns",
