@@ -122,8 +122,8 @@ async def list_scheduler_jobs() -> list[dict[str, Any]]:
     scheduler = get_scheduler()
     jobs = scheduler.get_jobs()
 
-    # Pre-fetch skip configs for all bindings (skip_hours, skip_weekdays, timezone)
-    skip_configs: dict[int, tuple[list[int], list[int], str]] = {}
+    # Pre-fetch skip configs and strategy names for all bindings
+    skip_configs: dict[int, tuple[list[int], list[int], str, str | None]] = {}
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(AccountStrategy).options(selectinload(AccountStrategy.strategy))
@@ -132,7 +132,8 @@ async def list_scheduler_jobs() -> list[dict[str, Any]]:
             s = binding.strategy
             skip_h: list[int] = json.loads(s.skip_hours or "[]")
             skip_wd: list[int] = json.loads(s.skip_weekdays or "[]")
-            skip_configs[binding.id] = (skip_h, skip_wd, s.skip_hours_timezone or "UTC")
+            strategy_name: str | None = s.name if s else None
+            skip_configs[binding.id] = (skip_h, skip_wd, s.skip_hours_timezone or "UTC", strategy_name)
 
     result_list = []
     for job in jobs:
@@ -141,14 +142,16 @@ async def list_scheduler_jobs() -> list[dict[str, Any]]:
 
         # For strategy jobs advance next_run past any skipped hours/weekdays
         effective_next_run = next_run
-        if next_run and job.id.startswith("strat_"):
+        job_strategy_name: str | None = None
+        if job.id.startswith("strat_"):
             parts = job.id.split("_", 2)
             try:
                 binding_id = int(parts[1])
                 config = skip_configs.get(binding_id)
                 if config:
-                    skip_h, skip_wd, tz_str = config
-                    if skip_h or skip_wd:
+                    skip_h, skip_wd, tz_str, strat_name = config
+                    job_strategy_name = strat_name
+                    if next_run and (skip_h or skip_wd):
                         try:
                             tz = ZoneInfo(tz_str)
                         except ZoneInfoNotFoundError:
@@ -164,6 +167,7 @@ async def list_scheduler_jobs() -> list[dict[str, Any]]:
             {
                 "id": job.id,
                 "name": _job_name(job.id),
+                "strategy_name": job_strategy_name,
                 "trigger_type": trigger_type,
                 "trigger_description": trigger_desc,
                 "next_run_time": effective_next_run.isoformat() if effective_next_run else None,

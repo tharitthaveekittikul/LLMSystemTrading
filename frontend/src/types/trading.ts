@@ -846,6 +846,7 @@ export interface TradeMarker {
 export interface ScheduledJob {
   id: string;
   name: string;
+  strategy_name?: string | null;
   trigger_type: "cron" | "interval" | "date" | "unknown";
   trigger_description: string;
   next_run_time: string | null;

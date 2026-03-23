@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BookOpen } from "lucide-react";
 import type { ScheduledJob } from "@/types/trading";
 
 interface Props {
@@ -95,6 +96,14 @@ export function ScheduledJobCard({ job }: Props) {
 
       {/* Job ID */}
       <p className="mt-1 ml-4 text-[10px] text-muted-foreground font-mono truncate">{job.id}</p>
+
+      {/* Strategy name (strategy jobs only) */}
+      {job.strategy_name && (
+        <div className="mt-1.5 ml-4 flex items-center gap-1.5">
+          <BookOpen className="h-3 w-3 text-teal-400 shrink-0" />
+          <span className="text-xs font-medium text-teal-300 truncate">{job.strategy_name}</span>
+        </div>
+      )}
 
       {/* Schedule description */}
       <p className="mt-3 text-xs text-muted-foreground">{job.trigger_description}</p>
