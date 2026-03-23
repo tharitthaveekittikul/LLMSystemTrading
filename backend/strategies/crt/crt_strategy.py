@@ -106,19 +106,18 @@ class CRTStrategy(RuleOnlyStrategy):
         if has_swept_low and (last_idx - first_sweep_low_idx) > self.max_candles_after_sweep:
             has_swept_low = False
 
-        # ── Reclaim trigger: previous candle outside, current candle inside ──
+        # ── Reclaim trigger: wick swept the boundary, current candle closes back inside ──
+        # CRT sweep = wick (high/low) crosses boundary; close is typically still inside.
+        # We only need: sweep detected + current close reclaims inside the range.
         current = relevant[-1]
-        prev = relevant[-2]
         current_close = current.close
 
         bullish_trigger = (
             has_swept_low
-            and prev.close <= ref_low
             and current_close > ref_low
         )
         bearish_trigger = (
             has_swept_high
-            and prev.close >= ref_high
             and current_close < ref_high
         )
 

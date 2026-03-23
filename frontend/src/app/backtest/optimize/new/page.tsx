@@ -252,9 +252,9 @@ export default function NewOptimizePage() {
       param_grid[row.name] = vals;
     }
 
-    if (computedCombinations > 2000) {
+    if (computedCombinations > 100000) {
       setError(
-        `Too many combinations (${computedCombinations}). Reduce ranges to ≤ 2000.`,
+        `Too many combinations (${computedCombinations}). Reduce ranges to ≤ 100000.`,
       );
       return;
     }
@@ -673,14 +673,14 @@ export default function NewOptimizePage() {
                 Total combinations:{" "}
                 <span
                   className={
-                    computedCombinations > 2000
+                    computedCombinations > 100000
                       ? "text-destructive font-bold"
                       : "font-medium"
                   }
                 >
                   {computedCombinations}
                 </span>
-                {computedCombinations > 2000 && " — reduce ranges (max 2000)"}
+                {computedCombinations > 100000 && " — reduce ranges (max 100000)"}
               </div>
             </section>
           )}

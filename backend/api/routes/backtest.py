@@ -871,10 +871,10 @@ async def submit_optimization(
     total = 1
     for vals in req.param_grid.values():
         total *= len(vals)
-    if total > 2000:
+    if total > 100000:
         raise HTTPException(
             status_code=422,
-            detail=f"param_grid produces {total} combinations (max 2000). Reduce the sweep range.",
+            detail=f"param_grid produces {total} combinations (max 100000). Reduce the sweep range.",
         )
 
     timeframe = req.timeframe or strategy.primary_tf or strategy.timeframe or "M15"
