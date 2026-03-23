@@ -19,6 +19,9 @@ import {
   ChevronRight,
   Filter,
   ShieldCheck,
+  CalendarRange,
+  Cpu,
+  Settings2,
 } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -81,6 +84,24 @@ function fmtEta(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
   return `${(seconds / 3600).toFixed(1)}h`;
+}
+
+function fmtElapsed(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  if (seconds < 3600) return `${m}m ${s}s`;
+  const h = Math.floor(seconds / 3600);
+  const rem = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${rem}m`;
+}
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function dataDays(start: string, end: string): number {
+  return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000);
 }
 
 export default function OptimizeResultPage() {
@@ -215,6 +236,106 @@ export default function OptimizeResultPage() {
           )}
         </div>
 
+        {/* ── Run Config panel ── */}
+        <div className="grid grid-cols-3 gap-3 text-xs">
+          {/* Data Period */}
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+            <div className="flex items-center gap-1.5 font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
+              <CalendarRange className="h-3.5 w-3.5" />
+              Data Period
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">From</span>
+                <span className="font-mono">{fmtDate(run.start_date)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">To</span>
+                <span className="font-mono">{fmtDate(run.end_date)}</span>
+              </div>
+              <div className="flex justify-between border-t pt-1 mt-1">
+                <span className="text-muted-foreground">Duration</span>
+                <span className="font-semibold">{dataDays(run.start_date, run.end_date)} days</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Trade Assumptions */}
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+            <div className="flex items-center gap-1.5 font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
+              <Settings2 className="h-3.5 w-3.5" />
+              Trade Assumptions
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Balance</span>
+                <span className="font-mono">${run.initial_balance.toLocaleString()}</span>
+              </div>
+              {run.risk_pct != null ? (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Risk/trade</span>
+                  <span className="font-mono">{(run.risk_pct * 100).toFixed(1)}%</span>
+                </div>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Volume</span>
+                  <span className="font-mono">{run.volume} lot</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Spread</span>
+                <span className="font-mono">{run.spread_pips} pips</span>
+              </div>
+              {run.commission_per_lot > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Commission</span>
+                  <span className="font-mono">${run.commission_per_lot}/lot</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t pt-1 mt-1">
+                <span className="text-muted-foreground">Execution</span>
+                <span className="font-semibold">{run.execution_mode === "close_price" ? "Close price" : "Intra-candle"}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Run Info */}
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+            <div className="flex items-center gap-1.5 font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
+              <Cpu className="h-3.5 w-3.5" />
+              Run Info
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Workers</span>
+                <span className="font-mono">{run.max_workers}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Combinations</span>
+                <span className="font-mono">{run.total_combinations}</span>
+              </div>
+              {run.elapsed_seconds != null && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Elapsed</span>
+                  <span className="font-mono">{fmtElapsed(run.elapsed_seconds)}</span>
+                </div>
+              )}
+              {run.elapsed_seconds != null && run.completed_combinations > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Avg speed</span>
+                  <span className="font-mono">
+                    ~{(run.elapsed_seconds / run.completed_combinations).toFixed(2)}s/combo
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between border-t pt-1 mt-1">
+                <span className="text-muted-foreground">Optimize for</span>
+                <span className="font-semibold">{METRIC_LABELS[run.optimize_metric] ?? run.optimize_metric}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* ── Best params banner ── */}
         {run.status === "completed" && run.best_params && Object.keys(run.best_params).length > 0 && (
           <div className="border border-green-500/30 bg-green-500/5 rounded-lg p-3 flex items-start gap-2">
@@ -262,12 +383,18 @@ export default function OptimizeResultPage() {
                         {sortKey === m && (sortDesc ? " ↓" : " ↑")}
                       </th>
                     ))}
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">
+                      Net Profit
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">
+                      Final Balance
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingResults ? (
                     <tr>
-                      <td colSpan={paramNames.length + ALL_METRICS.length + 1} className="text-center py-6 text-muted-foreground">
+                      <td colSpan={paramNames.length + ALL_METRICS.length + 4} className="text-center py-6 text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Loading…
                       </td>
                     </tr>
@@ -300,6 +427,16 @@ export default function OptimizeResultPage() {
                             allResults={results}
                           />
                         ))}
+                        <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
+                          {r.metrics.total_return_pct != null
+                            ? `$${(run.initial_balance * r.metrics.total_return_pct / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono tabular-nums font-semibold">
+                          {r.metrics.total_return_pct != null
+                            ? `$${(run.initial_balance * (1 + r.metrics.total_return_pct / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                            : "—"}
+                        </td>
                       </tr>
                     );
                   })}

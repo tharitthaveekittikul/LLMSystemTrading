@@ -818,6 +818,8 @@ export interface OptimizationRunSummary {
   total_combinations: number;
   completed_combinations: number;
   started_at: string | null;
+  completed_at: string | null;
+  elapsed_seconds: number | null;
   estimated_seconds_remaining: number | null;
   error_message: string | null;
   best_params: Record<string, unknown> | null;

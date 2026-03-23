@@ -783,6 +783,8 @@ class OptimizationRunOut(BaseModel):
     total_combinations: int
     completed_combinations: int
     started_at: str | None
+    completed_at: str | None
+    elapsed_seconds: float | None
     estimated_seconds_remaining: float | None
     error_message: str | None
     # results omitted here — use GET /optimize/{id}/results for paginated access
@@ -793,6 +795,12 @@ class OptimizationRunOut(BaseModel):
 
     @classmethod
     def from_orm(cls, r: OptimizationRun) -> "OptimizationRunOut":
+        # Compute elapsed time
+        elapsed_seconds: float | None = None
+        if r.started_at:
+            end = r.completed_at if r.completed_at else datetime.now(UTC)
+            elapsed_seconds = (end - r.started_at).total_seconds()
+
         # Compute ETA from started_at + rate of completed combos
         eta: float | None = None
         if (
@@ -800,9 +808,9 @@ class OptimizationRunOut(BaseModel):
             and r.status == "running"
             and r.completed_combinations > 0
             and r.total_combinations > r.completed_combinations
+            and elapsed_seconds
         ):
-            elapsed = (datetime.now(UTC) - r.started_at).total_seconds()
-            rate = r.completed_combinations / elapsed if elapsed > 0 else None
+            rate = r.completed_combinations / elapsed_seconds if elapsed_seconds > 0 else None
             if rate:
                 remaining = r.total_combinations - r.completed_combinations
                 eta = remaining / rate
@@ -829,6 +837,8 @@ class OptimizationRunOut(BaseModel):
             total_combinations=r.total_combinations,
             completed_combinations=r.completed_combinations,
             started_at=r.started_at.isoformat() if r.started_at else None,
+            completed_at=r.completed_at.isoformat() if r.completed_at else None,
+            elapsed_seconds=elapsed_seconds,
             estimated_seconds_remaining=eta,
             error_message=r.error_message,
             best_params=json.loads(r.best_params or "{}") if r.best_params else None,

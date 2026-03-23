@@ -216,6 +216,7 @@ class OptimizationService:
                 opt.results = json.dumps(results)
                 opt.best_params = json.dumps(results[0]["params"]) if results else "{}"
                 opt.status = "completed"
+                opt.completed_at = datetime.now(UTC)
                 opt.progress_pct = 100
                 opt.completed_combinations = total
                 await db.commit()

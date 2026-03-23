@@ -478,6 +478,7 @@ class OptimizationRun(Base):
     total_combinations: Mapped[int] = mapped_column(Integer, default=0)
     completed_combinations: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     results: Mapped[str | None] = mapped_column(Text, nullable=True)         # JSON ranked list
     best_params: Mapped[str | None] = mapped_column(Text, nullable=True)     # JSON top params
