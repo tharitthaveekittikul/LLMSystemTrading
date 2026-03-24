@@ -126,6 +126,13 @@ class OptimizationService:
                 param_names = list(param_grid.keys())
                 param_values = [param_grid[k] for k in param_names]
                 combinations = list(itertools.product(*param_values))
+
+                # Filter logically invalid EMA combinations: ema_fast must be < ema_slow
+                if "ema_fast" in param_names and "ema_slow" in param_names:
+                    fi = param_names.index("ema_fast")
+                    si = param_names.index("ema_slow")
+                    combinations = [c for c in combinations if c[fi] < c[si]]
+
                 total = len(combinations)
 
                 opt.total_combinations = total

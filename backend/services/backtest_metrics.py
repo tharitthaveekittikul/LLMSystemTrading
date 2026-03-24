@@ -63,7 +63,7 @@ def compute_metrics(trades: list[dict], initial_balance: float) -> dict:
         dd = peak - running
         if dd > max_dd_abs:
             max_dd_abs = dd
-    max_drawdown_pct = (max_dd_abs / initial_balance) * 100 if initial_balance > 0 else 0.0
+    max_drawdown_pct = (max_dd_abs / peak) * 100 if peak > 0 else 0.0
 
     # Total return %
     total_return = sum(profits)

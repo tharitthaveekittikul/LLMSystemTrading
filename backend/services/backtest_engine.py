@@ -170,7 +170,7 @@ class BacktestEngine:
 
             # ── 1. Check open position SL/TP ──────────────────────────────────
             if open_position is not None:
-                closed, partial_profit_event = _check_exit(open_position, candle, mode, tp_partial_close_ratio)
+                closed, partial_profit_event = _check_exit(open_position, candle, mode, tp_partial_close_ratio, candle_spread_price)
 
                 if partial_profit_event:
                     # Scale out: close a portion of the trade and adjust SL
@@ -291,7 +291,7 @@ class BacktestEngine:
                     from strategies.base_strategy import direction_from_action
                     actual_dir = direction_from_action(signal.get("action"))
 
-                    fill_price = _fill_price(signal, candle, candles, i, mode, candle_spread_price)
+                    fill_price = _fill_price(signal, candles, i, candle_spread_price)
                     if fill_price is not None:
                         # Guard 1: SL/TP must bracket the fill price on the correct sides.
                         # Skips signals where strategy entry (D point) diverged too far
@@ -415,21 +415,24 @@ def _spread_to_price(spread_pts: int, symbol: str) -> float:
     return spread_pts * 0.00001
 
 
-def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_ratio: float = 0.5) -> tuple[dict | None, dict | None]:
+def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_ratio: float = 0.5, spread: float = 0.0) -> tuple[dict | None, dict | None]:
     """Return (fully_closed_info, partial_closed_info) tuples."""
     direction = pos.direction
     sl = pos.stop_loss
     tp = pos.take_profit
     tp_levels = pos.take_profit_levels
     tp_idx = pos.tp_level_idx
-    
+
     # We dynamically switch intended TP to the active TP level
     active_tp = tp
     if tp_levels and tp_idx < len(tp_levels):
         active_tp = tp_levels[tp_idx]
-        
+
+    # SL fills slightly beyond the SL level to simulate gap/slippage
+    sl_fill = sl - spread if direction == "BUY" else sl + spread
+
     t = candle["time"]
-    
+
     fully_closed = None
     partial_closed = None
 
@@ -437,7 +440,7 @@ def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_rat
         price = candle["close"]
         if direction == "BUY":
             if price <= sl:
-                fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+                fully_closed = {"exit_time": t, "exit_price": sl_fill, "exit_reason": "sl"}
             elif price >= active_tp:
                 if tp_levels and tp_idx < len(tp_levels) - 1:
                     # Partial TP reached
@@ -447,7 +450,7 @@ def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_rat
                     fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
         else:  # SELL
             if price >= sl:
-                fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+                fully_closed = {"exit_time": t, "exit_price": sl_fill, "exit_reason": "sl"}
             elif price <= active_tp:
                 if tp_levels and tp_idx < len(tp_levels) - 1:
                     # Partial TP reached
@@ -463,7 +466,7 @@ def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_rat
             tp_hit = high >= active_tp
             if sl_hit and tp_hit:
                 if abs(open_p - sl) <= abs(open_p - active_tp):
-                    fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+                    fully_closed = {"exit_time": t, "exit_price": sl_fill, "exit_reason": "sl"}
                 else:
                     if tp_levels and tp_idx < len(tp_levels) - 1:
                         partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
@@ -472,7 +475,7 @@ def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_rat
                     else:
                         fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
             elif sl_hit:
-                fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+                fully_closed = {"exit_time": t, "exit_price": sl_fill, "exit_reason": "sl"}
             elif tp_hit:
                 if tp_levels and tp_idx < len(tp_levels) - 1:
                     partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
@@ -484,7 +487,7 @@ def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_rat
             tp_hit = low <= active_tp
             if sl_hit and tp_hit:
                 if abs(open_p - sl) <= abs(open_p - active_tp):
-                    fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+                    fully_closed = {"exit_time": t, "exit_price": sl_fill, "exit_reason": "sl"}
                 else:
                     if tp_levels and tp_idx < len(tp_levels) - 1:
                         partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
@@ -492,7 +495,7 @@ def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_rat
                     else:
                         fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
             elif sl_hit:
-                fully_closed = {"exit_time": t, "exit_price": sl, "exit_reason": "sl"}
+                fully_closed = {"exit_time": t, "exit_price": sl_fill, "exit_reason": "sl"}
             elif tp_hit:
                 if tp_levels and tp_idx < len(tp_levels) - 1:
                     partial_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": f"tp{tp_idx+1}", "volume_closed": pos.volume * tp_partial_close_ratio, "new_sl": pos.entry_price}
@@ -504,7 +507,7 @@ def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_rat
 
 
 def _fill_price(
-    signal: dict, candle: dict, candles: list, i: int, mode: str, spread: float
+    signal: dict, candles: list, i: int, spread: float
 ) -> float | None:
     """Determine fill price based on execution mode and order type."""
     action = signal["action"]
@@ -516,10 +519,7 @@ def _fill_price(
     if action in {"BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP"}:
         return signal.get("entry")
 
-    if mode == "close_price":
-        return candle["close"]
-        
-    # intra_candle: fill at next open + spread (for BUY) or - spread (for SELL)
+    # intra_candle / close_price: fill at next open + spread (no lookahead)
     if i + 1 < len(candles):
         next_open = candles[i + 1]["open"]
         return next_open + spread if action == "BUY" else next_open - spread
