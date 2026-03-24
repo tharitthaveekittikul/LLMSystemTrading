@@ -314,7 +314,17 @@ class AITradingService:
                 if candles is None:
                     ohlcv_source = "mt5"
                     logger.info("OHLCV cache miss | account_id=%s symbol=%s tf=%s", account_id, symbol, tf_upper)
-                    candles = await bridge.get_rates(mt5_symbol, tf_int, 250)
+                    for _attempt in range(2):
+                        candles = await bridge.get_rates(mt5_symbol, tf_int, 250)
+                        if candles:
+                            break
+                        if _attempt == 0:
+                            logger.warning(
+                                "MT5 returned no candles (attempt 1) — retrying in 1 s | symbol=%s tf=%s",
+                                mt5_symbol, tf_upper,
+                            )
+                            import asyncio as _asyncio
+                            await _asyncio.sleep(1)
                     tick = await bridge.get_tick(mt5_symbol)
 
         except HTTPException:

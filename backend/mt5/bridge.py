@@ -226,9 +226,13 @@ class MT5Bridge:
         rates = await self._run(mt5.copy_rates_from_pos, symbol, timeframe, 0, count)
         if rates is None:
             # symbol_select may need a moment to populate the buffer after first activation;
-            # retry once with a short delay before giving up.
+            # retry with back-off before giving up.
             logger.warning("copy_rates_from_pos(%s, tf=%s) returned None — retrying after 0.5 s", symbol, timeframe)
             await asyncio.sleep(0.5)
+            rates = await self._run(mt5.copy_rates_from_pos, symbol, timeframe, 0, count)
+        if rates is None:
+            logger.warning("copy_rates_from_pos(%s, tf=%s) still None — retrying after 1.5 s", symbol, timeframe)
+            await asyncio.sleep(1.5)
             rates = await self._run(mt5.copy_rates_from_pos, symbol, timeframe, 0, count)
         logger.debug("copy_rates_from_pos(%s, tf=%s, count=%s) -> %s rows", symbol, timeframe, count, len(rates) if rates is not None else "None")
         if rates is None:

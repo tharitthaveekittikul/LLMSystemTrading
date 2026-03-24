@@ -278,12 +278,18 @@ class LLMOnlyStrategy(AbstractStrategy):
         return "\n".join(parts)
 
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:
-        ctx = self.build_context(market_data)
         llm = _get_llm_override(self._llm_provider, self._llm_model)
+        tf_data = market_data.timeframes.get(self.primary_tf)
+        candles_raw = [
+            vars(c) for c in tf_data.candles
+        ] if tf_data and tf_data.candles else []
         result = await analyze_market(
             symbol=market_data.symbol,
-            context=ctx,
-            system_prompt=self.system_prompt(),
+            timeframe=self.primary_tf,
+            current_price=market_data.current_price or (candles_raw[-1]["close"] if candles_raw else 0.0),
+            indicators=market_data.indicators or {},
+            ohlcv=candles_raw,
+            system_prompt_override=self.system_prompt(),
             llm_override=llm,
         )
         return StrategyResult(
@@ -330,10 +336,17 @@ class RuleThenLLMStrategy(AbstractStrategy):
         if self._skip_llm:
             return self.fallback_rule_signal(market_data) or _HOLD
         llm = _get_llm_override(self._llm_provider, self._llm_model)
+        tf_data = market_data.timeframes.get(self.primary_tf)
+        candles_raw = [
+            vars(c) for c in tf_data.candles
+        ] if tf_data and tf_data.candles else []
         result = await analyze_market(
             symbol=market_data.symbol,
-            context=str(market_data.indicators),
-            system_prompt=self.system_prompt(),
+            timeframe=self.primary_tf,
+            current_price=market_data.current_price or (candles_raw[-1]["close"] if candles_raw else 0.0),
+            indicators=market_data.indicators or {},
+            ohlcv=candles_raw,
+            system_prompt_override=self.system_prompt(),
             llm_override=llm,
         )
         return StrategyResult(
@@ -415,12 +428,19 @@ class MultiAgentStrategy(AbstractStrategy):
         import asyncio
 
         llm = _get_llm_override(self._llm_provider, self._llm_model)
+        tf_data = market_data.timeframes.get(self.primary_tf)
+        candles_raw = [
+            vars(c) for c in tf_data.candles
+        ] if tf_data and tf_data.candles else []
         rule_result, llm_result = await asyncio.gather(
             self._get_rule_result(market_data),
             analyze_market(
                 symbol=market_data.symbol,
-                context=str(market_data.indicators),
-                system_prompt=self.system_prompt(),
+                timeframe=self.primary_tf,
+                current_price=market_data.current_price or (candles_raw[-1]["close"] if candles_raw else 0.0),
+                indicators=market_data.indicators or {},
+                ohlcv=candles_raw,
+                system_prompt_override=self.system_prompt(),
                 llm_override=llm,
             ),
         )

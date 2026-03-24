@@ -67,6 +67,8 @@ async def test_analyze_hold_signal_no_order():
         patch("services.ai_trading.decrypt", return_value="password"),
     ):
         mock_bridge = AsyncMock()
+        mock_bridge.get_broker_symbol.return_value = "EURUSD"
+        mock_bridge.is_market_open.return_value = (True, "full")
         mock_bridge.get_rates.return_value = [
             {"time": "t", "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0, "tick_volume": 100}
         ] * 50
