@@ -19,19 +19,30 @@ import { optimizationApi, API_BASE_URL } from "@/lib/api";
 import type { StrategyRegistryEntry } from "@/types/trading";
 
 /** Parse MT5 tab-separated CSV to extract start/end date strings (YYYY-MM-DD). */
-function parseMt5CsvDates(file: File): Promise<{ startDate: string; endDate: string } | null> {
+function parseMt5CsvDates(
+  file: File,
+): Promise<{ startDate: string; endDate: string } | null> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
-        const dataLines = text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("<"));
-        if (dataLines.length === 0) { resolve(null); return; }
-        const toDate = (line: string) => line.split("\t")[0]?.replace(/\./g, "-") ?? null;
+        const dataLines = text
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l && !l.startsWith("<"));
+        if (dataLines.length === 0) {
+          resolve(null);
+          return;
+        }
+        const toDate = (line: string) =>
+          line.split("\t")[0]?.replace(/\./g, "-") ?? null;
         const start = toDate(dataLines[0]);
         const end = toDate(dataLines[dataLines.length - 1]);
         resolve(start && end ? { startDate: start, endDate: end } : null);
-      } catch { resolve(null); }
+      } catch {
+        resolve(null);
+      }
     };
     reader.onerror = () => resolve(null);
     reader.readAsText(file);
@@ -133,7 +144,9 @@ export default function NewOptimizePage() {
 
   const [skipLlm, setSkipLlm] = useState(true);
   const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [contextCsvFiles, setContextCsvFiles] = useState<Record<string, File | null>>({});
+  const [contextCsvFiles, setContextCsvFiles] = useState<
+    Record<string, File | null>
+  >({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -273,7 +286,9 @@ export default function NewOptimizePage() {
 
       // Upload context TF CSVs if provided
       let csvUploads: Record<string, string> | undefined;
-      const ctxEntries = Object.entries(contextCsvFiles).filter(([, f]) => f != null);
+      const ctxEntries = Object.entries(contextCsvFiles).filter(
+        ([, f]) => f != null,
+      );
       if (ctxEntries.length > 0) {
         csvUploads = {};
         for (const [tf, file] of ctxEntries) {
@@ -684,7 +699,8 @@ export default function NewOptimizePage() {
                 >
                   {computedCombinations}
                 </span>
-                {computedCombinations > 100000 && " — reduce ranges (max 100000)"}
+                {computedCombinations > 100000 &&
+                  " — reduce ranges (max 100000)"}
               </div>
             </section>
           )}
@@ -696,29 +712,34 @@ export default function NewOptimizePage() {
           )}
 
           {/* ── Advanced / LLM ── */}
-          {selectedStrategy && selectedStrategy.execution_mode !== "rule_only" && (
-            <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
-                Advanced
-              </h2>
-              <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-                <div>
-                  <p className="text-sm font-medium">Rule-only mode (skip LLM)</p>
-                  <p className="text-xs text-muted-foreground">
-                    Recommended for optimization — runs rule filter only at zero API cost.
-                    Run one full backtest with LLM after finding best params.
-                  </p>
+          {selectedStrategy &&
+            selectedStrategy.execution_mode !== "rule_only" && (
+              <section className="space-y-3">
+                <h2 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
+                  Advanced
+                </h2>
+                <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-medium">
+                      Rule-only mode (skip LLM)
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Recommended for optimization — runs rule filter only at
+                      zero API cost. Run one full backtest with LLM after
+                      finding best params.
+                    </p>
+                  </div>
+                  <Switch checked={skipLlm} onCheckedChange={setSkipLlm} />
                 </div>
-                <Switch checked={skipLlm} onCheckedChange={setSkipLlm} />
-              </div>
-              {!skipLlm && (
-                <p className="text-xs text-destructive">
-                  ⚠️ LLM calls are enabled — each combination will incur API cost.
-                  With {computedCombinations} combinations this could be expensive.
-                </p>
-              )}
-            </section>
-          )}
+                {!skipLlm && (
+                  <p className="text-xs text-destructive">
+                    ⚠️ LLM calls are enabled — each combination will incur API
+                    cost. With {computedCombinations} combinations this could be
+                    expensive.
+                  </p>
+                )}
+              </section>
+            )}
 
           {error && <p className="text-xs text-destructive">{error}</p>}
 

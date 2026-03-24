@@ -16,19 +16,30 @@ import { backtestApi } from "@/lib/api";
 import type { BacktestRunRequest, BacktestRunSummary } from "@/types/trading";
 
 /** Parse MT5 tab-separated CSV to extract start/end date strings (YYYY-MM-DD). */
-function parseMt5CsvDates(file: File): Promise<{ startDate: string; endDate: string } | null> {
+function parseMt5CsvDates(
+  file: File,
+): Promise<{ startDate: string; endDate: string } | null> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
-        const dataLines = text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("<"));
-        if (dataLines.length === 0) { resolve(null); return; }
-        const toDate = (line: string) => line.split("\t")[0]?.replace(/\./g, "-") ?? null;
+        const dataLines = text
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l && !l.startsWith("<"));
+        if (dataLines.length === 0) {
+          resolve(null);
+          return;
+        }
+        const toDate = (line: string) =>
+          line.split("\t")[0]?.replace(/\./g, "-") ?? null;
         const start = toDate(dataLines[0]);
         const end = toDate(dataLines[dataLines.length - 1]);
         resolve(start && end ? { startDate: start, endDate: end } : null);
-      } catch { resolve(null); }
+      } catch {
+        resolve(null);
+      }
     };
     reader.onerror = () => resolve(null);
     reader.readAsText(file);
@@ -50,8 +61,6 @@ interface Props {
   onRunCreated: (run: BacktestRunSummary) => void;
 }
 
-
-
 export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
   const [strategyId, setStrategyId] = useState<string>("");
   const [symbol, setSymbol] = useState("XAUUSD.s");
@@ -64,14 +73,18 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
   );
   const [maxLlm, setMaxLlm] = useState("10");
   const [volume, setVolume] = useState("0.01");
-  const [sizingMode, setSizingMode] = useState<"fixed" | "risk_pct">("fixed");
+  const [sizingMode, setSizingMode] = useState<"fixed" | "risk_pct">(
+    "risk_pct",
+  );
   const [riskPct, setRiskPct] = useState("1");
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvAvgSpread, setCsvAvgSpread] = useState<number | null>(null);
-  const [contextCsvFiles, setContextCsvFiles] = useState<Record<string, File | null>>({});
+  const [contextCsvFiles, setContextCsvFiles] = useState<
+    Record<string, File | null>
+  >({});
   const [commissionPerLot, setCommissionPerLot] = useState("0");
   const [tpPartialCloseRatio, setTpPartialCloseRatio] = useState("0.5");
-  const [skipLlm, setSkipLlm] = useState(false);
+  const [skipLlm, setSkipLlm] = useState(true);
 
   const selectedStrategy = strategies.find((s) => String(s.id) === strategyId);
   // Exclude primary TF from context list (it's already the main CSV)
@@ -99,7 +112,9 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
 
       // Upload context TF CSVs if provided
       let csvUploads: Record<string, string> | undefined;
-      const ctxEntries = Object.entries(contextCsvFiles).filter(([, f]) => f != null);
+      const ctxEntries = Object.entries(contextCsvFiles).filter(
+        ([, f]) => f != null,
+      );
       if (ctxEntries.length > 0) {
         csvUploads = {};
         for (const [tf, file] of ctxEntries) {
@@ -236,7 +251,9 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
         <div className="flex items-center justify-between rounded border px-3 py-2">
           <div>
             <p className="text-xs font-medium">Rule-only mode (skip LLM)</p>
-            <p className="text-[10px] text-muted-foreground">Runs rule filter only — no API cost</p>
+            <p className="text-[10px] text-muted-foreground">
+              Runs rule filter only — no API cost
+            </p>
           </div>
           <Switch checked={skipLlm} onCheckedChange={setSkipLlm} />
         </div>
@@ -262,8 +279,12 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="fixed" className="text-xs">Fixed Lot</SelectItem>
-              <SelectItem value="risk_pct" className="text-xs">% Risk / Trade</SelectItem>
+              <SelectItem value="fixed" className="text-xs">
+                Fixed Lot
+              </SelectItem>
+              <SelectItem value="risk_pct" className="text-xs">
+                % Risk / Trade
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -327,7 +348,9 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
       <div className="space-y-1">
         <Label className="text-xs">
           {selectedStrategy ? `${selectedStrategy.primary_tf} CSV` : "CSV Data"}{" "}
-          <span className="text-muted-foreground">(optional — overrides MT5)</span>
+          <span className="text-muted-foreground">
+            (optional — overrides MT5)
+          </span>
         </Label>
         <Input
           className="h-8 text-xs cursor-pointer"
@@ -359,7 +382,10 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
           </p>
           {contextTfs.map((tf) => (
             <div key={tf} className="space-y-1">
-              <Label className="text-xs">{tf} CSV <span className="text-muted-foreground">(optional)</span></Label>
+              <Label className="text-xs">
+                {tf} CSV{" "}
+                <span className="text-muted-foreground">(optional)</span>
+              </Label>
               <Input
                 className="h-8 text-xs cursor-pointer"
                 type="file"
