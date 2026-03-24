@@ -195,6 +195,102 @@ REGISTRY: dict[str, StrategyMeta] = {
             ),
         ],
     ),
+    "orb": StrategyMeta(
+        key="orb",
+        display_name="Opening Range Breakout (ORB)",
+        description=(
+            "Session-based range breakout for XAUUSD H1. "
+            "Accumulates the daily opening range after market open, waits for N candles "
+            "to consolidate inside (range finalisation), then enters on a close-beyond-range "
+            "breakout. Optional MA filter. Zero LLM cost. "
+            "Translated from GOLD_ORB MQL5 EA."
+        ),
+        execution_mode="rule_only",
+        module_path="strategies.orb.orb_strategy",
+        class_name="ORBStrategy",
+        params=[
+            ParamField(
+                name="start_hour",
+                label="Session Start Hour (server)",
+                type="int",
+                default=1,
+                min=0,
+                max=6,
+                step=1,
+                description=(
+                    "Server-time hour when the trading session opens. "
+                    "For XAUUSD gold market typically opens at 01:00 server time."
+                ),
+                optimize=True,
+            ),
+            ParamField(
+                name="candle_composition",
+                label="Candle Composition",
+                type="int",
+                default=3,
+                min=2,
+                max=8,
+                step=1,
+                description=(
+                    "Minimum consecutive H1 candles that must stay inside the range "
+                    "without extending it before the range is considered final. "
+                    "Higher = stricter range confirmation, fewer but higher-quality signals."
+                ),
+                optimize=True,
+            ),
+            ParamField(
+                name="target_rr",
+                label="Target R:R",
+                type="float",
+                default=3.0,
+                min=1.5,
+                max=5.0,
+                step=0.5,
+                description=(
+                    "Risk:Reward ratio for take-profit. TP = entry ± risk × R:R. "
+                    "Default 3.0 matches the original EA's TP=1200/SL=400 ratio."
+                ),
+                optimize=True,
+            ),
+            ParamField(
+                name="use_ma_filter",
+                label="Use MA Filter",
+                type="bool",
+                default=True,
+                description=(
+                    "Apply SMA filter: BUY only if close > SMA, SELL only if close < SMA. "
+                    "Mirrors the MA100 filter in the original GOLD_ORB EA."
+                ),
+                optimize=False,
+            ),
+            ParamField(
+                name="ma_period",
+                label="MA Period",
+                type="int",
+                default=100,
+                min=20,
+                max=200,
+                step=20,
+                description="Period for the Simple Moving Average trend filter.",
+                optimize=True,
+            ),
+            ParamField(
+                name="min_range_pts",
+                label="Min Range (pts)",
+                type="float",
+                default=0.0,
+                min=0.0,
+                max=200.0,
+                step=20.0,
+                description=(
+                    "Minimum session range size in price units to accept the setup. "
+                    "Filters sessions with very tight, low-significance ranges. "
+                    "~20–50 for XAUUSD, 0 = no filter."
+                ),
+                optimize=True,
+            ),
+        ],
+    ),
 }
 
 
