@@ -42,6 +42,8 @@ class StrategyCreate(BaseModel):
     skip_hours: list[int] = []
     skip_hours_timezone: str = "Asia/Bangkok"
     skip_weekdays: list[int] = []
+    llm_provider: str | None = None
+    llm_model: str | None = None
 
 
 class StrategyUpdate(BaseModel):
@@ -69,6 +71,8 @@ class StrategyUpdate(BaseModel):
     skip_hours: list[int] | None = None
     skip_hours_timezone: str | None = None
     skip_weekdays: list[int] | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
 
 
 class StrategyResponse(BaseModel):
@@ -97,6 +101,8 @@ class StrategyResponse(BaseModel):
     skip_hours: list[int]
     skip_hours_timezone: str | None
     skip_weekdays: list[int]
+    llm_provider: str | None
+    llm_model: str | None
     binding_count: int = 0
     model_config = {"from_attributes": True}
 
@@ -144,6 +150,8 @@ def _to_response(strategy: Strategy, binding_count: int = 0) -> StrategyResponse
         skip_hours=json.loads(strategy.skip_hours) if strategy.skip_hours else [],
         skip_hours_timezone=strategy.skip_hours_timezone,
         skip_weekdays=json.loads(strategy.skip_weekdays) if strategy.skip_weekdays else [],
+        llm_provider=strategy.llm_provider,
+        llm_model=strategy.llm_model,
         binding_count=binding_count,
     )
 
@@ -216,6 +224,8 @@ async def create_strategy(body: StrategyCreate, db: AsyncSession = Depends(get_d
         skip_hours=json.dumps(body.skip_hours) if body.skip_hours else None,
         skip_hours_timezone=body.skip_hours_timezone or None,
         skip_weekdays=json.dumps(body.skip_weekdays) if body.skip_weekdays else None,
+        llm_provider=body.llm_provider or None,
+        llm_model=body.llm_model or None,
     )
     db.add(strategy)
     try:

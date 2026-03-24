@@ -291,6 +291,89 @@ REGISTRY: dict[str, StrategyMeta] = {
             ),
         ],
     ),
+    "signal_score": StrategyMeta(
+        key="signal_score",
+        display_name="Signal Score (Nyao)",
+        description=(
+            "Weighted indicator scoring (EMA + RSI + ATR) ported from Nyao Scalper MQL5 EA. "
+            "Rule pre-filter computes a 0–10 confidence score; LLM validates triggered signals. "
+            "Designed for XAUUSD M15/H1. Use skip_llm=True for cost-free optimization sweeps."
+        ),
+        execution_mode="rule_then_llm",
+        module_path="strategies.signal_score.signal_score_strategy",
+        class_name="SignalScoreStrategy",
+        params=[
+            ParamField(
+                name="ema_fast",
+                label="EMA Fast Period",
+                type="int",
+                default=20,
+                min=5,
+                max=50,
+                step=5,
+                description="Fast EMA period for trend alignment. Lower = more responsive.",
+                optimize=True,
+            ),
+            ParamField(
+                name="ema_slow",
+                label="EMA Slow Period",
+                type="int",
+                default=50,
+                min=20,
+                max=200,
+                step=10,
+                description="Slow EMA period for trend direction. Must be > ema_fast.",
+                optimize=True,
+            ),
+            ParamField(
+                name="rsi_period",
+                label="RSI Period",
+                type="int",
+                default=14,
+                min=7,
+                max=21,
+                step=7,
+                description="RSI period for momentum scoring.",
+                optimize=True,
+            ),
+            ParamField(
+                name="atr_period",
+                label="ATR Period",
+                type="int",
+                default=14,
+                min=7,
+                max=21,
+                step=7,
+                description="ATR period for volatility scoring and SL/TP calculation.",
+                optimize=True,
+            ),
+            ParamField(
+                name="min_score",
+                label="Min Signal Score",
+                type="float",
+                default=5.5,
+                min=4.0,
+                max=8.0,
+                step=0.5,
+                description=(
+                    "Minimum weighted score (0–10) to trigger a signal. "
+                    "Higher = fewer but higher-conviction entries."
+                ),
+                optimize=True,
+            ),
+            ParamField(
+                name="target_rr",
+                label="Target R:R",
+                type="float",
+                default=2.0,
+                min=1.5,
+                max=5.0,
+                step=0.5,
+                description="Risk:Reward ratio for take-profit. TP = entry ± ATR × R:R.",
+                optimize=True,
+            ),
+        ],
+    ),
 }
 
 

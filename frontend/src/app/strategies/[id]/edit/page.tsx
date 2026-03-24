@@ -100,6 +100,8 @@ export default function EditStrategyPage() {
           skip_hours: s.skip_hours ?? [],
           skip_hours_timezone: s.skip_hours_timezone ?? "Asia/Bangkok",
           skip_weekdays: s.skip_weekdays ?? [],
+          llm_provider: s.llm_provider ?? undefined,
+          llm_model: s.llm_model ?? undefined,
         });
         if (s.strategy_params) {
           setStrategyParamValues(s.strategy_params);
@@ -118,6 +120,9 @@ export default function EditStrategyPage() {
 
   const execMode = (form.execution_mode ?? "llm_only") as ExecMode;
   const selectedEntry = registryEntries.find((e) => e.key === form.strategy_key) ?? null;
+  const isLlmMode = execMode !== "rule_only";
+  const canNext =
+    step !== 2 || !(isLlmMode && form.llm_provider && !form.llm_model?.trim());
 
   function selectRegistryEntry(key: string) {
     const entry = registryEntries.find((e) => e.key === key);
@@ -177,6 +182,8 @@ export default function EditStrategyPage() {
         skip_hours: form.skip_hours,
         skip_hours_timezone: form.skip_hours_timezone ?? undefined,
         skip_weekdays: form.skip_weekdays,
+        llm_provider: form.llm_provider ?? undefined,
+        llm_model: form.llm_model ?? undefined,
       });
       router.push(`/strategies/${strategyId}`);
     } catch (err) {
@@ -639,6 +646,67 @@ export default function EditStrategyPage() {
                   id="news_filter"
                 />
               </div>
+              {/* LLM Provider override (only for LLM-capable modes) */}
+              {isLlmMode && (
+                <div className="space-y-3 rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">LLM Provider Override</p>
+                    <p className="text-xs text-muted-foreground">
+                      Optional. Override the global provider for this strategy. Leave blank to use the server default.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Provider</Label>
+                    <div className="flex gap-2 flex-wrap">
+                      {(["", "openai", "gemini", "anthropic", "openrouter"] as const).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              llm_provider: p || undefined,
+                              llm_model: p ? f.llm_model : undefined,
+                            }))
+                          }
+                          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                            (form.llm_provider ?? "") === p
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background hover:bg-muted"
+                          }`}
+                        >
+                          {p === "" ? "Default" : p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {form.llm_provider && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">
+                        Model Name <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        value={form.llm_model ?? ""}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, llm_model: e.target.value || undefined }))
+                        }
+                        placeholder={
+                          form.llm_provider === "openai" ? "e.g. gpt-4o" :
+                          form.llm_provider === "anthropic" ? "e.g. claude-sonnet-4-6" :
+                          form.llm_provider === "gemini" ? "e.g. gemini-1.5-pro" :
+                          "e.g. openai/gpt-4o"
+                        }
+                      />
+                      {form.llm_provider && !form.llm_model?.trim() && (
+                        <p className="text-xs text-destructive">
+                          Model name is required when a provider is selected.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center justify-between py-2 border-t">
                 <div>
                   <p className="text-sm font-medium">Position Maintenance</p>
@@ -713,7 +781,7 @@ export default function EditStrategyPage() {
           </div>
           <div>
             {step < 3 ? (
-              <Button onClick={() => setStep((s) => s + 1)}>Next</Button>
+              <Button onClick={() => setStep((s) => s + 1)} disabled={!canNext}>Next</Button>
             ) : (
               <Button
                 onClick={handleSubmit}

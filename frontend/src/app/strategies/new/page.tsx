@@ -36,6 +36,7 @@ export default function NewStrategyPage() {
   const [registryEntries, setRegistryEntries] = useState<StrategyRegistryEntry[]>([]);
   const [strategyParamValues, setStrategyParamValues] = useState<Record<string, unknown>>({});
   const [showCustomClass, setShowCustomClass] = useState(false);
+  const [llmProviderError, setLlmProviderError] = useState<string | null>(null);
   const [form, setForm] = useState<CreateStrategyPayload>({
     name: "",
     execution_mode: "llm_only",
@@ -48,6 +49,8 @@ export default function NewStrategyPage() {
     skip_hours: [],
     skip_hours_timezone: "Asia/Bangkok",
     skip_weekdays: [],
+    llm_provider: undefined,
+    llm_model: undefined,
   });
 
   useEffect(() => {
@@ -112,12 +115,16 @@ export default function NewStrategyPage() {
 
   const selectedEntry = registryEntries.find((e) => e.key === form.strategy_key) ?? null;
 
+  const isLlmMode = form.execution_mode !== "rule_only";
+
   const canNext =
     step === 0
       ? form.name.trim().length > 0
       : step === 1
         ? form.symbols.length > 0
-        : true;
+        : step === 2
+          ? !(isLlmMode && form.llm_provider && !form.llm_model?.trim())
+          : true;
 
   return (
     <SidebarInset>
@@ -541,6 +548,67 @@ export default function NewStrategyPage() {
                   onCheckedChange={(v) => setForm((f) => ({ ...f, news_filter: v }))}
                 />
               </div>
+
+              {/* LLM Provider override (only for LLM-capable modes) */}
+              {isLlmMode && (
+                <div className="space-y-3 rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">LLM Provider Override</p>
+                    <p className="text-xs text-muted-foreground">
+                      Optional. Override the global provider for this strategy. Leave blank to use the server default.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Provider</Label>
+                    <div className="flex gap-2 flex-wrap">
+                      {(["", "openai", "gemini", "anthropic", "openrouter"] as const).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              llm_provider: p || undefined,
+                              llm_model: p ? f.llm_model : undefined,
+                            }))
+                          }
+                          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                            (form.llm_provider ?? "") === p
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background hover:bg-muted"
+                          }`}
+                        >
+                          {p === "" ? "Default" : p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {form.llm_provider && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">
+                        Model Name <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        value={form.llm_model ?? ""}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, llm_model: e.target.value || undefined }))
+                        }
+                        placeholder={
+                          form.llm_provider === "openai" ? "e.g. gpt-4o" :
+                          form.llm_provider === "anthropic" ? "e.g. claude-sonnet-4-6" :
+                          form.llm_provider === "gemini" ? "e.g. gemini-1.5-pro" :
+                          "e.g. openai/gpt-4o"
+                        }
+                      />
+                      {form.llm_provider && !form.llm_model?.trim() && (
+                        <p className="text-xs text-destructive">
+                          Model name is required when a provider is selected.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 

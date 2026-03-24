@@ -107,6 +107,18 @@ async def analyze_market(**kwargs):  # type: ignore[return]
     return await _analyze_market(**kwargs)
 
 
+def _get_llm_override(provider: str | None, model: str | None):
+    """Build a LangChain LLM instance for per-strategy provider/model override.
+
+    Returns None if no override — callers pass None to analyze_market which
+    then falls back to the global env-configured provider.
+    """
+    if not provider:
+        return None
+    from ai.orchestrator import _build_llm
+    return _build_llm(provider=provider, model=model)
+
+
 class AbstractStrategy(ABC):
     """Common interface for all strategy execution modes."""
 
@@ -120,6 +132,11 @@ class AbstractStrategy(ABC):
     _skip_hours: list[int] = []
     _skip_weekdays: list[int] = []        # 0=Mon … 6=Sun (Python weekday())
     _skip_timezone: str = "UTC"
+
+    # LLM overrides (hydrated from DB via apply_db_config)
+    _llm_provider: str | None = None      # e.g. "openai", "anthropic"; None = use env default
+    _llm_model: str | None = None         # e.g. "gpt-4o"; None = use provider default
+    _skip_llm: bool = False               # set True by engine for rule-only backtest/optimize
 
     def apply_db_config(self, strategy_db: "Strategy") -> None:
         """Hydrate strategy attributes from the database configuration."""
@@ -154,6 +171,11 @@ class AbstractStrategy(ABC):
                 self._skip_weekdays = json.loads(strategy_db.skip_weekdays)
             except (json.JSONDecodeError, TypeError):
                 pass
+
+        if getattr(strategy_db, "llm_provider", None):
+            self._llm_provider = strategy_db.llm_provider
+        if getattr(strategy_db, "llm_model", None):
+            self._llm_model = strategy_db.llm_model
 
         # Apply per-instance param overrides stored in strategy_params JSON
         if strategy_db.strategy_params:
@@ -257,10 +279,12 @@ class LLMOnlyStrategy(AbstractStrategy):
 
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:
         ctx = self.build_context(market_data)
+        llm = _get_llm_override(self._llm_provider, self._llm_model)
         result = await analyze_market(
             symbol=market_data.symbol,
             context=ctx,
             system_prompt=self.system_prompt(),
+            llm_override=llm,
         )
         return StrategyResult(
             action=result.signal.action,
@@ -291,13 +315,26 @@ class RuleThenLLMStrategy(AbstractStrategy):
     @abstractmethod
     def system_prompt(self) -> str: ...
 
+    def fallback_rule_signal(self, _market_data: "MTFMarketData") -> "StrategyResult | None":
+        """Override to provide a rule-only signal when _skip_llm=True.
+
+        Called instead of the LLM when the engine runs in skip_llm mode (e.g.
+        parameter optimization). Default returns None which collapses to HOLD.
+        Subclasses should return a StrategyResult with ATR-based SL/TP.
+        """
+        return None
+
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:
         if not self.check_trigger(market_data):
             return _HOLD
+        if self._skip_llm:
+            return self.fallback_rule_signal(market_data) or _HOLD
+        llm = _get_llm_override(self._llm_provider, self._llm_model)
         result = await analyze_market(
             symbol=market_data.symbol,
             context=str(market_data.indicators),
             system_prompt=self.system_prompt(),
+            llm_override=llm,
         )
         return StrategyResult(
             action=result.signal.action,
@@ -377,12 +414,14 @@ class MultiAgentStrategy(AbstractStrategy):
     async def run(self, market_data: "MTFMarketData") -> StrategyResult:
         import asyncio
 
+        llm = _get_llm_override(self._llm_provider, self._llm_model)
         rule_result, llm_result = await asyncio.gather(
             self._get_rule_result(market_data),
             analyze_market(
                 symbol=market_data.symbol,
                 context=str(market_data.indicators),
                 system_prompt=self.system_prompt(),
+                llm_override=llm,
             ),
         )
         if rule_result is None or rule_result.action == "HOLD":

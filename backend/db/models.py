@@ -132,6 +132,8 @@ class Strategy(Base):
     skip_hours: Mapped[str | None] = mapped_column(Text, nullable=True)          # JSON list of ints, e.g. [4,6,7]
     skip_hours_timezone: Mapped[str | None] = mapped_column(String(60), nullable=True)  # IANA, e.g. "Asia/Bangkok"
     skip_weekdays: Mapped[str | None] = mapped_column(Text, nullable=True)       # JSON list of ints, 0=Mon…6=Sun, e.g. [5,6]
+    llm_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)   # override global provider: openai|gemini|anthropic|openrouter
+    llm_model: Mapped[str | None] = mapped_column(String(100), nullable=True)     # override model name, e.g. "gpt-4o"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     account_bindings: Mapped[list["AccountStrategy"]] = relationship(
@@ -157,6 +159,8 @@ def _strategy_init_defaults(_target: Strategy, _args: tuple, kwargs: dict) -> No
     kwargs.setdefault("skip_hours", None)
     kwargs.setdefault("skip_hours_timezone", None)
     kwargs.setdefault("skip_weekdays", None)
+    kwargs.setdefault("llm_provider", None)
+    kwargs.setdefault("llm_model", None)
     kwargs.setdefault("created_at", datetime.now(UTC))
 
 

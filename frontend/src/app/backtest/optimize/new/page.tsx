@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { optimizationApi, API_BASE_URL } from "@/lib/api";
 import type { StrategyRegistryEntry } from "@/types/trading";
 
@@ -40,6 +41,7 @@ function parseMt5CsvDates(file: File): Promise<{ startDate: string; endDate: str
 interface StrategyItem {
   id: number;
   name: string;
+  execution_mode: string;
   primary_tf: string;
   context_tfs: string[];
   strategy_key: string | null;
@@ -129,6 +131,7 @@ export default function NewOptimizePage() {
   const [tpPartialCloseRatio, setTpPartialCloseRatio] = useState("0.5");
   const [maxWorkers, setMaxWorkers] = useState("4");
 
+  const [skipLlm, setSkipLlm] = useState(true);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [contextCsvFiles, setContextCsvFiles] = useState<Record<string, File | null>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -298,6 +301,7 @@ export default function NewOptimizePage() {
         csv_uploads: csvUploads,
         param_grid,
         optimize_metric: metric,
+        skip_llm: skipLlm,
       });
       router.push(`/backtest/optimize/${run.id}`);
     } catch (err) {
@@ -689,6 +693,31 @@ export default function NewOptimizePage() {
             <p className="text-xs text-muted-foreground">
               This strategy has no optimizable numeric parameters registered.
             </p>
+          )}
+
+          {/* ── Advanced / LLM ── */}
+          {selectedStrategy && selectedStrategy.execution_mode !== "rule_only" && (
+            <section className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
+                Advanced
+              </h2>
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-medium">Rule-only mode (skip LLM)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Recommended for optimization — runs rule filter only at zero API cost.
+                    Run one full backtest with LLM after finding best params.
+                  </p>
+                </div>
+                <Switch checked={skipLlm} onCheckedChange={setSkipLlm} />
+              </div>
+              {!skipLlm && (
+                <p className="text-xs text-destructive">
+                  ⚠️ LLM calls are enabled — each combination will incur API cost.
+                  With {computedCombinations} combinations this could be expensive.
+                </p>
+              )}
+            </section>
           )}
 
           {error && <p className="text-xs text-destructive">{error}</p>}

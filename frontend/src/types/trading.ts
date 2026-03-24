@@ -314,6 +314,8 @@ export interface Strategy {
   skip_hours: number[];
   skip_hours_timezone: string | null;
   skip_weekdays: number[];
+  llm_provider: string | null;
+  llm_model: string | null;
   binding_count: number;
 }
 
@@ -348,6 +350,8 @@ export interface CreateStrategyPayload {
   skip_hours?: number[];
   skip_hours_timezone?: string;
   skip_weekdays?: number[];
+  llm_provider?: string;
+  llm_model?: string;
 }
 
 export interface StrategyRun {
@@ -567,6 +571,7 @@ export interface BacktestRunRequest {
   csv_uploads?: Record<string, string>; // {tf_name: upload_id} for MTF CSVs
   commission_per_lot?: number;        // USD per lot round trip
   tp_partial_close_ratio?: number;    // fraction to close at each TP (0–1)
+  skip_llm?: boolean;                 // skip LLM calls; use rule-only fallback
 }
 
 // ── LLM Usage ─────────────────────────────────────────────────────────────────
@@ -781,6 +786,7 @@ export interface OptimizationRequest {
   /** Search space: { param_name: [v1, v2, ...] } */
   param_grid: Record<string, (number | string | boolean)[]>;
   optimize_metric?: string;
+  skip_llm?: boolean;                 // always True for optimization (rule-only sweep)
 }
 
 export interface OptimizationMetrics {
@@ -832,6 +838,7 @@ export interface OptimizationRunSummary {
   estimated_seconds_remaining: number | null;
   error_message: string | null;
   best_params: Record<string, unknown> | null;
+  skip_llm: boolean;
   created_at: string;
 }
 

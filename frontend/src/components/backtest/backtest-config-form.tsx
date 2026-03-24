@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { backtestApi } from "@/lib/api";
 import type { BacktestRunRequest, BacktestRunSummary } from "@/types/trading";
 
@@ -39,6 +40,7 @@ interface Strategy {
   name: string;
   timeframe: string;
   strategy_type: string;
+  execution_mode: string;
   primary_tf: string;
   context_tfs: string[];
 }
@@ -69,6 +71,7 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
   const [contextCsvFiles, setContextCsvFiles] = useState<Record<string, File | null>>({});
   const [commissionPerLot, setCommissionPerLot] = useState("0");
   const [tpPartialCloseRatio, setTpPartialCloseRatio] = useState("0.5");
+  const [skipLlm, setSkipLlm] = useState(false);
 
   const selectedStrategy = strategies.find((s) => String(s.id) === strategyId);
   // Exclude primary TF from context list (it's already the main CSV)
@@ -122,6 +125,7 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
         csv_uploads: csvUploads,
         commission_per_lot: Number(commissionPerLot),
         tp_partial_close_ratio: Number(tpPartialCloseRatio),
+        skip_llm: skipLlm,
       };
       const run = await backtestApi.submitRun(req);
       onRunCreated(run);
@@ -227,6 +231,16 @@ export function BacktestConfigForm({ strategies, onRunCreated }: Props) {
           </SelectContent>
         </Select>
       </div>
+
+      {selectedStrategy && selectedStrategy.execution_mode !== "rule_only" && (
+        <div className="flex items-center justify-between rounded border px-3 py-2">
+          <div>
+            <p className="text-xs font-medium">Rule-only mode (skip LLM)</p>
+            <p className="text-[10px] text-muted-foreground">Runs rule filter only — no API cost</p>
+          </div>
+          <Switch checked={skipLlm} onCheckedChange={setSkipLlm} />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">

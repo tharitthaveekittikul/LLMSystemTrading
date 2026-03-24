@@ -401,6 +401,13 @@ export default function OptimizeResultPage() {
           </div>
         )}
 
+        {run.skip_llm === false && (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            ⚠️ LLM calls were enabled for this optimization run — API cost was incurred per combination.
+            Use rule-only mode (skip LLM) for future sweeps.
+          </div>
+        )}
+
         {run.status === "failed" && (
           <div className="border border-destructive/30 bg-destructive/5 rounded-lg p-3 text-sm text-destructive">
             {run.error_message || "Optimization failed with an unknown error."}

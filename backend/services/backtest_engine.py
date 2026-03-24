@@ -140,6 +140,10 @@ class BacktestEngine:
         is_llm_strategy = getattr(strategy, "strategy_type", "code") in ("config", "prompt")
         llm_step = max(1, total // max_llm) if is_llm_strategy and max_llm > 0 else None
 
+        # skip_llm: activate rule-only fallback for RuleThenLLMStrategy (no API cost)
+        if config.get("skip_llm") and hasattr(strategy, "_skip_llm"):
+            strategy._skip_llm = True
+
         open_position: OpenPosition | None = None  # one position at a time
         trades: list[dict] = []
         equity_curve: list[dict] = []

@@ -40,6 +40,7 @@ class BacktestRunRequest(BaseModel):
     risk_pct: float | None = Field(default=None, ge=0, le=1)  # e.g. 0.01 = 1%; None = fixed lot
     commission_per_lot: float = Field(default=0.0, ge=0)  # USD per lot (round trip)
     tp_partial_close_ratio: float = Field(default=0.5, gt=0, le=1)  # fraction to close at each TP
+    skip_llm: bool = False                    # skip LLM calls; use rule-only fallback (rule_then_llm strategies)
     csv_upload_id: str | None = None          # primary TF CSV (backward compat)
     csv_uploads: dict[str, str] | None = None  # {tf_name: upload_id} for MTF CSVs
 
@@ -628,6 +629,7 @@ async def _run_backtest_job(
                 "max_llm_calls": req.max_llm_calls,
                 "commission_per_lot": req.commission_per_lot,
                 "tp_partial_close_ratio": req.tp_partial_close_ratio,
+                "skip_llm": req.skip_llm,
             }
 
             async def _progress(pct: int) -> None:

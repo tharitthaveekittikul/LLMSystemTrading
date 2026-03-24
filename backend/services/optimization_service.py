@@ -163,6 +163,7 @@ class OptimizationService:
                     "volume": opt.volume,
                     "risk_pct": opt.risk_pct or 0.0,
                     "max_llm_calls": 0,          # rule-only for optimization (no LLM cost)
+                    "skip_llm": True,            # activate fallback_rule_signal() for RuleThenLLMStrategy
                     "commission_per_lot": opt.commission_per_lot,
                     "tp_partial_close_ratio": opt.tp_partial_close_ratio,
                 }
