@@ -12,12 +12,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { strategiesApi } from "@/lib/api/strategies";
+import { settingsApi } from "@/lib/api/settings";
 import type { Strategy, StrategyRegistryEntry } from "@/types/trading";
-import { X, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  X,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+} from "lucide-react";
 import { SkipHoursGrid } from "@/components/strategies/skip-hours-grid";
 import { SkipWeekdaysGrid } from "@/components/strategies/skip-weekdays-grid";
 import { StrategyClassSelector } from "@/components/strategies/strategy-class-selector";
 import { StrategyParamsForm } from "@/components/strategies/strategy-params-form";
+import { ModelSelector } from "@/components/settings/provider-card";
 
 type ExecMode =
   | "llm_only"
@@ -65,10 +72,12 @@ export default function EditStrategyPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [symbolInput, setSymbolInput] = useState("");
-  const [form, setForm] = useState<Partial<Strategy>>({});
   const [registryEntries, setRegistryEntries] = useState<StrategyRegistryEntry[]>([]);
   const [strategyParamValues, setStrategyParamValues] = useState<Record<string, unknown>>({});
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [showCustomClass, setShowCustomClass] = useState(false);
+  const [form, setForm] = useState<Partial<Strategy>>({});
 
   useEffect(() => {
     (async () => {
@@ -117,6 +126,25 @@ export default function EditStrategyPage() {
       }
     })();
   }, [strategyId]);
+
+  useEffect(() => {
+    if (!form.llm_provider) {
+      setModelOptions([]);
+      return;
+    }
+    (async () => {
+      setLoadingModels(true);
+      try {
+        const models = await settingsApi.listProviderModels(form.llm_provider!);
+        setModelOptions(models);
+      } catch (err) {
+        console.error("Failed to fetch models", err);
+        setModelOptions([]);
+      } finally {
+        setLoadingModels(false);
+      }
+    })();
+  }, [form.llm_provider]);
 
   const execMode = (form.execution_mode ?? "llm_only") as ExecMode;
   const selectedEntry = registryEntries.find((e) => e.key === form.strategy_key) ?? null;
@@ -658,15 +686,15 @@ export default function EditStrategyPage() {
                   <div className="space-y-1.5">
                     <Label className="text-xs">Provider</Label>
                     <div className="flex gap-2 flex-wrap">
-                      {(["", "openai", "gemini", "anthropic", "openrouter"] as const).map((p) => (
+                      {(["", "openai", "gemini", "anthropic", "openrouter", "ollama"] as const).map((p) => (
                         <button
                           key={p}
                           type="button"
                           onClick={() =>
-                            setForm((f) => ({
-                              ...f,
+                            setForm((s) => ({
+                              ...s,
                               llm_provider: p || undefined,
-                              llm_model: p ? f.llm_model : undefined,
+                              llm_model: p ? s.llm_model : undefined,
                             }))
                           }
                           className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -685,19 +713,40 @@ export default function EditStrategyPage() {
                       <Label className="text-xs">
                         Model Name <span className="text-destructive">*</span>
                       </Label>
-                      <Input
-                        value={form.llm_model ?? ""}
-                        onChange={(e) =>
-                          setForm((f) => ({ ...f, llm_model: e.target.value || undefined }))
-                        }
-                        placeholder={
-                          form.llm_provider === "openai" ? "e.g. gpt-4o" :
-                          form.llm_provider === "anthropic" ? "e.g. claude-sonnet-4-6" :
-                          form.llm_provider === "gemini" ? "e.g. gemini-1.5-pro" :
-                          "e.g. openai/gpt-4o"
-                        }
-                      />
-                      {form.llm_provider && !form.llm_model?.trim() && (
+                      {loadingModels ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground h-9 px-3 rounded-md border border-input bg-background opacity-50">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Loading models...
+                        </div>
+                      ) : modelOptions.length > 0 ? (
+                        <ModelSelector
+                          value={form.llm_model ?? ""}
+                          onValueChange={(v) =>
+                            setForm((s) => ({ ...s, llm_model: v || undefined }))
+                          }
+                          models={modelOptions}
+                          isLoading={loadingModels}
+                          disabled={false}
+                        />
+                      ) : (
+                        <Input
+                          value={form.llm_model ?? ""}
+                          onChange={(e) =>
+                            setForm((s) => ({
+                              ...s,
+                              llm_model: e.target.value || undefined,
+                            }))
+                          }
+                          placeholder={
+                            form.llm_provider === "openai" ? "e.g. gpt-4o" :
+                            form.llm_provider === "anthropic" ? "e.g. claude-sonnet-4-6" :
+                            form.llm_provider === "gemini" ? "e.g. gemini-1.5-pro" :
+                            form.llm_provider === "ollama" ? "e.g. llama3.1:8b" :
+                            "e.g. openai/gpt-4o"
+                          }
+                        />
+                      )}
+                      {form.llm_provider && !form.llm_model?.trim() && !loadingModels && (
                         <p className="text-xs text-destructive">
                           Model name is required when a provider is selected.
                         </p>
