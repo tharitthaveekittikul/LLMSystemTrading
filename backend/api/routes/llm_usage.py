@@ -68,6 +68,14 @@ def _period_start(period: str) -> datetime:
         return (now - timedelta(days=now.weekday())).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
+    if period == "3-month":
+        return (now - timedelta(days=90)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "6-month":
+        return (now - timedelta(days=180)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "year":
+        return (now - timedelta(days=365)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "all":
+        return datetime(2000, 1, 1, tzinfo=UTC)
     # month (default)
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -76,7 +84,7 @@ def _period_start(period: str) -> datetime:
 
 @router.get("/summary", response_model=LLMUsageSummary)
 async def get_summary(
-    period: str = Query("month", pattern="^(day|week|month)$"),
+    period: str = Query("month", pattern="^(day|week|month|3-month|6-month|year|all)$"),
     db: AsyncSession = Depends(get_db),
 ) -> LLMUsageSummary:
     since = _period_start(period)
@@ -115,7 +123,7 @@ async def get_summary(
 @router.get("/timeseries", response_model=list[LLMTimeseriesPoint])
 async def get_timeseries(
     granularity: str = Query("daily", pattern="^(daily|hourly)$"),
-    days: int = Query(30, ge=1, le=90),
+    days: int = Query(30, ge=1, le=3650),
     db: AsyncSession = Depends(get_db),
 ) -> list[LLMTimeseriesPoint]:
     since = datetime.now(UTC) - timedelta(days=days)
@@ -149,7 +157,7 @@ async def get_timeseries(
 
 @router.get("/by-model", response_model=list[LLMModelUsage])
 async def get_by_model(
-    period: str = Query("month", pattern="^(day|week|month)$"),
+    period: str = Query("month", pattern="^(day|week|month|3-month|6-month|year|all)$"),
     db: AsyncSession = Depends(get_db),
 ) -> list[LLMModelUsage]:
     since = _period_start(period)

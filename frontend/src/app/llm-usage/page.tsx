@@ -19,19 +19,27 @@ import type {
   LLMPricingEntry,
 } from "@/types/trading";
 
-type Period = "day" | "week" | "month";
+type Period = "day" | "week" | "month" | "3-month" | "6-month" | "year" | "all";
 type Granularity = "daily" | "hourly";
 
 const PERIOD_LABELS: Record<Period, string> = {
   day: "Today",
   week: "7 Days",
   month: "30 Days",
+  "3-month": "3 Months",
+  "6-month": "6 Months",
+  year: "1 Year",
+  all: "All Time",
 };
 
 const PERIOD_DAYS: Record<Period, number> = {
   day: 1,
   week: 7,
   month: 30,
+  "3-month": 90,
+  "6-month": 180,
+  year: 365,
+  all: 3650,
 };
 
 export default function LLMUsagePage() {

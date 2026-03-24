@@ -296,7 +296,7 @@ export const storageApi = {
 // ── LLM Usage ─────────────────────────────────────────────────────────────────
 
 export const llmUsageApi = {
-  getSummary: (period: "day" | "week" | "month" = "month") =>
+  getSummary: (period: "day" | "week" | "month" | "3-month" | "6-month" | "year" | "all" = "month") =>
     apiRequest<import("@/types/trading").LLMUsageSummary>(
       `/llm-usage/summary?period=${period}`
     ),
@@ -311,7 +311,7 @@ export const llmUsageApi = {
     )
   },
 
-  getByModel: (period: "day" | "week" | "month" = "month") =>
+  getByModel: (period: "day" | "week" | "month" | "3-month" | "6-month" | "year" | "all" = "month") =>
     apiRequest<import("@/types/trading").LLMModelUsage[]>(
       `/llm-usage/by-model?period=${period}`
     ),
