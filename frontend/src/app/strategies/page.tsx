@@ -18,7 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { strategiesApi } from "@/lib/api/strategies";
-import type { Strategy, StrategyStats } from "@/types/trading";
+import type { Strategy, StrategyBinding, StrategyStats } from "@/types/trading";
 import { Plus, Edit2, Trash2, Play, Loader2 } from "lucide-react";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -38,16 +38,30 @@ export default function StrategiesPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [triggeringId, setTriggeringId] = useState<number | null>(null);
   const [statsMap, setStatsMap] = useState<Record<number, StrategyStats>>({});
+  const [bindingsMap, setBindingsMap] = useState<
+    Record<number, StrategyBinding[]>
+  >({});
 
   useEffect(() => {
     (async () => {
       try {
         const data = await strategiesApi.list();
         setStrategies(data);
-        // Fetch stats for all strategies in parallel
-        const statsEntries = await Promise.allSettled(
-          data.map(s => strategiesApi.getStats(s.id).then(stats => [s.id, stats] as const))
-        );
+        // Fetch stats and bindings for all strategies in parallel
+        const [statsEntries, bindingsEntries] = await Promise.all([
+          Promise.allSettled(
+            data.map((s) =>
+              strategiesApi
+                .getStats(s.id)
+                .then((stats) => [s.id, stats] as const),
+            ),
+          ),
+          Promise.allSettled(
+            data.map((s) =>
+              strategiesApi.bindings(s.id).then((b) => [s.id, b] as const),
+            ),
+          ),
+        ]);
         const map: Record<number, StrategyStats> = {};
         for (const entry of statsEntries) {
           if (entry.status === "fulfilled") {
@@ -56,6 +70,14 @@ export default function StrategiesPage() {
           }
         }
         setStatsMap(map);
+        const bmap: Record<number, StrategyBinding[]> = {};
+        for (const entry of bindingsEntries) {
+          if (entry.status === "fulfilled") {
+            const [id, bindings] = entry.value;
+            bmap[id] = bindings;
+          }
+        }
+        setBindingsMap(bmap);
       } catch (err) {
         console.error(err);
       } finally {
@@ -100,7 +122,11 @@ export default function StrategiesPage() {
 
   return (
     <SidebarInset>
-      <AppHeader title="Strategies" showAccountSelector={false} showConnectionStatus={false} />
+      <AppHeader
+        title="Strategies"
+        showAccountSelector={false}
+        showConnectionStatus={false}
+      />
       <div className="flex flex-1 flex-col gap-4 p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -154,7 +180,10 @@ export default function StrategiesPage() {
                   <div className="flex flex-wrap gap-1">
                     <Badge
                       variant="secondary"
-                      className={TYPE_COLORS[s.execution_mode] ?? TYPE_COLORS[s.strategy_type]}
+                      className={
+                        TYPE_COLORS[s.execution_mode] ??
+                        TYPE_COLORS[s.strategy_type]
+                      }
                     >
                       {s.execution_mode.replace(/_/g, " ")}
                     </Badge>
@@ -165,9 +194,25 @@ export default function StrategiesPage() {
                         : `Every ${s.interval_minutes}m`}
                     </Badge>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {s.symbols.join(", ")} · {s.binding_count} account
-                    {s.binding_count !== 1 ? "s" : ""} bound
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    <div>{s.symbols.join(", ")}</div>
+                    {bindingsMap[s.id] && bindingsMap[s.id].length > 0 ? (
+                      <div className="flex flex-col gap-1 mt-0.5">
+                        {bindingsMap[s.id].map((b) => (
+                          <div key={b.id} className="flex items-center gap-1.5">
+                            <Badge
+                              variant="outline"
+                              className={b.is_live ? "border-green-500 text-green-700" : ""}
+                            >
+                              {b.is_live ? "Real" : "Demo"}
+                            </Badge>
+                            <span>[{b.login}] {b.account_name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span>No accounts bound</span>
+                    )}
                   </div>
                   {/* Performance stats */}
                   {statsMap[s.id] && (
@@ -175,7 +220,8 @@ export default function StrategiesPage() {
                       {statsMap[s.id].backtest && (
                         <div>
                           <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                            Latest Backtest · {statsMap[s.id].backtest!.symbol} {statsMap[s.id].backtest!.timeframe}
+                            Latest Backtest · {statsMap[s.id].backtest!.symbol}{" "}
+                            {statsMap[s.id].backtest!.timeframe}
                           </p>
                           <div className="flex gap-3 text-xs">
                             <span>
@@ -189,13 +235,18 @@ export default function StrategiesPage() {
                             <span>
                               PF{" "}
                               <span className="font-semibold">
-                                {statsMap[s.id].backtest!.profit_factor?.toFixed(2) ?? "—"}
+                                {statsMap[
+                                  s.id
+                                ].backtest!.profit_factor?.toFixed(2) ?? "—"}
                               </span>
                             </span>
                             <span>
                               Ret{" "}
-                              <span className={`font-semibold ${(statsMap[s.id].backtest!.total_return_pct ?? 0) >= 0 ? "text-green-600" : "text-red-500"}`}>
-                                {statsMap[s.id].backtest!.total_return_pct != null
+                              <span
+                                className={`font-semibold ${(statsMap[s.id].backtest!.total_return_pct ?? 0) >= 0 ? "text-green-600" : "text-red-500"}`}
+                              >
+                                {statsMap[s.id].backtest!.total_return_pct !=
+                                null
                                   ? `${statsMap[s.id].backtest!.total_return_pct! >= 0 ? "+" : ""}${statsMap[s.id].backtest!.total_return_pct!.toFixed(1)}%`
                                   : "—"}
                               </span>
@@ -204,25 +255,36 @@ export default function StrategiesPage() {
                         </div>
                       )}
                       {!statsMap[s.id].backtest && (
-                        <p className="text-[10px] text-muted-foreground">No backtest run yet</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          No backtest run yet
+                        </p>
                       )}
                       {statsMap[s.id].live && (
                         <div>
-                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Live</p>
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                            Live
+                          </p>
                           <div className="flex gap-3 text-xs">
                             <span>
                               Trades{" "}
-                              <span className="font-semibold">{statsMap[s.id].live!.total_trades}</span>
+                              <span className="font-semibold">
+                                {statsMap[s.id].live!.total_trades}
+                              </span>
                             </span>
                             <span>
                               WR{" "}
                               <span className="font-semibold">
-                                {(statsMap[s.id].live!.win_rate * 100).toFixed(1)}%
+                                {(statsMap[s.id].live!.win_rate * 100).toFixed(
+                                  1,
+                                )}
+                                %
                               </span>
                             </span>
                             <span>
                               P&L{" "}
-                              <span className={`font-semibold ${statsMap[s.id].live!.total_pnl >= 0 ? "text-green-600" : "text-red-500"}`}>
+                              <span
+                                className={`font-semibold ${statsMap[s.id].live!.total_pnl >= 0 ? "text-green-600" : "text-red-500"}`}
+                              >
                                 {statsMap[s.id].live!.total_pnl >= 0 ? "+" : ""}
                                 {statsMap[s.id].live!.total_pnl.toFixed(2)}
                               </span>
@@ -231,14 +293,16 @@ export default function StrategiesPage() {
                         </div>
                       )}
                       {!statsMap[s.id].live && (
-                        <p className="text-[10px] text-muted-foreground">No live trades</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          No live trades
+                        </p>
                       )}
                     </div>
                   )}
                   <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => handleTrigger(s.id)}
                       disabled={!s.is_active || triggeringId === s.id}
                     >

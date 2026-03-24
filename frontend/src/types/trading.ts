@@ -325,6 +325,8 @@ export interface StrategyBinding {
   strategy_id: number;
   is_active: boolean;
   account_name: string;
+  login: number;
+  is_live: boolean;
 }
 
 export interface CreateStrategyPayload {

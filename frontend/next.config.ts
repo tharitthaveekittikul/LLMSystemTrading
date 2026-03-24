@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
       { source: "/ws/:path*", destination: `${backendUrl}/ws/:path*` },
     ];
   },
+
+  experimental: {
+    middlewareClientMaxBodySize: "50mb",
+  },
 };
 
 export default nextConfig;

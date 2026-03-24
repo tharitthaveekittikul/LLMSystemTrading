@@ -118,6 +118,8 @@ class BindingResponse(BaseModel):
     strategy_id: int
     is_active: bool
     account_name: str
+    login: int
+    is_live: bool
     model_config = {"from_attributes": True}
 
 
@@ -384,6 +386,8 @@ async def bind_account(
         strategy_id=binding.strategy_id,
         is_active=binding.is_active,
         account_name=account.name,
+        login=account.login,
+        is_live=account.is_live,
     )
 
 
@@ -428,6 +432,8 @@ async def toggle_binding(
         strategy_id=binding.strategy_id,
         is_active=binding.is_active,
         account_name=binding.account.name,
+        login=binding.account.login,
+        is_live=binding.account.is_live,
     )
 
 
@@ -474,6 +480,8 @@ async def list_bindings(strategy_id: int, db: AsyncSession = Depends(get_db)):
             strategy_id=b.strategy_id,
             is_active=b.is_active,
             account_name=b.account.name,
+            login=b.account.login,
+            is_live=b.account.is_live,
         )
         for b in bindings
     ]
