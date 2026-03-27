@@ -132,10 +132,10 @@ async def test_place_order_uses_deal_action_for_buy():
 
 @pytest.mark.asyncio
 async def test_place_order_pending_with_expiration_sets_type_time_specified():
-    """Pending order with expiration_hours sends type_time=2 and expiration timestamp."""
+    """Pending order with expiration_hours sends type_time=2 and expiration as naive UTC datetime."""
     from mt5.executor import MT5Executor, OrderRequest
     from services.risk_manager import RiskConfig
-    import time
+    from datetime import datetime, timezone, timedelta
 
     mock_bridge = AsyncMock()
     mock_bridge.get_positions = AsyncMock(return_value=[])
@@ -154,15 +154,21 @@ async def test_place_order_pending_with_expiration_sets_type_time_specified():
             entry_price=1900.0, stop_loss=1890.0, take_profit=1920.0,
             expiration_hours=4.0,
         )
-        before = int(time.time())
+        before = datetime.now(timezone.utc)
         result = await executor.place_order(req)
-        after = int(time.time())
+        after = datetime.now(timezone.utc)
 
     assert result.success is True
     sent = mock_bridge.send_order.call_args[0][0]
     assert sent["type_time"] == 2                            # ORDER_TIME_SPECIFIED
     assert "expiration" in sent
-    assert before + 4 * 3600 <= sent["expiration"] <= after + 4 * 3600
+    # Must be a naive UTC datetime — MT5 Python API requires datetime, not int
+    expiry: datetime = sent["expiration"]
+    assert isinstance(expiry, datetime), "expiration must be a datetime object"
+    assert expiry.tzinfo is None, "expiration must be naive (no tzinfo) for MT5 Python API"
+    expected_lo = (before + timedelta(hours=4)).replace(tzinfo=None)
+    expected_hi = (after  + timedelta(hours=4)).replace(tzinfo=None)
+    assert expected_lo <= expiry <= expected_hi
 
 
 @pytest.mark.asyncio
