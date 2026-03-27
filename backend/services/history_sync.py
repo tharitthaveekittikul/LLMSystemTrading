@@ -69,6 +69,17 @@ class HistoryService:
         new_trade_ids contains IDs of newly imported/updated trades that need post-trade analysis.
         """
         deals = await self.get_raw_deals(account, days)
+        return await self.sync_deals_to_db(account, deals, db)
+
+    async def sync_deals_to_db(
+        self, account: Account, deals: list[dict], db: AsyncSession
+    ) -> dict[str, int]:
+        """Upsert pre-fetched MT5 deals into the trades table.
+
+        Same logic as sync_to_db but skips the MT5 fetch step — use this when
+        the caller already holds an open MT5Bridge (e.g. the live poller) to avoid
+        creating a competing connection that would call mt5.shutdown() on exit.
+        """
         out_deals, in_by_pos = self._pair_deals(deals)
 
         imported = 0

@@ -14,7 +14,7 @@ is far cheaper than reconnecting every cycle.
 """
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,8 @@ class AccountPollState:
     is_connected: bool = False
     last_polled_at: datetime | None = None
     last_error: str | None = None
+    last_position_tickets: set[int] = field(default_factory=set)
+    _initialized: bool = False  # skip first-cycle diff (no baseline yet)
 
 
 _states: dict[int, AccountPollState] = {}
@@ -93,6 +95,9 @@ async def _poll_session(account_id: int) -> None:
     from mt5.bridge import MT5Bridge, AccountCredentials
 
     state = _states.setdefault(account_id, AccountPollState(account_id=account_id))
+    # Reset on each new session so a reconnect doesn't diff against stale tickets
+    state._initialized = False
+    state.last_position_tickets = set()
 
     async with AsyncSessionLocal() as session:
         account = await session.get(Account, account_id)
@@ -124,7 +129,9 @@ async def _poll_session(account_id: int) -> None:
             # Heartbeat: detect broker connection drop before fetching data.
             if not await bridge.is_broker_connected():
                 raise ConnectionError("Broker connection lost (terminal_info.connected=False)")
-            await _fetch_and_broadcast(account_id, bridge, state)
+            just_closed = await _fetch_and_broadcast(account_id, bridge, state)
+            if just_closed:
+                await _sync_history_with_bridge(account_id, bridge)
             await asyncio.sleep(POLL_INTERVAL)
     finally:
         await bridge.disconnect()
@@ -132,7 +139,8 @@ async def _poll_session(account_id: int) -> None:
         logger.info("MT5 disconnected | account_id=%s", account_id)
 
 
-async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState) -> None:
+async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState) -> set[int]:
+    """Fetch MT5 data, broadcast to WebSocket clients, and return any just-closed ticket IDs."""
     from api.routes.ws import broadcast
 
     info = await bridge.get_account_info()
@@ -161,11 +169,54 @@ async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState)
         "orders": [_normalize_order(o) for o in pending_orders],
     })
 
+    # Detect closed positions (tickets present last cycle but gone now)
+    current_tickets = {p.get("ticket") for p in positions if p.get("ticket")}
+    just_closed: set[int] = set()
+    if state._initialized:
+        just_closed = state.last_position_tickets - current_tickets
+        if just_closed:
+            logger.info(
+                "Detected %d closed position(s) | account_id=%s tickets=%s",
+                len(just_closed), account_id, just_closed,
+            )
+    else:
+        state._initialized = True
+
+    state.last_position_tickets = current_tickets
     state.last_polled_at = datetime.now(UTC)
     logger.debug(
         "Polled | account_id=%s positions=%d pending_orders=%d",
         account_id, len(positions), len(pending_orders),
     )
+    return just_closed
+
+
+async def _sync_history_with_bridge(account_id: int, bridge) -> None:
+    """Sync closed deals using the already-open bridge — no new MT5 connection created."""
+    from datetime import timedelta
+    from db.postgres import AsyncSessionLocal
+    from db.models import Account
+    from services.history_sync import HistoryService
+
+    date_to = datetime.now(UTC)
+    date_from = date_to - timedelta(days=2)
+    try:
+        deals = await bridge.history_deals_get(date_from, date_to)
+        if not deals:
+            return
+        async with AsyncSessionLocal() as db:
+            account = await db.get(Account, account_id)
+            if not account:
+                logger.warning("History sync: account not found | account_id=%s", account_id)
+                return
+            svc = HistoryService()
+            result = await svc.sync_deals_to_db(account, deals, db)
+            logger.info(
+                "History sync complete | account_id=%s imported=%s updated=%s",
+                account_id, result["imported"], result["updated"],
+            )
+    except Exception:
+        logger.exception("History sync failed | account_id=%s", account_id)
 
 
 def _normalize_position(pos: dict) -> dict:
