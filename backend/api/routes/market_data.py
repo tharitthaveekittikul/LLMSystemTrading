@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.security import decrypt
 from db.models import Account
 from db.postgres import get_db
@@ -51,7 +52,7 @@ async def get_ohlcv(
         login=row.login,
         password=decrypt(row.password_encrypted),
         server=row.server,
-        path=row.mt5_path or "",
+        path=row.mt5_path or settings.mt5_path,
     )
 
     try:
