@@ -245,7 +245,7 @@ class SignalScoreStrategy(RuleThenLLMStrategy):
         return (
             f"You are a professional trading analyst validating a technical signal.\n\n"
             f"The rule-based system detected a {self._last_direction} signal on {self.primary_tf} "
-            f"with a confidence score of {self._last_score:.1f}/10.0.\n\n"
+            f"with a rule signal score of {self._last_score:.1f}/10.0.\n\n"
             f"Indicators at signal time:\n"
             f"  EMA({self.ema_fast}) = {self._last_ema_fast:.4f}\n"
             f"  EMA({self.ema_slow}) = {self._last_ema_slow:.4f}\n"
