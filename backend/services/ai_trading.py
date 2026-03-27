@@ -1025,6 +1025,8 @@ class AITradingService:
                 "entry": signal.entry,
                 "sl": signal.stop_loss,
                 "tp": signal.take_profit,
+                "expiration_hours": pending_expiry_hours(timeframe),
+                "comment": _source[:64],
             },
         )
 
@@ -1036,6 +1038,11 @@ class AITradingService:
                 order_result = await executor.place_order(
                     order_req, dry_run=account.paper_trade_enabled
                 )
+            await tracer.record(
+                "mt5_executed", status="success",
+                output_data=order_result,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
         except (RuntimeError, ConnectionError) as exc:
             logger.exception("MT5 error during order execution | account_id=%s | %s", account_id, exc)
             await tracer.record(

@@ -16,14 +16,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CANDLE_CRON: dict[str, dict] = {
-    # Fire 2 minutes after the candle boundary so MT5 has finished writing the
-    # closed candle to its internal buffer before copy_rates_from_pos is called.
-    # Firing at :00 causes "no candles" errors because the buffer is mid-update.
-    "M15": dict(minute="2,17,32,47"),
-    "M30": dict(minute="2,32"),
-    "H1":  dict(hour="*", minute="2"),
-    "H4":  dict(hour="0,4,8,12,16,20", minute="2"),
-    "D1":  dict(hour="0", minute="2"),
+    "M15": dict(minute="0,15,30,45"),
+    "M30": dict(minute="0,30"),
+    "H1":  dict(hour="*", minute="0"),
+    "H4":  dict(hour="0,4,8,12,16,20", minute="0"),
+    "D1":  dict(hour="0", minute="0"),
 }
 
 _scheduler = AsyncIOScheduler()

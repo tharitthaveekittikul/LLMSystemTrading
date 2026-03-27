@@ -21,6 +21,13 @@ from typing import Any
 # All MT5 calls must go through this same thread for the lifetime of the process.
 _MT5_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mt5")
 
+# Global lock: only one MT5Bridge context may be active at a time.
+# mt5.shutdown() kills the entire session immediately — if two bridges overlap
+# (e.g. a strategy job + maintenance job firing concurrently), one bridge's
+# shutdown() will destroy the other's live session, causing copy_rates_from_pos
+# to return None for all retries (~15 s timeout before 502).
+_MT5_LOCK = asyncio.Lock()
+
 try:
     import MetaTrader5 as mt5
 
@@ -52,15 +59,24 @@ class MT5Bridge:
         self._creds = credentials
 
     async def __aenter__(self) -> "MT5Bridge":
-        ok = await self.connect()
-        if not ok:
-            code, message = await self.get_last_error()
-            await self.disconnect()
-            raise ConnectionError(f"MT5 init failed (code {code}): {message}")
+        await _MT5_LOCK.acquire()
+        try:
+            ok = await self.connect()
+            if not ok:
+                code, message = await self.get_last_error()
+                await self.disconnect()
+                _MT5_LOCK.release()
+                raise ConnectionError(f"MT5 init failed (code {code}): {message}")
+        except Exception:
+            _MT5_LOCK.release()
+            raise
         return self
 
     async def __aexit__(self, *_: Any) -> None:
-        await self.disconnect()
+        try:
+            await self.disconnect()
+        finally:
+            _MT5_LOCK.release()
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
