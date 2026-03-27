@@ -153,6 +153,8 @@ async def _run_strategy_job(
 
     try:
         if is_abstract:
+            # New path: AbstractStrategy.run(MTFMarketData) handles its own orchestration.
+            from services.abstract_runner import run_abstract_strategy_pipeline
             async with AsyncSessionLocal() as db_session:
                 from db.models import Strategy
                 if strategy_id:
@@ -160,18 +162,16 @@ async def _run_strategy_job(
                     if strat_db and hasattr(strategy_instance, "apply_db_config"):
                         strategy_instance.apply_db_config(strat_db)
 
-            # New path: AbstractStrategy.run(MTFMarketData) handles its own orchestration.
-            from services.abstract_runner import run_abstract_strategy_pipeline
-            signal, journal_id = await run_abstract_strategy_pipeline(
-                account_id=account_id,
-                symbol=symbol,
-                timeframe=timeframe,
-                db=db_session,
-                strategy_id=strategy_id,
-                strategy_overrides=overrides,
-                strategy_instance=strategy_instance,
-            )
-            
+                signal, journal_id = await run_abstract_strategy_pipeline(
+                    account_id=account_id,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    db=db_session,
+                    strategy_id=strategy_id,
+                    strategy_overrides=overrides,
+                    strategy_instance=strategy_instance,
+                )
+
             if signal:
                 logger.info("Job done: account=%d symbol=%s action=%s",
                             account_id, symbol, signal.action)
