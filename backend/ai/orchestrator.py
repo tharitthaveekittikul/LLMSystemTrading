@@ -345,6 +345,14 @@ def _normalize_raw(raw: dict, *, timeframe: str, current_price: float) -> dict:
     out.setdefault("confidence", 0.0)
     out.setdefault("rationale", "No rationale provided by model.")
 
+    # LLM sometimes returns rationale as a nested dict — flatten to string
+    if not isinstance(out.get("rationale"), str):
+        val = out["rationale"]
+        if isinstance(val, dict):
+            out["rationale"] = json.dumps(val, ensure_ascii=False)
+        else:
+            out["rationale"] = str(val)
+
     if isinstance(out.get("action"), str):
         out["action"] = out["action"].upper()
 

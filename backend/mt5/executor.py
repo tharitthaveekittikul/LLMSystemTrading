@@ -185,11 +185,8 @@ class MT5Executor:
         if is_pending and request.expiration_hours is not None:
             expiry_dt = datetime.now(timezone.utc) + timedelta(hours=request.expiration_hours)
             order_type_time = _ORDER_TIME_SPECIFIED
-            # MT5 Python API requires a datetime object for `expiration`, NOT an int.
-            # Passing an int causes the broker to interpret it as MQL5 epoch (seconds
-            # since 2000-01-01), not Unix epoch — resulting in a past timestamp that
-            # expires the order almost immediately. Pass naive UTC datetime instead.
-            order_expiration = expiry_dt.replace(tzinfo=None)
+            # MT5 Python API requires a Unix timestamp (int) for `expiration`.
+            order_expiration = int(expiry_dt.timestamp())
             logger.info(
                 "Pending order expiry set | symbol=%s expires_at=%s (in %.1fh)",
                 request.symbol, expiry_dt.isoformat(), request.expiration_hours,

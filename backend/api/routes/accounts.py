@@ -544,9 +544,18 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
         import asyncio
         from services.trade_analyzer import analyze_closed_trade
         from services.research_loop import maybe_run
+        from db.postgres import AsyncSessionLocal
         for tid in newly_closed_trade_ids:
             asyncio.ensure_future(analyze_closed_trade(tid))
-        asyncio.ensure_future(maybe_run(account_id, db))
+
+        _n_closed = len(newly_closed_trade_ids)
+        _acct_id = account_id
+
+        async def _research_loop_task() -> None:
+            async with AsyncSessionLocal() as _sess:
+                await maybe_run(_acct_id, _sess, _n_closed)
+
+        asyncio.ensure_future(_research_loop_task())
 
     return SyncOrdersResponse(
         total_checked=len(open_trades),

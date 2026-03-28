@@ -32,7 +32,7 @@ order_send(request)
 | `comment` | str | No | Order comment (max 31 chars) |
 | `type_filling` | int | No | Fill policy (see constants below) |
 | `type_time` | int | No | Expiration type |
-| `expiration` | datetime | Cond. | Expiration time (required for `ORDER_TIME_SPECIFIED`) |
+| `expiration` | int | Cond. | Expiration time as Unix timestamp (required for `ORDER_TIME_SPECIFIED`) |
 | `order` | int | Cond. | Order ticket (required for modify/remove) |
 | `position` | int | Cond. | Position ticket (required when closing a position) |
 | `stoplimit` | float | Cond. | Limit price for stop-limit orders |

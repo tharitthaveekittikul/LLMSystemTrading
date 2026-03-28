@@ -32,11 +32,15 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 _CONFIG_PATH = os.path.join(_DATA_DIR, "research_config.json")
 
 
-async def maybe_run(account_id: int, db: AsyncSession) -> None:
-    """Call after each trade close. Runs the loop only when the trade count hits the threshold."""
+async def maybe_run(account_id: int, db: AsyncSession, newly_closed: int = 1) -> None:
+    """Call after each trade close. Runs the loop when the count crosses a RESEARCH_EVERY boundary.
+
+    Uses crossing logic so batch syncs (e.g. 28→33) don't skip the threshold.
+    """
     try:
         count = await _count_closed_trades(db, account_id)
-        if count > 0 and count % RESEARCH_EVERY == 0:
+        prev_count = max(count - newly_closed, 0)
+        if count // RESEARCH_EVERY > prev_count // RESEARCH_EVERY:
             logger.info("research_loop triggered | account_id=%s closed_trades=%s", account_id, count)
             await run(account_id, db)
     except Exception:
