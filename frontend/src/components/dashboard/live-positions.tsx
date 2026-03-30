@@ -34,9 +34,9 @@ function orderTypeLabel(type: string): string {
   return type.replace(/_/g, " ").toUpperCase();
 }
 
-function formatExpiry(expiration: string | null): string {
+function formatExpiry(expiration: string | null, skewMs: number): string {
   if (!expiration) return "GTC";
-  const diffMs = new Date(expiration).getTime() - Date.now();
+  const diffMs = new Date(expiration).getTime() - (Date.now() + skewMs);
   if (diffMs <= 0) return "Expired";
   const h = Math.floor(diffMs / 3_600_000);
   const m = Math.floor((diffMs % 3_600_000) / 60_000);
@@ -46,6 +46,7 @@ function formatExpiry(expiration: string | null): string {
 export function LivePositions() {
   const positions = useTradingStore((s) => s.openPositions);
   const pendingOrders = useTradingStore((s) => s.pendingOrders);
+  const brokerClockSkewMs = useTradingStore((s) => s.brokerClockSkewMs);
   const [runningTicket, setRunningTicket] = useState<number | null>(null);
 
   const totalCount = positions.length + pendingOrders.length;
@@ -165,7 +166,7 @@ export function LivePositions() {
                     @ {order.price}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
-                    {formatExpiry(order.expiration)}
+                    {formatExpiry(order.expiration, brokerClockSkewMs)}
                   </TableCell>
                   <TableCell />
                 </TableRow>

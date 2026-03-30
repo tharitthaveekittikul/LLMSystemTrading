@@ -164,9 +164,23 @@ async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState)
         "positions": [{**_normalize_position(p), "account_id": account_id} for p in positions],
     })
 
+    # Include broker server time so the frontend can calibrate against local clock drift.
+    broker_time_iso: str
+    symbols = [o.get("symbol") for o in pending_orders if o.get("symbol")] or \
+              [p.get("symbol") for p in positions if p.get("symbol")]
+    broker_time_iso = datetime.now(UTC).isoformat()  # fallback
+    if symbols:
+        try:
+            tick = await bridge.get_tick(symbols[0])
+            if tick:
+                broker_time_iso = datetime.fromtimestamp(tick["time"], UTC).isoformat()
+        except Exception:
+            pass
+
     await broadcast(account_id, "pending_orders_update", {
         "account_id": account_id,
         "orders": [_normalize_order(o) for o in pending_orders],
+        "broker_time": broker_time_iso,
     })
 
     # Detect closed positions (tickets present last cycle but gone now)

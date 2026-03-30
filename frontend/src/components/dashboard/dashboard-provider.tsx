@@ -10,7 +10,7 @@ interface DashboardProviderProps {
 }
 
 export function DashboardProvider({ onEquityUpdate }: DashboardProviderProps) {
-  const { activeAccountId, setBalance, setOpenPositions, setPendingOrders, setKillSwitch } =
+  const { activeAccountId, setBalance, setOpenPositions, setPendingOrders, setKillSwitch, setBrokerClockSkewMs } =
     useTradingStore();
 
   const handleEquityUpdate = useCallback(
@@ -41,6 +41,9 @@ export function DashboardProvider({ onEquityUpdate }: DashboardProviderProps) {
     },
     pending_orders_update: (data) => {
       const d = data as PendingOrdersUpdateData;
+      if (d.broker_time) {
+        setBrokerClockSkewMs(new Date(d.broker_time).getTime() - Date.now());
+      }
       setPendingOrders(d.orders);
     },
     kill_switch_triggered: (data) => {

@@ -202,6 +202,7 @@ export interface PendingOrder {
 export interface PendingOrdersUpdateData {
   account_id: number;
   orders: PendingOrder[];
+  broker_time?: string; // UTC ISO — broker server clock for expiry skew correction
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────

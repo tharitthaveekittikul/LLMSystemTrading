@@ -6,7 +6,7 @@ Never import MetaTrader5 directly in this file — use bridge.py.
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -181,15 +181,21 @@ class MT5Executor:
         filling_mode = await self._bridge.get_filling_mode(request.symbol)
         logger.debug("Filling mode for %s: %s", request.symbol, filling_mode)
 
-        # Pending order expiry
+        # Pending order expiry — anchored to broker server clock, not local machine clock.
+        # tick["time"] is the broker server's Unix timestamp (authoritative "now").
+        # Using datetime.now(UTC) risks expiry mismatches when local clock drifts vs broker.
         if is_pending and request.expiration_hours is not None:
-            expiry_dt = datetime.now(timezone.utc) + timedelta(hours=request.expiration_hours)
+            tick = await self._bridge.get_tick(request.symbol)
+            broker_now_ts = tick["time"] if tick else datetime.now(timezone.utc).timestamp()
+            expiry_ts = int(broker_now_ts + request.expiration_hours * 3600)
+            expiry_dt = datetime.fromtimestamp(expiry_ts, tz=timezone.utc)
             order_type_time = _ORDER_TIME_SPECIFIED
-            # MT5 Python API requires a Unix timestamp (int) for `expiration`.
-            order_expiration = int(expiry_dt.timestamp())
+            order_expiration = expiry_ts
+            broker_now_dt = datetime.fromtimestamp(broker_now_ts, tz=timezone.utc)
             logger.info(
-                "Pending order expiry set | symbol=%s expires_at=%s (in %.1fh)",
-                request.symbol, expiry_dt.isoformat(), request.expiration_hours,
+                "Pending order expiry set | symbol=%s broker_now=%s expires_at=%s (in %.1fh)",
+                request.symbol, broker_now_dt.isoformat(), expiry_dt.isoformat(),
+                request.expiration_hours,
             )
         else:
             order_type_time = _ORDER_TIME_GTC

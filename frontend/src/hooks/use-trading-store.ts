@@ -18,6 +18,7 @@ interface TradingState {
   pendingOrders: PendingOrder[];
   recentSignals: AISignal[];
   killSwitch: KillSwitchStatus;
+  brokerClockSkewMs: number; // ms offset: brokerNow - Date.now() — corrects local clock drift
 
   // Actions
   setAccounts: (accounts: Account[]) => void;
@@ -29,6 +30,7 @@ interface TradingState {
   setPendingOrders: (orders: PendingOrder[]) => void;
   addSignal: (signal: AISignal) => void;
   setKillSwitch: (status: KillSwitchStatus) => void;
+  setBrokerClockSkewMs: (skewMs: number) => void;
 }
 
 export const useTradingStore = create<TradingState>()(
@@ -41,6 +43,7 @@ export const useTradingStore = create<TradingState>()(
   pendingOrders: [],
   recentSignals: [],
   killSwitch: { is_active: false, reason: null, activated_at: null },
+  brokerClockSkewMs: 0,
 
   setAccounts: (accounts) => set({ accounts }),
   setActiveAccount: (accountId) => set({ activeAccountId: accountId }),
@@ -61,6 +64,7 @@ export const useTradingStore = create<TradingState>()(
       recentSignals: [signal, ...state.recentSignals].slice(0, 50),
     })),
   setKillSwitch: (status) => set({ killSwitch: status }),
+  setBrokerClockSkewMs: (skewMs) => set({ brokerClockSkewMs: skewMs }),
     }),
     {
       name: "trading-store",
