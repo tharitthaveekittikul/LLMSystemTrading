@@ -781,6 +781,14 @@ export interface ResearchConfig {
   stats_snapshot: Record<string, unknown>
 }
 
+export interface ResearchProgress {
+  closed_trades: number
+  cycle_progress: number   // 0–29
+  remaining: number        // trades until next loop fires
+  last_run_at: string | null
+  just_completed: boolean  // true when loop just fired (cycle_progress === 0 && closed_trades > 0)
+}
+
 // ── Optimization / Parameter Sweep ────────────────────────────────────────────
 
 export interface OptimizationRequest {

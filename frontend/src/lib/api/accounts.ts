@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import type { Account, AccountCreatePayload, AccountUpdatePayload, MT5AccountInfo, AccountStats, EquityPoint, HistoryDeal, HistorySyncResult, SyncAllResult, SyncOrdersResult, FullSyncResult } from "@/types/trading";
+import type { Account, AccountCreatePayload, AccountUpdatePayload, MT5AccountInfo, AccountStats, EquityPoint, HistoryDeal, HistorySyncResult, SyncAllResult, SyncOrdersResult, FullSyncResult, ResearchProgress } from "@/types/trading";
 
 export const accountsApi = {
   list: () => apiRequest<Account[]>("/accounts"),
@@ -37,4 +37,8 @@ export const accountsApi = {
     apiRequest<SyncOrdersResult>(`/accounts/${id}/sync-orders`, { method: "POST" }),
   sync: (id: number) =>
     apiRequest<FullSyncResult>(`/accounts/${id}/sync`, { method: "POST" }),
+  getResearchProgress: (id: number) =>
+    apiRequest<ResearchProgress>(`/accounts/${id}/research-progress`),
+  triggerResearchLoop: (id: number) =>
+    apiRequest<{ status: string; last_run_at: string | null }>(`/accounts/${id}/research-loop/trigger`, { method: "POST" }),
 };

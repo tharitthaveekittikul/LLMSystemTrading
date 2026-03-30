@@ -72,6 +72,14 @@ class HistorySyncResponse(BaseModel):
     total_fetched: int = Field(..., description="Total deals returned by MT5 before deduplication")
 
 
+class ResearchProgressResponse(BaseModel):
+    closed_trades: int = Field(..., description="Total closed trades for this account")
+    cycle_progress: int = Field(..., description="Trades completed in the current 30-trade cycle (0–29)")
+    remaining: int = Field(..., description="Trades until the next research loop fires")
+    last_run_at: str | None = Field(None, description="ISO timestamp of the last research loop run")
+    just_completed: bool = Field(False, description="True when cycle_progress==0 and a loop has run (i.e. it just fired)")
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[AccountResponse])
@@ -906,6 +914,48 @@ async def get_equity_history(
     from db.questdb import get_equity_history
     points = await get_equity_history(account_id=account_id, hours=hours)
     return points
+
+
+@router.get("/{account_id}/research-progress", response_model=ResearchProgressResponse)
+async def get_research_progress(account_id: int, db: AsyncSession = Depends(get_db)):
+    """Return the current 30-trade research loop progress for an account."""
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    from services.research_loop import RESEARCH_EVERY, _count_closed_trades, read_config
+    closed_trades = await _count_closed_trades(db, account_id)
+    cycle_progress = closed_trades % RESEARCH_EVERY
+    remaining = RESEARCH_EVERY - cycle_progress if cycle_progress > 0 else RESEARCH_EVERY
+    config = read_config()
+    last_run_at: str | None = config.get("last_run_at")
+    just_completed = cycle_progress == 0 and closed_trades > 0
+
+    return ResearchProgressResponse(
+        closed_trades=closed_trades,
+        cycle_progress=cycle_progress,
+        remaining=remaining,
+        last_run_at=last_run_at,
+        just_completed=just_completed,
+    )
+
+
+@router.post("/{account_id}/research-loop/trigger", status_code=200)
+async def trigger_research_loop(account_id: int, db: AsyncSession = Depends(get_db)):
+    """Manually trigger the research loop for an account (forced run)."""
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    from services.research_loop import run
+    try:
+        await run(account_id, db)
+        from services.research_loop import read_config
+        config = read_config()
+        return {"status": "ok", "last_run_at": config.get("last_run_at")}
+    except Exception as exc:
+        logger.exception("Manual research loop trigger failed | account_id=%s", account_id)
+        raise HTTPException(status_code=500, detail=f"Research loop failed: {exc}") from exc
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

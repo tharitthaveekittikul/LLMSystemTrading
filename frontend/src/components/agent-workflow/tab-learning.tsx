@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowDown, BookOpen, Database, RefreshCw } from "lucide-react";
+import { ResearchLoopProgress } from "@/components/agent-workflow/research-loop-progress";
 
 // ── Reusable service card (not an LLM agent — so a distinct visual style) ────
 
@@ -122,6 +123,9 @@ function StepArrow({ label, color }: { label: string; color: "slate" | "violet" 
 export function TabLearning() {
   return (
     <div className="space-y-5 pt-4">
+      {/* Live progress tracker */}
+      <ResearchLoopProgress />
+
       {/* Description */}
       <div className="rounded-lg border bg-card/50 px-4 py-3">
         <p className="text-sm text-muted-foreground">
