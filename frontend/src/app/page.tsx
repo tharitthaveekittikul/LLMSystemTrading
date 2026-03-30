@@ -70,14 +70,23 @@ export default function DashboardPage() {
     if (!activeAccountId) return;
     setSyncingOrders(true);
     try {
-      const result = await accountsApi.syncOrders(activeAccountId);
-      const changed = result.positions_closed + result.orders_cancelled;
+      const result = await accountsApi.sync(activeAccountId);
+      const changed =
+        result.positions_closed +
+        result.orders_expired +
+        result.orders_cancelled +
+        result.newly_imported +
+        result.updated;
       if (changed === 0) {
         toast.success("Sync complete — everything up to date");
       } else {
-        toast.success(
-          `Synced ${result.total_checked} trades: ${result.positions_closed} positions closed, ${result.orders_cancelled} orders cancelled`,
-        );
+        const parts: string[] = [];
+        if (result.positions_closed > 0) parts.push(`${result.positions_closed} closed`);
+        if (result.orders_expired > 0) parts.push(`${result.orders_expired} expired`);
+        if (result.orders_cancelled > 0) parts.push(`${result.orders_cancelled} cancelled`);
+        if (result.newly_imported > 0) parts.push(`${result.newly_imported} imported`);
+        if (result.updated > 0) parts.push(`${result.updated} updated`);
+        toast.success(`Sync complete — ${parts.join(", ")}`);
       }
     } catch {
       toast.error("Failed to sync orders");

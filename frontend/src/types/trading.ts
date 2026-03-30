@@ -429,6 +429,19 @@ export interface SyncOrdersResult {
   unchanged: number;
 }
 
+export interface FullSyncResult {
+  // Phase 1 — reconcile open DB trades
+  positions_closed: number;
+  orders_expired: number;
+  orders_cancelled: number;
+  unchanged: number;
+  // Phase 2 — backfill manual terminal trades
+  newly_imported: number;
+  updated: number;
+  // Total open DB trades checked in phase 1
+  total_checked: number;
+}
+
 // ── Pipeline Logs ─────────────────────────────────────────────────────────────
 
 export interface PipelineStep {

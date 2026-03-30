@@ -135,13 +135,24 @@ export function AccountHistoryView({ accountId }: Props) {
     setSyncing(true);
     setSyncError(null);
     try {
-      const result = await accountsApi.syncHistory(accountId, days);
-      const parts: string[] = [];
-      if (result.imported > 0) parts.push(`${result.imported} new`);
-      if (result.updated > 0) parts.push(`${result.updated} closed`);
-      const summary = parts.length > 0 ? parts.join(", ") : "0 new";
-      toast.success(`Synced: ${summary} trade${result.imported + result.updated !== 1 ? "s" : ""} (${result.total_fetched} fetched)`);
-
+      const result = await accountsApi.sync(accountId);
+      const changed =
+        result.positions_closed +
+        result.orders_expired +
+        result.orders_cancelled +
+        result.newly_imported +
+        result.updated;
+      if (changed === 0) {
+        toast.success("Sync complete — everything up to date");
+      } else {
+        const parts: string[] = [];
+        if (result.positions_closed > 0) parts.push(`${result.positions_closed} closed`);
+        if (result.orders_expired > 0) parts.push(`${result.orders_expired} expired`);
+        if (result.orders_cancelled > 0) parts.push(`${result.orders_cancelled} cancelled`);
+        if (result.newly_imported > 0) parts.push(`${result.newly_imported} imported`);
+        if (result.updated > 0) parts.push(`${result.updated} updated`);
+        toast.success(`Sync complete — ${parts.join(", ")}`);
+      }
       await loadDeals();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Sync failed";
@@ -150,7 +161,7 @@ export function AccountHistoryView({ accountId }: Props) {
     } finally {
       setSyncing(false);
     }
-  }, [accountId, days, loadDeals]);
+  }, [accountId, loadDeals]);
 
   const rows = pairDeals(deals);
 

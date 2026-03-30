@@ -608,6 +608,225 @@ async def sync_account_history(
     return result
 
 
+class FullSyncResponse(BaseModel):
+    # Phase 1 — reconcile open DB trades against MT5 live state
+    positions_closed: int = Field(0, description="Filled positions no longer active in MT5 (TP/SL/manual close)")
+    orders_expired: int = Field(0, description="Pending orders expired in MT5")
+    orders_cancelled: int = Field(0, description="Pending orders cancelled/rejected in MT5")
+    unchanged: int = Field(0, description="Open trades still active in MT5")
+    # Phase 2 — import closed deals not yet in DB (manually placed in MT5 terminal)
+    newly_imported: int = Field(0, description="Closed deals imported from MT5 history (manual terminal trades)")
+    updated: int = Field(0, description="Open AI trades closed by history import")
+    # Totals
+    total_checked: int = Field(0, description="Total open DB trades checked in phase 1")
+
+
+@router.post("/{account_id}/sync", response_model=FullSyncResponse)
+async def sync_account(account_id: int, db: AsyncSession = Depends(get_db)):
+    """Unified sync — one button covers all cases.
+
+    Phase 1 (sync-orders): reconcile all open DB trades against MT5 live state.
+      Handles: pending orders expired/cancelled, filled positions closed via TP/SL or manually.
+    Phase 2 (history backfill): import any closed deals from the last 30 days that are
+      not yet in the DB — catches orders placed directly in the MT5 terminal.
+
+    Post-trade analysis is fired for all newly closed non-manual trades.
+    Errors: 404 account not found, 502/503 MT5 unavailable.
+    """
+    from db.models import Trade
+
+    account = await db.get(Account, account_id)
+    if not account or not account.is_active:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    password = decrypt(account.password_encrypted)
+    creds = AccountCredentials(
+        login=account.login,
+        password=password,
+        server=account.server,
+        path=account.mt5_path or settings.mt5_path,
+    )
+
+    # ── Load ALL open DB trades (pending + filled) ────────────────────────────
+    result = await db.execute(
+        select(Trade).where(
+            Trade.account_id == account_id,
+            Trade.closed_at.is_(None),
+        )
+    )
+    open_trades: list[Trade] = list(result.scalars().all())
+
+    oldest_opened = min((t.opened_at for t in open_trades), default=None)
+    now = datetime.now(timezone.utc)
+    hist_start = oldest_opened if oldest_opened else (now - timedelta(days=30))
+    hist_end = now + timedelta(seconds=30)
+    # Phase 2 always covers at least the last 30 days to catch manual terminal trades
+    backfill_from = min(hist_start, now - timedelta(days=30))
+
+    try:
+        async with MT5Bridge(creds) as bridge:
+            active_positions = await bridge.get_positions()
+            active_orders    = await bridge.get_orders()
+            hist_orders      = await bridge.history_orders_get(hist_start, hist_end) if open_trades else []
+            hist_deals       = await bridge.history_deals_get(backfill_from, hist_end)
+    except RuntimeError as exc:
+        logger.error("MT5 unavailable (sync) | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ConnectionError as exc:
+        logger.error("MT5 connect failed (sync) | account_id=%s | %s", account_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    active_position_tickets: set[int] = {p["ticket"] for p in active_positions}
+    active_order_tickets: set[int]    = {o["ticket"] for o in active_orders}
+    hist_orders_by_ticket: dict[int, dict] = {o["ticket"]: o for o in hist_orders}
+    closing_deals: dict[int, dict] = {
+        d["position_id"]: d
+        for d in hist_deals
+        if d.get("entry") == _DEAL_ENTRY_OUT
+    }
+
+    counts = {"positions_closed": 0, "orders_expired": 0, "orders_cancelled": 0, "unchanged": 0}
+    now_ts = datetime.now(timezone.utc)
+    newly_closed_trade_ids: list[int] = []
+
+    # ── Phase 1: reconcile open DB trades ─────────────────────────────────────
+    for trade in open_trades:
+        if trade.order_status == "filled":
+            if trade.ticket in active_position_tickets:
+                counts["unchanged"] += 1
+                continue
+
+            hist_order = hist_orders_by_ticket.get(trade.ticket)
+            position_ticket = (
+                hist_order.get("position_id") or trade.ticket
+            ) if hist_order else trade.ticket
+            deal = closing_deals.get(position_ticket) or closing_deals.get(trade.ticket)
+            if deal:
+                deal_time = deal.get("time")
+                trade.close_price = deal.get("price")
+                trade.profit      = deal.get("profit")
+                trade.closed_at   = (
+                    datetime.fromtimestamp(deal_time, tz=timezone.utc)
+                    if deal_time else now_ts
+                )
+            else:
+                trade.closed_at = now_ts
+                logger.warning(
+                    "No closing deal found | account_id=%s ticket=%s position_ticket=%s",
+                    account_id, trade.ticket, position_ticket,
+                )
+
+            newly_closed_trade_ids.append(trade.id)
+            counts["positions_closed"] += 1
+            logger.info(
+                "Position closed | account_id=%s ticket=%s close_price=%s profit=%s",
+                account_id, trade.ticket, trade.close_price, trade.profit,
+            )
+
+        else:  # pending order
+            if trade.ticket in active_order_tickets:
+                counts["unchanged"] += 1
+                continue
+
+            hist_order = hist_orders_by_ticket.get(trade.ticket)
+            state = hist_order.get("state") if hist_order else None
+
+            if state == _ORDER_STATE_FILLED:
+                position_ticket = (hist_order.get("position_id") or trade.ticket) if hist_order else trade.ticket
+                if position_ticket in active_position_tickets:
+                    trade.order_status = "filled"
+                    counts["unchanged"] += 1
+                    continue
+                trade.order_status = "filled"
+                deal = closing_deals.get(position_ticket)
+                if deal:
+                    deal_time = deal.get("time")
+                    trade.close_price = deal.get("price")
+                    trade.profit      = deal.get("profit")
+                    trade.closed_at   = (
+                        datetime.fromtimestamp(deal_time, tz=timezone.utc)
+                        if deal_time else now_ts
+                    )
+                else:
+                    trade.closed_at = now_ts
+                newly_closed_trade_ids.append(trade.id)
+                counts["positions_closed"] += 1
+                logger.info(
+                    "Pending order filled+closed | account_id=%s ticket=%s profit=%s",
+                    account_id, trade.ticket, trade.profit,
+                )
+
+            elif state == _ORDER_STATE_EXPIRED:
+                trade.order_status = "expired"
+                trade.closed_at = now_ts
+                counts["orders_expired"] += 1
+                logger.info("Order expired | account_id=%s ticket=%s", account_id, trade.ticket)
+
+            else:
+                trade.order_status = "cancelled"
+                trade.closed_at = now_ts
+                counts["orders_cancelled"] += 1
+                logger.info("Order cancelled | account_id=%s ticket=%s state=%s", account_id, trade.ticket, state)
+
+    await db.commit()
+
+    # ── Phase 2: backfill closed deals not yet in DB ──────────────────────────
+    svc = HistoryService()
+    backfill = await svc.sync_deals_to_db(account, hist_deals, db)
+    newly_imported = backfill["imported"]
+    updated = backfill["updated"]
+    backfill_ids: list[int] = backfill.get("new_trade_ids", [])
+
+    # ── Post-trade analysis (fire-and-forget, skip manual terminal trades) ────
+    all_new_ids = newly_closed_trade_ids + [
+        tid for tid in backfill_ids if tid not in newly_closed_trade_ids
+    ]
+    if all_new_ids:
+        import asyncio
+        from services.trade_analyzer import analyze_closed_trade
+        from services.research_loop import maybe_run
+
+        # Only analyze system-placed trades (source != "manual")
+        result2 = await db.execute(
+            select(Trade).where(
+                Trade.id.in_(all_new_ids),
+                Trade.source != "manual",
+            )
+        )
+        system_trade_ids = [t.id for t in result2.scalars().all()]
+        for tid in system_trade_ids:
+            asyncio.ensure_future(analyze_closed_trade(tid))
+
+        if system_trade_ids:
+            _n = len(system_trade_ids)
+            _acct = account_id
+
+            async def _research_task() -> None:
+                async with AsyncSessionLocal() as _sess:
+                    await maybe_run(_acct, _sess, _n)
+
+            asyncio.ensure_future(_research_task())
+            logger.info("Post-trade analysis queued | account_id=%s count=%s", account_id, len(system_trade_ids))
+
+    logger.info(
+        "Full sync complete | account_id=%s phase1_closed=%s expired=%s cancelled=%s "
+        "phase2_imported=%s updated=%s unchanged=%s",
+        account_id,
+        counts["positions_closed"], counts["orders_expired"], counts["orders_cancelled"],
+        newly_imported, updated, counts["unchanged"],
+    )
+
+    return FullSyncResponse(
+        positions_closed=counts["positions_closed"],
+        orders_expired=counts["orders_expired"],
+        orders_cancelled=counts["orders_cancelled"],
+        unchanged=counts["unchanged"],
+        newly_imported=newly_imported,
+        updated=updated,
+        total_checked=len(open_trades),
+    )
+
+
 class SyncAllResponse(BaseModel):
     imported: int
     updated: int = 0
