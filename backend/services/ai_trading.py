@@ -33,6 +33,7 @@ from ai.orchestrator import (
     analyze_market,
     analyze_news_impact,
 )
+from ai.vision import generate_ohlcv_chart
 from core.llm_pricing import compute_cost
 from api.routes.ws import broadcast
 from core.config import settings
@@ -617,7 +618,7 @@ class AITradingService:
 
             # ── Fetch per-role LLM assignments from DB ───────────────────
             ma_llm  = await _get_task_llm("market_analysis", db)
-            cv_llm  = await _get_task_llm("chart_vision", db)
+            cv_llm  = await _get_task_llm("vision", db)
             ed_llm  = await _get_task_llm("execution_decision", db)
             na_llm  = (
                 await _get_task_llm("news_analysis", db)
@@ -715,6 +716,8 @@ class AITradingService:
                     except json.JSONDecodeError:
                         pass
 
+            chart_b64 = generate_ohlcv_chart(candles, symbol, tf_upper) if settings.enable_chart_vision else None
+
             t0 = time.monotonic()
             llm_result = await analyze_market(
                 symbol=symbol,
@@ -722,7 +725,7 @@ class AITradingService:
                 current_price=current_price or 0,
                 indicators=indicators,
                 ohlcv=candles,
-                chart_analysis=None,
+                chart_analysis=chart_b64,
                 open_positions=open_positions,
                 recent_signals=recent_signals,
                 news_context=news_context_str,
@@ -819,7 +822,7 @@ class AITradingService:
                     llm_result.chart_vision,
                     "chart_vision_llm",
                     "chart_vision",
-                    {"symbol": symbol, "has_image": True},
+                    {"symbol": symbol, "has_image": True, "chart_b64": chart_b64},
                 )
             await _record_llm_role(
                 llm_result.execution_decision,
@@ -830,6 +833,27 @@ class AITradingService:
                     "confidence": signal.confidence,
                 },
             )
+            if llm_result.indicator_agent is not None:
+                await _record_llm_role(
+                    llm_result.indicator_agent,
+                    "indicator_agent_llm",
+                    "indicator_agent",
+                    {"symbol": symbol, "timeframe": tf_upper},
+                )
+            if llm_result.pattern_agent is not None:
+                await _record_llm_role(
+                    llm_result.pattern_agent,
+                    "pattern_agent_llm",
+                    "pattern_agent",
+                    {"symbol": symbol, "has_chart": True},
+                )
+            if llm_result.trend_agent is not None:
+                await _record_llm_role(
+                    llm_result.trend_agent,
+                    "trend_agent_llm",
+                    "trend_agent",
+                    {"symbol": symbol, "has_trendline_chart": True},
+                )
 
         # ── 9. Confidence gate ───────────────────────────────────────────────
         assert signal is not None, "signal must be set by either rule-based or LLM path"

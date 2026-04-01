@@ -696,6 +696,10 @@ export interface GlobalSettings {
   maintenance_task_enabled: boolean;
   llm_confidence_threshold: number;
   news_enabled: boolean;
+  enable_agent_pipeline: boolean;
+  enable_indicator_agent: boolean;
+  enable_pattern_agent: boolean;
+  enable_trend_agent: boolean;
 }
 
 

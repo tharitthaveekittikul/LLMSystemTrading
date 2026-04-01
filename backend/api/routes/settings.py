@@ -19,7 +19,7 @@ _VALID_PROVIDERS = {"openai", "gemini", "anthropic", "openrouter", "ollama"}
 _VALID_TASKS = {
     "market_analysis", "vision", "execution_decision",
     "maintenance_technical", "maintenance_sentiment", "maintenance_decision",
-    "news_analysis", "post_trade_analysis",
+    "news_analysis", "post_trade_analysis", "indicator_agent",
 }
 
 
@@ -279,7 +279,7 @@ async def get_assignments(db: AsyncSession = Depends(get_db)) -> list[TaskAssign
     for task in [
         "market_analysis", "vision", "execution_decision",
         "maintenance_technical", "maintenance_sentiment", "maintenance_decision",
-        "news_analysis", "post_trade_analysis",
+        "news_analysis", "post_trade_analysis", "indicator_agent",
     ]:
         row = assigned.get(task)
         if row:
@@ -332,6 +332,10 @@ class GlobalSettings(BaseModel):
     maintenance_task_enabled: bool
     llm_confidence_threshold: float
     news_enabled: bool
+    enable_agent_pipeline: bool
+    enable_indicator_agent: bool
+    enable_pattern_agent: bool
+    enable_trend_agent: bool
 
 
 class GlobalSettingsPatch(BaseModel):
@@ -339,6 +343,10 @@ class GlobalSettingsPatch(BaseModel):
     maintenance_task_enabled: bool | None = None
     llm_confidence_threshold: float | None = None
     news_enabled: bool | None = None
+    enable_agent_pipeline: bool | None = None
+    enable_indicator_agent: bool | None = None
+    enable_pattern_agent: bool | None = None
+    enable_trend_agent: bool | None = None
 
 
 @router.get("/global", response_model=GlobalSettings)
@@ -353,6 +361,10 @@ async def get_global_settings(db: AsyncSession = Depends(get_db)) -> GlobalSetti
             maintenance_task_enabled=row.maintenance_task_enabled,
             llm_confidence_threshold=row.llm_confidence_threshold,
             news_enabled=row.news_enabled,
+            enable_agent_pipeline=row.enable_agent_pipeline,
+            enable_indicator_agent=row.enable_indicator_agent,
+            enable_pattern_agent=row.enable_pattern_agent,
+            enable_trend_agent=row.enable_trend_agent,
         )
     # Fallback to in-memory config (first boot before migration runs)
     return GlobalSettings(
@@ -360,6 +372,10 @@ async def get_global_settings(db: AsyncSession = Depends(get_db)) -> GlobalSetti
         maintenance_task_enabled=settings.maintenance_task_enabled,
         llm_confidence_threshold=settings.llm_confidence_threshold,
         news_enabled=settings.news_enabled,
+        enable_agent_pipeline=settings.enable_agent_pipeline,
+        enable_indicator_agent=settings.enable_indicator_agent,
+        enable_pattern_agent=settings.enable_pattern_agent,
+        enable_trend_agent=settings.enable_trend_agent,
     )
 
 
@@ -394,6 +410,18 @@ async def patch_global_settings(
     if body.news_enabled is not None:
         row.news_enabled = body.news_enabled
         settings.news_enabled = body.news_enabled
+    if body.enable_agent_pipeline is not None:
+        row.enable_agent_pipeline = body.enable_agent_pipeline
+        settings.enable_agent_pipeline = body.enable_agent_pipeline
+    if body.enable_indicator_agent is not None:
+        row.enable_indicator_agent = body.enable_indicator_agent
+        settings.enable_indicator_agent = body.enable_indicator_agent
+    if body.enable_pattern_agent is not None:
+        row.enable_pattern_agent = body.enable_pattern_agent
+        settings.enable_pattern_agent = body.enable_pattern_agent
+    if body.enable_trend_agent is not None:
+        row.enable_trend_agent = body.enable_trend_agent
+        settings.enable_trend_agent = body.enable_trend_agent
 
     await db.commit()
     await db.refresh(row)

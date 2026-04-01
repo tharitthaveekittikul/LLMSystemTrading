@@ -18,6 +18,7 @@ import { TaskAssignmentsSection } from "@/components/settings/task-assignments-s
 import { MaintenanceSection } from "@/components/settings/maintenance-section";
 import { RiskManagerSection } from "@/components/settings/risk-manager-section";
 import { TelegramSection } from "@/components/settings/telegram-section";
+import { AgentPipelineSection } from "@/components/settings/agent-pipeline-section";
 
 const PROVIDERS = ["openai", "gemini", "anthropic", "openrouter", "ollama"] as const;
 
@@ -64,6 +65,8 @@ export default function SettingsPage() {
         </div>
 
         <MaintenanceSection />
+
+        <AgentPipelineSection providers={providers} />
 
         <Card>
           <CardHeader>

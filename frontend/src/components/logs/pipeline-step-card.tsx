@@ -190,12 +190,41 @@ export function PipelineStepCard({ step, pricing = [], usdThbRate = 36.0 }: Pipe
               </pre>
             </div>
           )}
-          {step.input_json && (
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-1">Input</p>
-              <JsonViewer raw={step.input_json} />
-            </div>
-          )}
+          {step.input_json && (() => {
+            let chartB64: string | null = null;
+            let inputWithoutChart = step.input_json;
+            try {
+              const parsed = JSON.parse(step.input_json);
+              // chart_b64 may be top-level or nested under "summary"
+              const src = parsed?.chart_b64 ?? parsed?.summary?.chart_b64 ?? null;
+              if (src) {
+                chartB64 = src;
+                const clone = { ...parsed };
+                delete clone.chart_b64;
+                if (clone.summary) { clone.summary = { ...clone.summary }; delete clone.summary.chart_b64; }
+                inputWithoutChart = JSON.stringify(clone, null, 2);
+              }
+            } catch { /* keep raw */ }
+            return (
+              <div className="space-y-2">
+                {chartB64 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">Chart</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`data:image/png;base64,${chartB64}`}
+                      alt="OHLCV chart"
+                      className="rounded border max-w-full"
+                    />
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">Input</p>
+                  <JsonViewer raw={inputWithoutChart} />
+                </div>
+              </div>
+            );
+          })()}
           {step.output_json && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-1">Output</p>

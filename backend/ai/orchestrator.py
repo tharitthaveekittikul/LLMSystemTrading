@@ -56,11 +56,15 @@ class LLMRoleResult:
 
 @dataclass
 class LLMAnalysisResult:
-    """Combined result from all 3 LLM role calls."""
+    """Combined result from all LLM role calls."""
     signal: TradingSignal
     market_analysis: LLMRoleResult
     chart_vision: LLMRoleResult | None    # None if no chart image provided
     execution_decision: LLMRoleResult
+    # Agent pipeline steps (None when using classic 3-role pipeline)
+    indicator_agent: LLMRoleResult | None = None
+    pattern_agent: LLMRoleResult | None = None
+    trend_agent: LLMRoleResult | None = None
 
 
 _VALID_MAINTENANCE_ACTIONS = frozenset({"HOLD", "CLOSE", "MODIFY"})
@@ -742,8 +746,25 @@ async def analyze_market(
 
     Each role makes an independent LLM call and records token usage.
     llm_override applies to ALL roles if role-specific overrides are not set (legacy compat).
+    When settings.enable_agent_pipeline=True, routes to the 4-agent parallel pipeline instead.
     """
     default_llm = llm_override or _build_llm()
+
+    if settings.enable_agent_pipeline:
+        return await run_agent_pipeline(
+            symbol=symbol,
+            timeframe=timeframe,
+            current_price=current_price,
+            ohlcv=ohlcv,
+            indicators=indicators,
+            chart_image_b64=chart_analysis,
+            news_context=news_context,
+            open_positions=open_positions,
+            trade_history=recent_signals,
+            market_analysis_llm=market_analysis_llm or default_llm,
+            chart_vision_llm=chart_vision_llm or default_llm,
+            execution_decision_llm=execution_decision_llm or default_llm,
+        )
     ma_llm  = market_analysis_llm    or default_llm
     cv_llm  = chart_vision_llm       or default_llm
     ed_llm  = execution_decision_llm or default_llm
@@ -898,4 +919,182 @@ async def review_position(
         technical_analysis=tech_result,
         sentiment_analysis=sent_result,
         maintenance_decision=dec_result,
+    )
+
+
+# ── Public: Multi-Agent Pipeline ───────────────────────────────────────────────
+
+async def run_agent_pipeline(
+    symbol: str,
+    timeframe: str,
+    current_price: float,
+    ohlcv: list[dict[str, Any]],
+    indicators: dict[str, Any] | None = None,
+    chart_image_b64: str | None = None,
+    news_context: str | None = None,
+    open_positions: list[dict[str, Any]] | None = None,
+    trade_history: list[dict[str, Any]] | None = None,
+    *,
+    market_analysis_llm: BaseChatModel | None = None,
+    chart_vision_llm: BaseChatModel | None = None,
+    execution_decision_llm: BaseChatModel | None = None,
+    indicator_agent_llm: BaseChatModel | None = None,
+) -> LLMAnalysisResult:
+    """Entry point for the 4-agent parallel pipeline.
+
+    Pipeline: market_analysis (sequential) → [indicator, pattern, trend] (parallel) → decision.
+    Called when settings.enable_agent_pipeline=True.
+
+    Returns LLMAnalysisResult for backward-compatible interface with analyze_market().
+    The execution_decision LLMRoleResult carries the final_signal as its content.
+    """
+    import time
+    from services.technical_indicators import compute_indicators, fit_trendlines, render_trendline_chart
+    from ai.agent_pipeline import build_pipeline, AgentPipelineState
+
+    t0 = time.monotonic()
+    default_llm = _build_llm()
+    ma_llm = market_analysis_llm or default_llm
+    cv_llm = chart_vision_llm or default_llm
+    ed_llm = execution_decision_llm or default_llm
+    ia_llm = indicator_agent_llm or _build_llm(
+        model=settings.indicator_agent_model or None
+    ) if settings.indicator_agent_model else default_llm
+
+    logger.info(
+        "Agent pipeline start | symbol=%s timeframe=%s price=%s",
+        symbol, timeframe, current_price,
+    )
+
+    # Compute indicators from OHLCV if not provided
+    computed_indicators: dict = indicators or {}
+    if not computed_indicators and len(ohlcv) >= 50:
+        try:
+            computed_indicators = compute_indicators(ohlcv)
+        except Exception as exc:
+            logger.warning("Indicator computation failed: %s — using empty dict", exc)
+
+    # Render trendline chart if base candlestick chart is provided
+    trendline_chart_b64: str | None = None
+    if chart_image_b64 and len(ohlcv) >= 50:
+        try:
+            import numpy as np
+            bars = ohlcv[-50:]
+            high = np.array([c["high"] for c in bars])
+            low = np.array([c["low"] for c in bars])
+            close = np.array([c["close"] for c in bars])
+            s_slope, s_int, r_slope, r_int = fit_trendlines(high, low, close)
+            trendline_chart_b64 = render_trendline_chart(ohlcv, s_slope, s_int, r_slope, r_int) or None
+        except Exception as exc:
+            logger.warning("Trendline chart generation failed: %s", exc)
+
+    # Build and run the LangGraph pipeline
+    pipeline = build_pipeline(ma_llm, ia_llm, cv_llm, ed_llm, settings)
+    initial_state: AgentPipelineState = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "current_price": current_price,
+        "ohlcv": ohlcv,
+        "indicators": computed_indicators,
+        "chart_image_b64": chart_image_b64,
+        "trendline_chart_b64": trendline_chart_b64,
+        "news_context": news_context,
+        "open_positions": open_positions,
+        "trade_history": trade_history,
+        "market_context": None,
+        "indicator_report": None,
+        "pattern_report": None,
+        "trend_report": None,
+        "final_signal": None,
+        "error": None,
+    }
+    final_state = await pipeline.ainvoke(initial_state)
+
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    final_signal: dict = final_state.get("final_signal") or {
+        "signal": "HOLD", "confidence": 0.0, "justification": "pipeline_returned_no_signal",
+    }
+    logger.info(
+        "Agent pipeline complete | symbol=%s signal=%s confidence=%s duration=%dms",
+        symbol, final_signal.get("signal"), final_signal.get("confidence"), duration_ms,
+    )
+
+    # Map pipeline output → LLMAnalysisResult
+    action = final_signal.get("signal", "HOLD")
+    raw = {
+        "action": action,
+        "entry": final_signal.get("suggested_entry", current_price) or current_price,
+        "stop_loss": 0.0,
+        "take_profit": 0.0,
+        "confidence": float(final_signal.get("confidence", 0.0)),
+        "rationale": final_signal.get("justification", ""),
+        "timeframe": timeframe,
+    }
+    raw = _normalize_raw(raw, timeframe=timeframe, current_price=current_price)
+    signal = TradingSignal(**raw)
+
+    if signal.confidence < settings.llm_confidence_threshold:
+        logger.info(
+            "Agent pipeline signal downgraded HOLD — confidence %.2f below threshold %.2f",
+            signal.confidence, settings.llm_confidence_threshold,
+        )
+        signal.action = "HOLD"
+
+    def _role_result_from_tokens(
+        tokens: dict | None,
+        llm: BaseChatModel,
+        content: Any,
+    ) -> LLMRoleResult:
+        t = tokens or {}
+        return LLMRoleResult(
+            content=content,
+            input_tokens=t.get("input_tokens"),
+            output_tokens=t.get("output_tokens"),
+            total_tokens=t.get("total_tokens"),
+            model=t.get("model") or _model_name_from_llm(llm),
+            provider=t.get("provider") or _provider_from_llm(llm),
+            duration_ms=t.get("duration_ms") or duration_ms,
+            raw_text="",
+        )
+
+    def _optional_role_result(
+        tokens: dict | None,
+        content: Any,
+    ) -> LLMRoleResult | None:
+        if tokens is None:
+            return None
+        return LLMRoleResult(
+            content=content,
+            input_tokens=tokens.get("input_tokens"),
+            output_tokens=tokens.get("output_tokens"),
+            total_tokens=tokens.get("total_tokens"),
+            model=tokens.get("model", "unknown"),
+            provider=tokens.get("provider", "unknown"),
+            duration_ms=tokens.get("duration_ms", 0),
+            raw_text="",
+        )
+
+    return LLMAnalysisResult(
+        signal=signal,
+        market_analysis=_role_result_from_tokens(
+            final_state.get("market_analysis_tokens"), ma_llm,
+            final_state.get("market_context") or {},
+        ),
+        chart_vision=None,
+        execution_decision=_role_result_from_tokens(
+            final_state.get("decision_tokens"), ed_llm,
+            final_signal,
+        ),
+        indicator_agent=_optional_role_result(
+            final_state.get("indicator_tokens"),
+            final_state.get("indicator_report"),
+        ),
+        pattern_agent=_optional_role_result(
+            final_state.get("pattern_tokens"),
+            final_state.get("pattern_report"),
+        ),
+        trend_agent=_optional_role_result(
+            final_state.get("trend_tokens"),
+            final_state.get("trend_report"),
+        ),
     )

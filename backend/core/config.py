@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     # ── LLM ───────────────────────────────────────────────────────────────────
     llm_provider: str = "openai"  # openai | gemini | anthropic | openrouter | ollama
     llm_confidence_threshold: float = 0.70
+    enable_chart_vision: bool = True  # set ENABLE_CHART_VISION=false to disable chart analysis
+
+    # ── Multi-agent pipeline ──────────────────────────────────────────────────
+    enable_agent_pipeline: bool = False    # master toggle; False = use existing 3-role pipeline
+    enable_indicator_agent: bool = True
+    enable_pattern_agent: bool = True
+    enable_trend_agent: bool = True
+    indicator_agent_model: str = ""        # empty = use provider default cheap model
     openai_api_key: str = ""
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"  # override with GEMINI_MODEL in .env

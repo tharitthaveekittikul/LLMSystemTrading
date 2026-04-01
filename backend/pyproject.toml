@@ -41,6 +41,8 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "pydantic>=2.12.5",
     "pandas-ta>=0.4.71b0",
+    "mplfinance>=0.12",
+    "langgraph>=0.2",
 ]
 
 [project.optional-dependencies]
