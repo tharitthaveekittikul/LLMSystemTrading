@@ -103,11 +103,11 @@ async def run_pattern_agent(
         result: dict = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError, AttributeError):
         logger.warning("pattern_agent: JSON parse failed, returning neutral fallback")
-        return _fallback, None, ""
+        return _fallback, None, None
 
     logger.info(
         "pattern_agent complete: pattern=%s confidence=%s",
         result.get("pattern"),
         result.get("confidence"),
     )
-    return result, response, prompt_text
+    return result, response, {"system": _SYSTEM_PROMPT, "human": prompt_text}

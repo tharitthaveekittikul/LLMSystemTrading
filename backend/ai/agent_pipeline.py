@@ -49,12 +49,12 @@ class AgentPipelineState(TypedDict):
     pattern_tokens: dict | None
     trend_tokens: dict | None
     decision_tokens: dict | None
-    # Prompts sent to each agent (human message text, for UI display)
-    market_analysis_prompt: str | None
-    indicator_prompt: str | None
-    pattern_prompt: str | None
-    trend_prompt: str | None
-    decision_prompt: str | None
+    # Prompts sent to each agent — {"system": str, "human": str} dicts for UI display
+    market_analysis_prompt: dict | None
+    indicator_prompt: dict | None
+    pattern_prompt: dict | None
+    trend_prompt: dict | None
+    decision_prompt: dict | None
 
 
 def _extract_text(content: Any) -> str:
@@ -145,6 +145,16 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
             f"Current Price: {current_price}\n"
             f"Indicators: {indicator_summary}"
         )
+        ohlcv = state.get("ohlcv") or []
+        if ohlcv:
+            recent = ohlcv[-20:]
+            ohlcv_rows = ["time,open,high,low,close,volume"]
+            for c in recent:
+                ohlcv_rows.append(
+                    f"{c.get('time', '')},{c.get('open', '')},{c.get('high', '')},"
+                    f"{c.get('low', '')},{c.get('close', '')},{c.get('tick_volume', c.get('volume', ''))}"
+                )
+            human_text += f"\nRecent OHLCV (last {len(recent)} candles):\n" + "\n".join(ohlcv_rows)
         if news_context:
             human_text += f"\nNews Context: {news_context}"
         if open_positions:
@@ -153,6 +163,7 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
         if trade_history:
             human_text += f"\nRecent Trade History: {json.dumps(trade_history[-5:], default=str)}"
 
+        prompt_dict = {"system": system_prompt, "human": human_text}
         t0 = time.monotonic()
         try:
             response = await market_analysis_llm.ainvoke(
@@ -166,7 +177,7 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
             return {
                 "market_context": result,
                 "market_analysis_tokens": _build_usage(response, market_analysis_llm, dur),
-                "market_analysis_prompt": human_text,
+                "market_analysis_prompt": prompt_dict,
             }
         except json.JSONDecodeError as exc:
             dur = int((time.monotonic() - t0) * 1000)
@@ -174,7 +185,7 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
             return {
                 "market_context": {},
                 "market_analysis_tokens": _build_usage(None, market_analysis_llm, dur),
-                "market_analysis_prompt": human_text,
+                "market_analysis_prompt": prompt_dict,
             }
         except Exception as exc:
             dur = int((time.monotonic() - t0) * 1000)
@@ -182,7 +193,7 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
             return {
                 "market_context": {},
                 "market_analysis_tokens": _build_usage(None, market_analysis_llm, dur),
-                "market_analysis_prompt": human_text,
+                "market_analysis_prompt": prompt_dict,
                 "error": str(exc),
             }
 

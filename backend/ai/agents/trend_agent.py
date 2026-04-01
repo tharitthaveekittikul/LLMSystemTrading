@@ -96,7 +96,7 @@ async def run_trend_agent(
         result: dict = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError, AttributeError):
         logger.warning("trend_agent: JSON parse failed, returning neutral fallback")
-        return _fallback, None, ""
+        return _fallback, None, None
 
     logger.info(
         "trend_agent complete: structure=%s prediction=%s confidence=%s",
@@ -104,4 +104,4 @@ async def run_trend_agent(
         result.get("trend_prediction"),
         result.get("confidence"),
     )
-    return result, response, prompt_text
+    return result, response, {"system": _SYSTEM_PROMPT, "human": prompt_text}

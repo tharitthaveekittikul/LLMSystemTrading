@@ -1056,7 +1056,7 @@ async def run_agent_pipeline(
         tokens: dict | None,
         llm: BaseChatModel,
         content: Any,
-        prompt: str = "",
+        prompt: Any = None,
     ) -> LLMRoleResult:
         t = tokens or {}
         return LLMRoleResult(
@@ -1074,7 +1074,7 @@ async def run_agent_pipeline(
     def _optional_role_result(
         tokens: dict | None,
         content: Any,
-        prompt: str = "",
+        prompt: Any = None,
     ) -> LLMRoleResult | None:
         if tokens is None:
             return None

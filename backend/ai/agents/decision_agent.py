@@ -118,11 +118,11 @@ async def run_decision_agent(
         result: dict = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError, AttributeError):
         logger.warning("decision_agent: JSON parse failed, returning HOLD fallback")
-        return _fallback, None, ""
+        return _fallback, None, None
 
     logger.info(
         "decision_agent complete: signal=%s confidence=%.2f",
         result.get("signal"),
         float(result.get("confidence", 0.0)),
     )
-    return result, response, human_text
+    return result, response, {"system": _SYSTEM_PROMPT, "human": human_text}
