@@ -77,7 +77,7 @@ async def run_decision_agent(
     trend_report: dict | None,
     market_context: dict,
     llm,
-) -> tuple[dict, any]:
+) -> tuple[dict, any, str]:
     """Synthesize sub-agent reports into a final trading decision.
 
     Args:
@@ -118,11 +118,11 @@ async def run_decision_agent(
         result: dict = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError, AttributeError):
         logger.warning("decision_agent: JSON parse failed, returning HOLD fallback")
-        return _fallback, None
+        return _fallback, None, ""
 
     logger.info(
         "decision_agent complete: signal=%s confidence=%.2f",
         result.get("signal"),
         float(result.get("confidence", 0.0)),
     )
-    return result, response
+    return result, response, human_text

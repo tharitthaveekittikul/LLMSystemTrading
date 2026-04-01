@@ -65,6 +65,8 @@ class LLMAnalysisResult:
     indicator_agent: LLMRoleResult | None = None
     pattern_agent: LLMRoleResult | None = None
     trend_agent: LLMRoleResult | None = None
+    # Trendline chart used by trend_agent (for UI display)
+    trendline_chart_b64: str | None = None
 
 
 _VALID_MAINTENANCE_ACTIONS = frozenset({"HOLD", "CLOSE", "MODIFY"})
@@ -1007,6 +1009,16 @@ async def run_agent_pipeline(
         "trend_report": None,
         "final_signal": None,
         "error": None,
+        "market_analysis_tokens": None,
+        "indicator_tokens": None,
+        "pattern_tokens": None,
+        "trend_tokens": None,
+        "decision_tokens": None,
+        "market_analysis_prompt": None,
+        "indicator_prompt": None,
+        "pattern_prompt": None,
+        "trend_prompt": None,
+        "decision_prompt": None,
     }
     final_state = await pipeline.ainvoke(initial_state)
 
@@ -1044,6 +1056,7 @@ async def run_agent_pipeline(
         tokens: dict | None,
         llm: BaseChatModel,
         content: Any,
+        prompt: str = "",
     ) -> LLMRoleResult:
         t = tokens or {}
         return LLMRoleResult(
@@ -1055,11 +1068,13 @@ async def run_agent_pipeline(
             provider=t.get("provider") or _provider_from_llm(llm),
             duration_ms=t.get("duration_ms") or duration_ms,
             raw_text="",
+            prompt=prompt or None,
         )
 
     def _optional_role_result(
         tokens: dict | None,
         content: Any,
+        prompt: str = "",
     ) -> LLMRoleResult | None:
         if tokens is None:
             return None
@@ -1072,6 +1087,7 @@ async def run_agent_pipeline(
             provider=tokens.get("provider", "unknown"),
             duration_ms=tokens.get("duration_ms", 0),
             raw_text="",
+            prompt=prompt or None,
         )
 
     return LLMAnalysisResult(
@@ -1079,22 +1095,28 @@ async def run_agent_pipeline(
         market_analysis=_role_result_from_tokens(
             final_state.get("market_analysis_tokens"), ma_llm,
             final_state.get("market_context") or {},
+            final_state.get("market_analysis_prompt") or "",
         ),
         chart_vision=None,
         execution_decision=_role_result_from_tokens(
             final_state.get("decision_tokens"), ed_llm,
             final_signal,
+            final_state.get("decision_prompt") or "",
         ),
         indicator_agent=_optional_role_result(
             final_state.get("indicator_tokens"),
             final_state.get("indicator_report"),
+            final_state.get("indicator_prompt") or "",
         ),
         pattern_agent=_optional_role_result(
             final_state.get("pattern_tokens"),
             final_state.get("pattern_report"),
+            final_state.get("pattern_prompt") or "",
         ),
         trend_agent=_optional_role_result(
             final_state.get("trend_tokens"),
             final_state.get("trend_report"),
+            final_state.get("trend_prompt") or "",
         ),
+        trendline_chart_b64=trendline_chart_b64,
     )

@@ -77,10 +77,15 @@ async def lifespan(app: FastAPI):
             settings.maintenance_task_enabled = _row.maintenance_task_enabled
             settings.llm_confidence_threshold = _row.llm_confidence_threshold
             settings.news_enabled = _row.news_enabled
+            settings.enable_agent_pipeline = _row.enable_agent_pipeline
+            settings.enable_indicator_agent = _row.enable_indicator_agent
+            settings.enable_pattern_agent = _row.enable_pattern_agent
+            settings.enable_trend_agent = _row.enable_trend_agent
             logger.info(
-                "Global settings loaded from DB | maintenance_interval=%dmin enabled=%s",
+                "Global settings loaded from DB | maintenance_interval=%dmin enabled=%s agent_pipeline=%s",
                 _row.maintenance_interval_minutes,
                 _row.maintenance_task_enabled,
+                _row.enable_agent_pipeline,
             )
 
         _tg = (await _db.execute(

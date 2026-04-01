@@ -51,7 +51,7 @@ async def run_trend_agent(
     trendline_chart_b64: str,
     market_context: dict,
     llm,
-) -> tuple[dict, any]:
+) -> tuple[dict, any, str]:
     """Analyze trendline structure from a base64-encoded chart image.
 
     Args:
@@ -87,6 +87,8 @@ async def run_trend_agent(
 
     messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=human_content)]
 
+    prompt_text: str = human_content[0]["text"]
+
     try:
         response = await llm.ainvoke(messages)
         raw = _extract_text(response.content)
@@ -94,7 +96,7 @@ async def run_trend_agent(
         result: dict = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError, AttributeError):
         logger.warning("trend_agent: JSON parse failed, returning neutral fallback")
-        return _fallback, None
+        return _fallback, None, ""
 
     logger.info(
         "trend_agent complete: structure=%s prediction=%s confidence=%s",
@@ -102,4 +104,4 @@ async def run_trend_agent(
         result.get("trend_prediction"),
         result.get("confidence"),
     )
-    return result, response
+    return result, response, prompt_text

@@ -49,6 +49,12 @@ class AgentPipelineState(TypedDict):
     pattern_tokens: dict | None
     trend_tokens: dict | None
     decision_tokens: dict | None
+    # Prompts sent to each agent (human message text, for UI display)
+    market_analysis_prompt: str | None
+    indicator_prompt: str | None
+    pattern_prompt: str | None
+    trend_prompt: str | None
+    decision_prompt: str | None
 
 
 def _extract_text(content: Any) -> str:
@@ -160,6 +166,7 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
             return {
                 "market_context": result,
                 "market_analysis_tokens": _build_usage(response, market_analysis_llm, dur),
+                "market_analysis_prompt": human_text,
             }
         except json.JSONDecodeError as exc:
             dur = int((time.monotonic() - t0) * 1000)
@@ -167,6 +174,7 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
             return {
                 "market_context": {},
                 "market_analysis_tokens": _build_usage(None, market_analysis_llm, dur),
+                "market_analysis_prompt": human_text,
             }
         except Exception as exc:
             dur = int((time.monotonic() - t0) * 1000)
@@ -174,6 +182,7 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
             return {
                 "market_context": {},
                 "market_analysis_tokens": _build_usage(None, market_analysis_llm, dur),
+                "market_analysis_prompt": human_text,
                 "error": str(exc),
             }
 
@@ -188,55 +197,57 @@ def _make_parallel_agents_node(
     async def parallel_agents_node(state: AgentPipelineState) -> dict:
         logger.info("parallel_agents_node start")
 
-        async def _run_indicator() -> tuple[dict | None, dict | None]:
+        async def _run_indicator() -> tuple[dict | None, dict | None, str]:
             if not settings.enable_indicator_agent:
-                return None, None
+                return None, None, ""
             try:
                 t0 = time.monotonic()
-                result, response = await run_indicator_agent(
+                result, response, prompt = await run_indicator_agent(
                     state["indicators"], state.get("market_context") or {}, indicator_agent_llm
                 )
                 dur = int((time.monotonic() - t0) * 1000)
-                return result, _build_usage(response, indicator_agent_llm, dur)
+                return result, _build_usage(response, indicator_agent_llm, dur), prompt
             except Exception as exc:
                 logger.error("indicator_agent error: %s", exc)
-                return None, None
+                return None, None, ""
 
-        async def _run_pattern() -> tuple[dict | None, dict | None]:
+        async def _run_pattern() -> tuple[dict | None, dict | None, str]:
             if not settings.enable_pattern_agent:
-                return None, None
+                return None, None, ""
             if state.get("chart_image_b64") is None:
-                return None, None
+                return None, None, ""
             try:
                 t0 = time.monotonic()
-                result, response = await run_pattern_agent(
+                result, response, prompt = await run_pattern_agent(
                     state["chart_image_b64"], state.get("market_context") or {}, chart_vision_llm
                 )
                 dur = int((time.monotonic() - t0) * 1000)
-                return result, _build_usage(response, chart_vision_llm, dur)
+                return result, _build_usage(response, chart_vision_llm, dur), prompt
             except Exception as exc:
                 logger.error("pattern_agent error: %s", exc)
-                return None, None
+                return None, None, ""
 
-        async def _run_trend() -> tuple[dict | None, dict | None]:
+        async def _run_trend() -> tuple[dict | None, dict | None, str]:
             if not settings.enable_trend_agent:
-                return None, None
+                return None, None, ""
             if state.get("trendline_chart_b64") is None:
-                return None, None
+                return None, None, ""
             try:
                 t0 = time.monotonic()
-                result, response = await run_trend_agent(
+                result, response, prompt = await run_trend_agent(
                     state["trendline_chart_b64"], state.get("market_context") or {}, chart_vision_llm
                 )
                 dur = int((time.monotonic() - t0) * 1000)
-                return result, _build_usage(response, chart_vision_llm, dur)
+                return result, _build_usage(response, chart_vision_llm, dur), prompt
             except Exception as exc:
                 logger.error("trend_agent error: %s", exc)
-                return None, None
+                return None, None, ""
 
-        (indicator_report, indicator_tokens), (pattern_report, pattern_tokens), (trend_report, trend_tokens) = (
-            await asyncio.gather(_run_indicator(), _run_pattern(), _run_trend())
-        )
+        (
+            (indicator_report, indicator_tokens, indicator_prompt),
+            (pattern_report, pattern_tokens, pattern_prompt),
+            (trend_report, trend_tokens, trend_prompt),
+        ) = await asyncio.gather(_run_indicator(), _run_pattern(), _run_trend())
 
         logger.info(
             "parallel_agents_node finished: indicator=%s pattern=%s trend=%s",
@@ -252,6 +263,9 @@ def _make_parallel_agents_node(
             "indicator_tokens": indicator_tokens,
             "pattern_tokens": pattern_tokens,
             "trend_tokens": trend_tokens,
+            "indicator_prompt": indicator_prompt or None,
+            "pattern_prompt": pattern_prompt or None,
+            "trend_prompt": trend_prompt or None,
         }
 
     return parallel_agents_node
@@ -262,7 +276,7 @@ def _make_decision_node(execution_decision_llm: BaseChatModel):
         logger.info("decision_node start")
         t0 = time.monotonic()
         try:
-            result, response = await run_decision_agent(
+            result, response, prompt = await run_decision_agent(
                 state.get("indicator_report"),
                 state.get("pattern_report"),
                 state.get("trend_report"),
@@ -278,6 +292,7 @@ def _make_decision_node(execution_decision_llm: BaseChatModel):
             return {
                 "final_signal": result,
                 "decision_tokens": _build_usage(response, execution_decision_llm, dur),
+                "decision_prompt": prompt or None,
             }
         except Exception as exc:
             dur = int((time.monotonic() - t0) * 1000)
@@ -289,6 +304,7 @@ def _make_decision_node(execution_decision_llm: BaseChatModel):
                     "justification": "pipeline_error",
                 },
                 "decision_tokens": _build_usage(None, execution_decision_llm, dur),
+                "decision_prompt": None,
             }
 
     return decision_node

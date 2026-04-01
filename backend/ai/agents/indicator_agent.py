@@ -52,7 +52,7 @@ async def run_indicator_agent(
     indicators: dict,
     market_context: dict,
     llm,
-) -> tuple[dict, any]:
+) -> tuple[dict, any, str]:
     """Interpret momentum indicators and return a structured analysis dict.
 
     Args:
@@ -87,11 +87,11 @@ async def run_indicator_agent(
         result: dict = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError, AttributeError):
         logger.warning("indicator_agent: JSON parse failed, returning neutral fallback")
-        return {"overall": "neutral", "confidence": "low", "error": "parse_failed"}, None
+        return {"overall": "neutral", "confidence": "low", "error": "parse_failed"}, None, ""
 
     logger.info(
         "indicator_agent complete: overall=%s confidence=%s",
         result.get("overall"),
         result.get("confidence"),
     )
-    return result, response
+    return result, response, human_text

@@ -12,67 +12,73 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const STEP_LABELS: Record<string, string> = {
-  account_loaded:          "Account Loaded",
-  rate_limit_check:        "Rate Limit Check",
-  ohlcv_fetch:             "OHLCV Fetch",
-  indicators_computed:     "Indicators Computed",
-  hmm_regime:              "HMM Regime Detection",
-  positions_fetched:       "Positions Fetched",
-  signals_fetched:         "Recent Signals Fetched",
-  rule_signal:             "Rule-Based Signal",
-  market_analysis_llm:     "Market Analysis (LLM)",
-  chart_vision_llm:        "Chart Vision (LLM)",
-  execution_decision_llm:  "Execution Decision (LLM)",
-  llm_analyzed:            "LLM Analysis (legacy)",
-  confidence_gate:         "Confidence Gate",
-  regime_gate:             "Regime Gate",
-  lot_size_calculated:     "Lot Size Calculated",
-  journal_saved:           "Journal Saved",
-  kill_switch_check:       "Kill Switch Check",
-  maintenance_technical:   "Maintenance Technical (LLM)",
-  maintenance_sentiment:   "Maintenance Sentiment (LLM)",
-  maintenance_decision:    "Maintenance Decision (LLM)",
-  maintenance_hold:        "Maintenance Hold",
-  constraint_rejected:     "Constraint Rejected",
-  mt5_close:               "MT5 Close",
-  mt5_modify:              "MT5 Modify",
-  order_built:             "Order Built",
-  mt5_executed:            "MT5 Order Executed",
-  telegram_sent:           "Telegram Alert Sent",
-}
+  account_loaded: "Account Loaded",
+  rate_limit_check: "Rate Limit Check",
+  ohlcv_fetch: "OHLCV Fetch",
+  indicators_computed: "Indicators Computed",
+  hmm_regime: "HMM Regime Detection",
+  positions_fetched: "Positions Fetched",
+  signals_fetched: "Recent Signals Fetched",
+  rule_signal: "Rule-Based Signal",
+  market_analysis_llm: "Market Analysis (LLM)",
+  chart_vision_llm: "Chart Vision (LLM)",
+  indicator_agent_llm: "Indicator Agent (LLM)",
+  pattern_agent_llm: "Pattern Agent (LLM)",
+  trend_agent_llm: "Trend Agent (LLM)",
+  execution_decision_llm: "Execution Decision (LLM)",
+  llm_analyzed: "LLM Analysis (legacy)",
+  confidence_gate: "Confidence Gate",
+  regime_gate: "Regime Gate",
+  lot_size_calculated: "Lot Size Calculated",
+  journal_saved: "Journal Saved",
+  kill_switch_check: "Kill Switch Check",
+  maintenance_technical: "Maintenance Technical (LLM)",
+  maintenance_sentiment: "Maintenance Sentiment (LLM)",
+  maintenance_decision: "Maintenance Decision (LLM)",
+  maintenance_hold: "Maintenance Hold",
+  constraint_rejected: "Constraint Rejected",
+  mt5_close: "MT5 Close",
+  mt5_modify: "MT5 Modify",
+  order_built: "Order Built",
+  mt5_executed: "MT5 Order Executed",
+  telegram_sent: "Telegram Alert Sent",
+};
 
 const LLM_STEP_NAMES = new Set([
   "market_analysis_llm",
   "chart_vision_llm",
   "execution_decision_llm",
+  "indicator_agent_llm",
+  "pattern_agent_llm",
+  "trend_agent_llm",
   "llm_analyzed",
   "maintenance_technical",
   "maintenance_sentiment",
   "maintenance_decision",
-])
+]);
 
 interface TokenInfo {
-  model: string
-  provider: string
-  input_tokens: number | null
-  output_tokens: number | null
-  total_tokens: number | null
+  model: string;
+  provider: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
 }
 
 function extractTokenInfo(step: PipelineStep): TokenInfo | null {
-  if (!LLM_STEP_NAMES.has(step.step_name) || !step.output_json) return null
+  if (!LLM_STEP_NAMES.has(step.step_name) || !step.output_json) return null;
   try {
-    const out = JSON.parse(step.output_json)
-    if (!out.model && out.input_tokens == null) return null
+    const out = JSON.parse(step.output_json);
+    if (!out.model && out.input_tokens == null) return null;
     return {
-      model:         out.model         ?? "unknown",
-      provider:      out.provider      ?? "unknown",
-      input_tokens:  out.input_tokens  ?? null,
+      model: out.model ?? "unknown",
+      provider: out.provider ?? "unknown",
+      input_tokens: out.input_tokens ?? null,
       output_tokens: out.output_tokens ?? null,
-      total_tokens:  out.total_tokens  ?? null,
-    }
+      total_tokens: out.total_tokens ?? null,
+    };
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -84,7 +90,7 @@ interface PipelineStepCardProps {
 
 function JsonViewer({ raw }: { raw: string | null }) {
   if (!raw) return <span className="text-muted-foreground text-xs">—</span>;
-  
+
   let formattedContent = raw;
   let isJson = false;
 
@@ -106,11 +112,15 @@ function JsonViewer({ raw }: { raw: string | null }) {
   return <pre className="text-xs text-muted-foreground">{raw}</pre>;
 }
 
-export function PipelineStepCard({ step, pricing = [], usdThbRate = 36.0 }: PipelineStepCardProps) {
-  const [expanded, setExpanded] = useState(false)
-  const hasDetail = step.input_json || step.output_json || step.error
-  const label = STEP_LABELS[step.step_name] ?? step.step_name
-  const tokenInfo = extractTokenInfo(step)
+export function PipelineStepCard({
+  step,
+  pricing = [],
+  usdThbRate = 36.0,
+}: PipelineStepCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = step.input_json || step.output_json || step.error;
+  const label = STEP_LABELS[step.step_name] ?? step.step_name;
+  const tokenInfo = extractTokenInfo(step);
 
   return (
     <div className="border-l-2 border-muted pl-4 py-1">
@@ -151,18 +161,32 @@ export function PipelineStepCard({ step, pricing = [], usdThbRate = 36.0 }: Pipe
           {tokenInfo.input_tokens != null && (
             <>
               <span>↑ {tokenInfo.input_tokens.toLocaleString()} in</span>
-              <span>↓ {(tokenInfo.output_tokens ?? 0).toLocaleString()} out</span>
-              <span className="font-medium">∑ {(tokenInfo.total_tokens ?? 0).toLocaleString()} total</span>
+              <span>
+                ↓ {(tokenInfo.output_tokens ?? 0).toLocaleString()} out
+              </span>
+              <span className="font-medium">
+                ∑ {(tokenInfo.total_tokens ?? 0).toLocaleString()} total
+              </span>
             </>
           )}
           {(() => {
             const entry =
               pricing.find(
-                (p) => p.model === tokenInfo.model && p.provider === tokenInfo.provider
+                (p) =>
+                  p.model === tokenInfo.model &&
+                  p.provider === tokenInfo.provider,
               ) || pricing.find((p) => p.model === tokenInfo.model);
-            if (!entry || entry.input_per_1m_usd == null || entry.output_per_1m_usd == null)
+            if (
+              !entry ||
+              entry.input_per_1m_usd == null ||
+              entry.output_per_1m_usd == null
+            )
               return null;
-            if (tokenInfo.input_tokens == null || tokenInfo.output_tokens == null) return null;
+            if (
+              tokenInfo.input_tokens == null ||
+              tokenInfo.output_tokens == null
+            )
+              return null;
 
             const costUsd =
               (tokenInfo.input_tokens * entry.input_per_1m_usd) / 1000000 +
@@ -190,49 +214,62 @@ export function PipelineStepCard({ step, pricing = [], usdThbRate = 36.0 }: Pipe
               </pre>
             </div>
           )}
-          {step.input_json && (() => {
-            let chartB64: string | null = null;
-            let inputWithoutChart = step.input_json;
-            try {
-              const parsed = JSON.parse(step.input_json);
-              // chart_b64 may be top-level or nested under "summary"
-              const src = parsed?.chart_b64 ?? parsed?.summary?.chart_b64 ?? null;
-              if (src) {
-                chartB64 = src;
-                const clone = { ...parsed };
-                delete clone.chart_b64;
-                if (clone.summary) { clone.summary = { ...clone.summary }; delete clone.summary.chart_b64; }
-                inputWithoutChart = JSON.stringify(clone, null, 2);
+          {step.input_json &&
+            (() => {
+              let chartB64: string | null = null;
+              let inputWithoutChart = step.input_json;
+              try {
+                const parsed = JSON.parse(step.input_json);
+                // chart_b64 may be top-level or nested under "summary"
+                const src =
+                  parsed?.chart_b64 ?? parsed?.summary?.chart_b64 ?? null;
+                if (src) {
+                  chartB64 = src;
+                  const clone = { ...parsed };
+                  delete clone.chart_b64;
+                  if (clone.summary) {
+                    clone.summary = { ...clone.summary };
+                    delete clone.summary.chart_b64;
+                  }
+                  inputWithoutChart = JSON.stringify(clone, null, 2);
+                }
+              } catch {
+                /* keep raw */
               }
-            } catch { /* keep raw */ }
-            return (
-              <div className="space-y-2">
-                {chartB64 && (
+              return (
+                <div className="space-y-2">
+                  {chartB64 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">
+                        Chart
+                      </p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`data:image/png;base64,${chartB64}`}
+                        alt="OHLCV chart"
+                        className="rounded border max-w-full"
+                      />
+                    </div>
+                  )}
                   <div>
-                    <p className="text-xs font-semibold text-muted-foreground mb-1">Chart</p>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`data:image/png;base64,${chartB64}`}
-                      alt="OHLCV chart"
-                      className="rounded border max-w-full"
-                    />
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">
+                      Input
+                    </p>
+                    <JsonViewer raw={inputWithoutChart} />
                   </div>
-                )}
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">Input</p>
-                  <JsonViewer raw={inputWithoutChart} />
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
           {step.output_json && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-1">Output</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-1">
+                Output
+              </p>
               <JsonViewer raw={step.output_json} />
             </div>
           )}
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -59,7 +59,7 @@ async def run_pattern_agent(
     chart_image_b64: str,
     market_context: dict,
     llm,
-) -> tuple[dict, any]:
+) -> tuple[dict, any, str]:
     """Identify chart patterns from a base64-encoded chart image.
 
     Args:
@@ -94,6 +94,8 @@ async def run_pattern_agent(
 
     messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=human_content)]
 
+    prompt_text: str = human_content[0]["text"]
+
     try:
         response = await llm.ainvoke(messages)
         raw = _extract_text(response.content)
@@ -101,11 +103,11 @@ async def run_pattern_agent(
         result: dict = json.loads(cleaned)
     except (json.JSONDecodeError, ValueError, AttributeError):
         logger.warning("pattern_agent: JSON parse failed, returning neutral fallback")
-        return _fallback, None
+        return _fallback, None, ""
 
     logger.info(
         "pattern_agent complete: pattern=%s confidence=%s",
         result.get("pattern"),
         result.get("confidence"),
     )
-    return result, response
+    return result, response, prompt_text

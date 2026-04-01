@@ -824,15 +824,6 @@ class AITradingService:
                     "chart_vision",
                     {"symbol": symbol, "has_image": True, "chart_b64": chart_b64},
                 )
-            await _record_llm_role(
-                llm_result.execution_decision,
-                "execution_decision_llm",
-                "execution_decision",
-                {
-                    "action":     signal.action,
-                    "confidence": signal.confidence,
-                },
-            )
             if llm_result.indicator_agent is not None:
                 await _record_llm_role(
                     llm_result.indicator_agent,
@@ -845,15 +836,26 @@ class AITradingService:
                     llm_result.pattern_agent,
                     "pattern_agent_llm",
                     "pattern_agent",
-                    {"symbol": symbol, "has_chart": True},
+                    {"symbol": symbol, "has_chart": True, "chart_b64": chart_b64},
                 )
             if llm_result.trend_agent is not None:
+                # trendline_chart_b64 is only available in the agent pipeline path
+                tl_b64 = getattr(llm_result, "trendline_chart_b64", None)
                 await _record_llm_role(
                     llm_result.trend_agent,
                     "trend_agent_llm",
                     "trend_agent",
-                    {"symbol": symbol, "has_trendline_chart": True},
+                    {"symbol": symbol, "has_trendline_chart": True, **({"chart_b64": tl_b64} if tl_b64 else {})},
                 )
+            await _record_llm_role(
+                llm_result.execution_decision,
+                "execution_decision_llm",
+                "execution_decision",
+                {
+                    "action":     signal.action,
+                    "confidence": signal.confidence,
+                },
+            )
 
         # ── 9. Confidence gate ───────────────────────────────────────────────
         assert signal is not None, "signal must be set by either rule-based or LLM path"
