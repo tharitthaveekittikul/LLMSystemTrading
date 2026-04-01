@@ -31,7 +31,10 @@ def setup_logging() -> None:
         force=True,
     )
 
-    # Suppress noisy third-party loggers unless in debug mode
-    if not settings.debug:
-        for name in _NOISY_LOGGERS:
-            logging.getLogger(name).setLevel(logging.WARNING)
+    # Suppress noisy third-party loggers in all modes
+    for name in _NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+    # In debug mode, show uvicorn access logs (one line per request)
+    if settings.debug:
+        logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)

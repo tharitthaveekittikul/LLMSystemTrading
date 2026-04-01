@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.middleware import RequestLoggingMiddleware
 from api.routes import accounts, analytics, trades, ws
 from api.routes import signals
 from api.routes import status
@@ -132,6 +133,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(accounts.router,      prefix="/api/v1/accounts",    tags=["accounts"])
 app.include_router(trades.router,        prefix="/api/v1/trades",      tags=["trades"])
