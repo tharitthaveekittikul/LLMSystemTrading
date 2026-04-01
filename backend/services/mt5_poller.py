@@ -30,6 +30,7 @@ class AccountPollState:
     last_polled_at: datetime | None = None
     last_error: str | None = None
     last_position_tickets: set[int] = field(default_factory=set)
+    last_account_info: dict | None = None  # cached from last poll cycle
     _initialized: bool = False  # skip first-cycle diff (no baseline yet)
 
 
@@ -42,9 +43,20 @@ def get_states() -> dict[int, AccountPollState]:
 
 
 async def start_account(account_id: int) -> None:
-    """Start a persistent poll session for account_id (no-op if already running)."""
+    """Start a persistent poll session for account_id (no-op if already running).
+
+    MT5 Python library is a per-process singleton — only one account can be
+    connected at a time. Stop any other running pollers before starting a new one.
+    """
     if account_id in _tasks and not _tasks[account_id].done():
         return
+
+    # Stop all other running pollers before starting — MT5 only supports one connection.
+    for other_id in list(_tasks.keys()):
+        if other_id != account_id and not _tasks[other_id].done():
+            logger.info("MT5 poller: stopping account_id=%s to switch to account_id=%s", other_id, account_id)
+            await stop_account(other_id)
+
     _tasks[account_id] = asyncio.create_task(
         _poll_loop(account_id), name=f"mt5_poller_{account_id}"
     )
@@ -120,9 +132,31 @@ async def _poll_session(account_id: int) -> None:
         await bridge.disconnect()
         raise ConnectionError(f"MT5 init failed (code {code}): {msg}")
 
-    state.is_connected = True
     state.last_error = None
     logger.info("MT5 connected for polling | account_id=%s login=%s", account_id, account.login)
+
+    # MT5 terminal needs a moment to (re)establish broker connection after initialize().
+    # This is especially likely when a fresh MT5Bridge was used just before the poller
+    # started (e.g. /accounts/info calls on page load). Wait up to 15 s.
+    for _attempt in range(15):
+        if await bridge.is_broker_connected():
+            break
+        if _attempt == 0:
+            logger.info("Waiting for broker connection | account_id=%s", account_id)
+        await asyncio.sleep(1)
+    else:
+        await bridge.disconnect()
+        raise ConnectionError("Broker did not connect within 15 s of MT5 initialize()")
+
+    # Pre-populate cache immediately so /accounts/{id}/info can serve from it
+    # before the first poll cycle completes (avoids a competing fresh bridge).
+    info = await bridge.get_account_info()
+    if info:
+        state.last_account_info = info
+
+    # Mark connected only after broker is confirmed and cache is ready.
+    # The /accounts/{id}/info endpoint checks is_connected + last_account_info together.
+    state.is_connected = True
 
     try:
         while True:
@@ -148,6 +182,7 @@ async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState)
     pending_orders = await bridge.get_orders()
 
     if info:
+        state.last_account_info = info
         await broadcast(account_id, "equity_update", {
             "account_id": account_id,
             "balance":      info.get("balance"),
