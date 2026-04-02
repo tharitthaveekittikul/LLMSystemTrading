@@ -31,6 +31,12 @@ class TradingSignal(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Signal confidence 0-1")
     rationale: str = Field(..., description="Brief explanation of the signal")
     timeframe: str = Field(..., description="Analysis timeframe e.g. M15")
+    expiry_multiplier: float = Field(
+        default=1.0,
+        ge=0.5,
+        le=3.0,
+        description="Multiplier on default 4-candle pending order expiry. 1.0 = default.",
+    )
 
     @field_validator("action")
     @classmethod
@@ -350,6 +356,12 @@ def _normalize_raw(raw: dict, *, timeframe: str, current_price: float) -> dict:
     out.setdefault("take_profit", 0.0)
     out.setdefault("confidence", 0.0)
     out.setdefault("rationale", "No rationale provided by model.")
+    # Clamp expiry_multiplier to valid range; default 1.0 if absent or out-of-range
+    raw_mult = out.get("expiry_multiplier", 1.0)
+    try:
+        out["expiry_multiplier"] = max(0.5, min(3.0, float(raw_mult)))
+    except (TypeError, ValueError):
+        out["expiry_multiplier"] = 1.0
 
     # LLM sometimes returns rationale as a nested dict — flatten to string
     if not isinstance(out.get("rationale"), str):
@@ -389,7 +401,8 @@ Use EXACTLY these field names:
   "take_profit": <float>,
   "confidence": <float 0.0-1.0>,
   "rationale": "<brief 1-2 sentence explanation>",
-  "timeframe": "<e.g. M15>"
+  "timeframe": "<e.g. M15>",
+  "expiry_multiplier": <float 0.5-3.0>
 }}
 
 Order type guidance (IMPORTANT — pick the right action):
@@ -404,7 +417,9 @@ Rules:
 - Signal BUY or SELL only when multiple indicators confirm the same direction.
 - Signal HOLD when uncertain or risk/reward is unfavorable.
 - Check open positions before signaling. Avoid doubling same direction unless confidence > 0.90.
-- Never open opposing positions simultaneously."""
+- Never open opposing positions simultaneously.
+- expiry_multiplier applies only to LIMIT/STOP pending orders (ignored for BUY/SELL/HOLD).
+  Use 0.5–0.9 for tight/fast setups. Use 1.0 for normal. Use 1.5–3.0 for slow-developing setups."""
 
 _MAINTENANCE_TECHNICAL_SYSTEM = """You are a professional forex technical analyst reviewing an existing open position.
 Analyze the position's technical merit given current market conditions.
@@ -1036,11 +1051,12 @@ async def run_agent_pipeline(
     raw = {
         "action": action,
         "entry": final_signal.get("suggested_entry", current_price) or current_price,
-        "stop_loss": 0.0,
-        "take_profit": 0.0,
+        "stop_loss": float(final_signal.get("stop_loss") or 0.0),
+        "take_profit": float(final_signal.get("take_profit") or 0.0),
         "confidence": float(final_signal.get("confidence", 0.0)),
         "rationale": final_signal.get("justification", ""),
         "timeframe": timeframe,
+        "expiry_multiplier": float(final_signal.get("expiry_multiplier") or 1.0),
     }
     raw = _normalize_raw(raw, timeframe=timeframe, current_price=current_price)
     signal = TradingSignal(**raw)

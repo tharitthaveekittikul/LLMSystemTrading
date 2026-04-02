@@ -1031,6 +1031,7 @@ class AITradingService:
             _strat_rec = await db.get(_Strategy, strategy_id)
             if _strat_rec:
                 _source = _strat_rec.name
+        _expiry_hours = pending_expiry_hours(timeframe) * getattr(signal, "expiry_multiplier", 1.0)
         order_req = OrderRequest(
             symbol=mt5_symbol,  # broker-specific name resolved at OHLCV fetch time
             action=signal.action,
@@ -1039,7 +1040,7 @@ class AITradingService:
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
             comment=_source[:64],
-            expiration_hours=pending_expiry_hours(timeframe),
+            expiration_hours=_expiry_hours,
         )
         await tracer.record(
             "order_built",
@@ -1051,7 +1052,8 @@ class AITradingService:
                 "entry": signal.entry,
                 "sl": signal.stop_loss,
                 "tp": signal.take_profit,
-                "expiration_hours": pending_expiry_hours(timeframe),
+                "expiration_hours": _expiry_hours,
+                "expiry_multiplier": getattr(signal, "expiry_multiplier", 1.0),
                 "comment": _source[:64],
             },
         )

@@ -25,6 +25,9 @@ Return a JSON object with this exact structure:
     "justification": <str>,
     "risk_reward_ratio": <float>,
     "suggested_entry": <float>,
+    "stop_loss": <float>,
+    "take_profit": <float>,
+    "expiry_multiplier": <float between 0.5 and 3.0>,
     "invalidation_condition": <str>
 }
 
@@ -40,6 +43,15 @@ Rules:
 - justification: concise explanation referencing the reports, max 3 sentences.
 - risk_reward_ratio: expected reward divided by expected risk (e.g. 2.0 means 2:1 R:R).
 - suggested_entry: approximate price level to enter the trade (use 0.0 if HOLD).
+- stop_loss: specific price level for stop loss. Must be on the correct side of entry.
+             Use 0.0 only if signal is HOLD.
+- take_profit: specific price level for take profit. Must respect risk_reward_ratio.
+               Use 0.0 only if signal is HOLD.
+- expiry_multiplier: multiplier applied to the default 4-candle pending order expiry.
+  Use 0.5–0.9 for tight/fast setups (sharp PRZ, high volatility, breakout confirmation needed quickly).
+  Use 1.0 for normal setups (default — no strong reason to deviate).
+  Use 1.5–3.0 for slow-developing setups (trend continuation, wide range, low volatility).
+  Always use 1.0 when signal is HOLD (value is ignored but must be present).
 - invalidation_condition: describe the price event that would invalidate this signal.
 - forecast_horizon: estimated timeframe for the trade (e.g. "4-8 hours", "1-2 days").
 
@@ -98,6 +110,9 @@ async def run_decision_agent(
         "forecast_horizon": "unknown",
         "risk_reward_ratio": 1.0,
         "suggested_entry": 0.0,
+        "stop_loss": 0.0,
+        "take_profit": 0.0,
+        "expiry_multiplier": 1.0,
         "invalidation_condition": "unknown",
     }
 
