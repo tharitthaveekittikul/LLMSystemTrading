@@ -21,7 +21,7 @@ from api.routes import scheduler as scheduler_routes
 from api.routes import market_data as market_data_routes
 from api.routes import news as news_routes
 from core.config import settings
-from core.logging import setup_logging
+from core.logging import fix_uvicorn_logging, setup_logging
 from db.postgres import init_db
 from db.questdb import init_questdb
 from db.redis import close_redis
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    fix_uvicorn_logging()  # strip uvicorn's own handlers; use our root formatter
     logger.info(
         "Starting LLM Trading System v%s | debug=%s | llm_provider=%s",
         app.version,
