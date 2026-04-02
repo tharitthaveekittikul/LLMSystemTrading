@@ -20,7 +20,7 @@ Return a JSON object with this exact structure:
 
 {
     "forecast_horizon": <str>,
-    "signal": "BUY|SELL|BUY_LIMIT|SELL_LIMIT|BUY_STOP|SELL_STOP|HOLD",
+    "signal": "BUY_LIMIT|SELL_LIMIT|BUY_STOP|SELL_STOP|HOLD",
     "confidence": <float between 0.0 and 1.0>,
     "justification": <str>,
     "risk_reward_ratio": <float>,
@@ -32,13 +32,12 @@ Return a JSON object with this exact structure:
 }
 
 Rules:
-- signal: BUY = enter long position immediately at market price.
-          SELL = enter short position immediately at market price.
-          BUY_LIMIT = place a buy pending order below the current price (expect price to dip then rise).
+- signal: BUY_LIMIT = place a buy pending order below the current price (expect price to dip then rise).
           SELL_LIMIT = place a sell pending order above the current price (expect price to spike then fall).
           BUY_STOP = place a buy pending order above the current price (breakout buy).
           SELL_STOP = place a sell pending order below the current price (breakout sell).
           HOLD = no position / wait for better setup.
+          Never use immediate market orders — always use pending orders.
 - confidence: weighted average conviction (0.0 = no confidence, 1.0 = maximum confidence).
 - justification: concise explanation referencing the reports, max 3 sentences.
 - risk_reward_ratio: expected reward divided by expected risk (e.g. 2.0 means 2:1 R:R).
