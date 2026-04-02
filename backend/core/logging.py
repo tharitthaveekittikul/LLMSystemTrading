@@ -7,6 +7,7 @@ All other modules obtain their logger via:
     logger = logging.getLogger(__name__)
 """
 import logging
+import re
 import sys
 
 from core.config import settings
@@ -20,6 +21,17 @@ _LEVEL_COLORS = {
 }
 _RESET = "\033[0m"
 _DIM   = "\033[2m"
+_BOLD  = "\033[1m"
+
+# HTTP status-code colors (matched by first digit)
+_STATUS_COLORS: dict[str, str] = {
+    "1": "\033[2m",    # 1xx  – dim
+    "2": "\033[32m",   # 2xx  – green
+    "3": "\033[36m",   # 3xx  – cyan
+    "4": "\033[33m",   # 4xx  – yellow
+    "5": "\033[31m",   # 5xx  – red
+}
+_STATUS_RE = re.compile(r'\b([1-5]\d{2})\b')
 
 
 class _ColorFormatter(logging.Formatter):
@@ -35,6 +47,12 @@ class _ColorFormatter(logging.Formatter):
         # Dim the logger name (name: portion after the level)
         name_tag = f"{record.name}:"
         line = line.replace(name_tag, f"{_DIM}{name_tag}{_RESET}", 1)
+        # Colorize HTTP status codes found anywhere in the message
+        def _color_status(m: re.Match) -> str:
+            code = m.group(1)
+            sc = _STATUS_COLORS.get(code[0], "")
+            return f"{sc}{_BOLD}{code}{_RESET}"
+        line = _STATUS_RE.sub(_color_status, line)
         return line
 
 _NOISY_LOGGERS = [
