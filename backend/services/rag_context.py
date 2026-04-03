@@ -140,7 +140,7 @@ async def _build(
             except Exception:
                 pass
         trade_lines.append(
-            f"  {outcome} {trade.symbol} {trade.direction} P&L={trade.profit:+.2f}"
+            f"  {outcome} {trade.symbol} {trade.direction} P&L={f'{trade.profit:+.2f}' if trade.profit is not None else 'N/A'}"
             f"{conf_str}{analysis_lesson}"
         )
     lines.append("\n[2] Last 20 Closed Trades (newest first)\n" + "\n".join(trade_lines))

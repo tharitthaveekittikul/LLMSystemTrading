@@ -33,6 +33,8 @@ class AgentPipelineState(TypedDict):
     news_context: str | None
     open_positions: list[dict] | None
     trade_history: list[dict] | None
+    trade_history_context: str | None
+    context_ohlcv: dict[str, list[dict]] | None
     # Context (filled by market_analysis node)
     market_context: dict | None
     # Agent outputs
@@ -159,9 +161,22 @@ def _make_market_analysis_node(market_analysis_llm: BaseChatModel):
             human_text += f"\nNews Context: {news_context}"
         if open_positions:
             human_text += f"\nOpen Positions: {json.dumps(open_positions, default=str)}"
-        trade_history = state.get("trade_history")
-        if trade_history:
+        trade_history_context = state.get("trade_history_context")
+        if trade_history_context:
+            human_text += f"\n{trade_history_context}"
+        elif (trade_history := state.get("trade_history")):
             human_text += f"\nRecent Trade History: {json.dumps(trade_history[-5:], default=str)}"
+        context_ohlcv = state.get("context_ohlcv")
+        if context_ohlcv:
+            for ctx_tf, ctx_candles in context_ohlcv.items():
+                recent_ctx = ctx_candles[-10:]
+                rows = ["time,open,high,low,close,volume"]
+                for c in recent_ctx:
+                    rows.append(
+                        f"{c.get('time', '')},{c.get('open', '')},{c.get('high', '')},"
+                        f"{c.get('low', '')},{c.get('close', '')},{c.get('tick_volume', c.get('volume', ''))}"
+                    )
+                human_text += f"\nContext TF {ctx_tf} (last {len(recent_ctx)} candles):\n" + "\n".join(rows)
 
         prompt_dict = {"system": system_prompt, "human": human_text}
         t0 = time.monotonic()

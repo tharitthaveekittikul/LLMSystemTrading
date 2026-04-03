@@ -611,6 +611,13 @@ class AITradingService:
             # ── RAG Performance Context (self-calibration) ────────────────
             from services.rag_context import build_rag_context
             rag_ctx = await build_rag_context(db, account_id, symbol, tf_upper)
+            await tracer.record(
+                "rag_context",
+                output_data={
+                    "has_context": rag_ctx is not None,
+                    "length": len(rag_ctx) if rag_ctx else 0,
+                },
+            )
             if rag_ctx:
                 trade_history_context = (
                     (trade_history_context + "\n\n" if trade_history_context else "") + rag_ctx
