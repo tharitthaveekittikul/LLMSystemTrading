@@ -32,16 +32,13 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 _CONFIG_PATH = os.path.join(_DATA_DIR, "research_config.json")
 
 
-async def maybe_run(account_id: int, db: AsyncSession, newly_closed: int = 1) -> None:
-    """Call after each trade close. Runs the loop when the count crosses a RESEARCH_EVERY boundary.
-
-    Uses crossing logic so batch syncs (e.g. 28→33) don't skip the threshold.
-    """
+async def maybe_run(account_id: int, db: AsyncSession) -> None:
+    """Call after each trade close. Runs when trades since last successful run reaches RESEARCH_EVERY."""
     try:
         count = await _count_closed_trades(db, account_id)
-        prev_count = max(count - newly_closed, 0)
-        if count // RESEARCH_EVERY > prev_count // RESEARCH_EVERY:
-            logger.info("research_loop triggered | account_id=%s closed_trades=%s", account_id, count)
+        last_run_count = read_config().get("trade_count_at_run", 0)
+        if count - last_run_count >= RESEARCH_EVERY:
+            logger.info("research_loop triggered | account_id=%s closed_trades=%s since_last=%s", account_id, count, count - last_run_count)
             await run(account_id, db)
     except Exception:
         logger.exception("research_loop.maybe_run failed | account_id=%s", account_id)
@@ -50,6 +47,7 @@ async def maybe_run(account_id: int, db: AsyncSession, newly_closed: int = 1) ->
 async def run(account_id: int, db: AsyncSession) -> None:
     """Run the full research loop and write research_config.json."""
     config = await _run_research_agent(account_id, db)
+    config["trade_count_at_run"] = await _count_closed_trades(db, account_id)
     _write_config(config)
     logger.info(
         "research_loop complete | lessons=%d blocked_symbols=%s",
@@ -66,7 +64,7 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
     The agent decides which data to query, then calls save_research_config
     to record its findings. Falls back to rule-based review on any failure.
     """
-    from langchain.agents import AgentExecutor, create_tool_calling_agent
+    from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
     from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
     from langchain_core.tools import tool
     from services.ai_trading import _get_task_llm
@@ -93,6 +91,7 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
                     Trade.account_id == account_id,
                     Trade.closed_at.is_not(None),
                     Trade.closed_at >= since,
+                    Trade.profit != 0,
                 )
             )
         ).one()
@@ -120,7 +119,7 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
                     func.count(Trade.id).filter(Trade.profit > 0).label("w"),
                     func.coalesce(func.sum(Trade.profit), 0.0).label("pnl"),
                 )
-                .where(Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.closed_at >= since)
+                .where(Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.closed_at >= since, Trade.profit != 0)
                 .group_by(Trade.symbol)
             )
         ).all()
@@ -147,6 +146,7 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
                     Trade.account_id == account_id,
                     Trade.closed_at.is_not(None),
                     Trade.trade_analysis.is_not(None),
+                    Trade.profit != 0,
                 )
                 .order_by(Trade.closed_at.desc())
                 .limit(100)
@@ -180,6 +180,7 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
                     Trade.account_id == account_id,
                     Trade.closed_at.is_not(None),
                     Trade.trade_analysis.is_not(None),
+                    Trade.profit != 0,
                 )
                 .order_by(Trade.closed_at.desc())
                 .limit(200)
@@ -283,6 +284,7 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _count_closed_trades(db: AsyncSession, account_id: int) -> int:
+    """Count only trades that actually executed (profit != 0 — excludes expired/cancelled orders)."""
     from db.models import Trade
     from sqlalchemy import func, select
 
@@ -291,6 +293,7 @@ async def _count_closed_trades(db: AsyncSession, account_id: int) -> int:
             select(func.count(Trade.id)).where(
                 Trade.account_id == account_id,
                 Trade.closed_at.is_not(None),
+                Trade.profit != 0,
             )
         )
     ).scalar_one()
@@ -327,6 +330,7 @@ async def _gather_stats(db: AsyncSession, account_id: int) -> dict:
                 Trade.account_id == account_id,
                 Trade.closed_at.is_not(None),
                 Trade.closed_at >= since,
+                Trade.profit != 0,
             )
         )
     ).one()
@@ -339,7 +343,7 @@ async def _gather_stats(db: AsyncSession, account_id: int) -> dict:
                 func.count(Trade.id).filter(Trade.profit > 0).label("w"),
                 func.coalesce(func.sum(Trade.profit), 0.0).label("pnl"),
             )
-            .where(Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.closed_at >= since)
+            .where(Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.closed_at >= since, Trade.profit != 0)
             .group_by(Trade.symbol)
         )
     ).all()
@@ -351,6 +355,7 @@ async def _gather_stats(db: AsyncSession, account_id: int) -> dict:
                 Trade.account_id == account_id,
                 Trade.closed_at.is_not(None),
                 Trade.trade_analysis.is_not(None),
+                Trade.profit != 0,
             )
             .order_by(Trade.closed_at.desc())
             .limit(100)
@@ -444,6 +449,26 @@ def _rule_based_review(stats: dict) -> dict:
 
 def _write_config(config: dict) -> None:
     os.makedirs(_DATA_DIR, exist_ok=True)
+
+    # Preserve lesson_history from previous runs — append new unique lessons
+    existing_history: list[dict] = []
+    if os.path.exists(_CONFIG_PATH):
+        try:
+            with open(_CONFIG_PATH) as f:
+                old = json.load(f)
+            existing_history = old.get("lesson_history", [])
+        except Exception:
+            pass
+
+    existing_texts = {e["lesson"] for e in existing_history}
+    now_iso = datetime.now(UTC).isoformat()
+    for lesson in config.get("lessons", []):
+        if lesson not in existing_texts:
+            existing_history.append({"lesson": lesson, "recorded_at": now_iso})
+            existing_texts.add(lesson)
+
+    config["lesson_history"] = existing_history
+
     with open(_CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
 

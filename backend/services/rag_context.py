@@ -304,8 +304,19 @@ async def _build(
         if os.path.exists(cfg_path):
             with open(cfg_path) as f:
                 cfg = json.load(f)
+            # Current-cycle lessons (latest run)
             for lesson in cfg.get("lessons", [])[:3]:
                 lessons.append(f"  • [auto] {lesson[:120]}")
+            # Historical lessons — 3 most recent unique ones not already shown
+            shown = {l.strip(" •[auto]") for l in lessons}
+            history = cfg.get("lesson_history", [])
+            added = 0
+            for entry in reversed(history):  # newest first
+                text = entry.get("lesson", "").strip()
+                if text and text not in shown and added < 3:
+                    lessons.append(f"  • [history] {text[:120]}")
+                    shown.add(text)
+                    added += 1
     except Exception:
         pass
 

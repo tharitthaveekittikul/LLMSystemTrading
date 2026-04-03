@@ -72,12 +72,21 @@ class HistorySyncResponse(BaseModel):
     total_fetched: int = Field(..., description="Total deals returned by MT5 before deduplication")
 
 
+class ResearchCycleTrade(BaseModel):
+    id: int
+    symbol: str
+    direction: str
+    profit: float
+    closed_at: str | None
+
+
 class ResearchProgressResponse(BaseModel):
-    closed_trades: int = Field(..., description="Total closed trades for this account")
-    cycle_progress: int = Field(..., description="Trades completed in the current 30-trade cycle (0–29)")
-    remaining: int = Field(..., description="Trades until the next research loop fires")
+    closed_trades: int = Field(..., description="Total closed trades for this account (profit != 0)")
+    cycle_progress: int = Field(..., description="Trades since last successful run (can exceed 30 if research failed)")
+    remaining: int = Field(..., description="Trades until the next research loop fires (0 means ready)")
     last_run_at: str | None = Field(None, description="ISO timestamp of the last research loop run")
-    just_completed: bool = Field(False, description="True when cycle_progress==0 and a loop has run (i.e. it just fired)")
+    just_completed: bool = Field(False, description="True when cycle_progress==0 and a loop has run")
+    cycle_trades: list[ResearchCycleTrade] = Field(default_factory=list, description="Trades in the current cycle")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -944,11 +953,37 @@ async def get_research_progress(account_id: int, db: AsyncSession = Depends(get_
 
     from services.research_loop import RESEARCH_EVERY, _count_closed_trades, read_config
     closed_trades = await _count_closed_trades(db, account_id)
-    cycle_progress = closed_trades % RESEARCH_EVERY
-    remaining = RESEARCH_EVERY - cycle_progress if cycle_progress > 0 else RESEARCH_EVERY
     config = read_config()
     last_run_at: str | None = config.get("last_run_at")
-    just_completed = cycle_progress == 0 and closed_trades > 0
+    last_run_count: int = config.get("trade_count_at_run", 0)
+    cycle_progress = max(closed_trades - last_run_count, 0)  # clamp: old configs may have stored total count
+    remaining = max(RESEARCH_EVERY - cycle_progress, 0)
+    just_completed = cycle_progress == 0 and last_run_at is not None
+
+    # Fetch trades in the current cycle (since last successful run)
+    cycle_trades: list[ResearchCycleTrade] = []
+    fetch_count = cycle_progress
+    if fetch_count > 0:
+        from db.models import Trade
+        from sqlalchemy import select
+        rows = (
+            await db.execute(
+                select(Trade.id, Trade.symbol, Trade.direction, Trade.profit, Trade.closed_at)
+                .where(Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.profit != 0)
+                .order_by(Trade.closed_at.desc())
+                .limit(fetch_count)
+            )
+        ).all()
+        cycle_trades = [
+            ResearchCycleTrade(
+                id=r.id,
+                symbol=r.symbol,
+                direction=r.direction or "—",
+                profit=float(r.profit or 0),
+                closed_at=r.closed_at.isoformat() if r.closed_at else None,
+            )
+            for r in rows
+        ]
 
     return ResearchProgressResponse(
         closed_trades=closed_trades,
@@ -956,6 +991,7 @@ async def get_research_progress(account_id: int, db: AsyncSession = Depends(get_
         remaining=remaining,
         last_run_at=last_run_at,
         just_completed=just_completed,
+        cycle_trades=cycle_trades,
     )
 
 

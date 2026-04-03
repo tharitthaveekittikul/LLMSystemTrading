@@ -48,6 +48,8 @@ class HistoryService:
         async with MT5Bridge(creds) as bridge:
             deals = await bridge.history_deals_get(date_from, date_to)
 
+        # logger.info("Deals: %s", deals)
+
         logger.info(
             "Fetched %d deals | account_id=%s days=%s",
             len(deals), account.id, days,
@@ -193,6 +195,7 @@ class HistoryService:
         in_by_pos: dict[int, dict] = {}
 
         for deal in deals:
+            # logger.info("Processing deal: %s", deal)
             entry = deal.get("entry", -1)
             pos_id = deal.get("position_id", 0)
             if entry == _DEAL_ENTRY_IN:

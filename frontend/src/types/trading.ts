@@ -776,6 +776,11 @@ export interface LearningLesson {
   closed_at: string
 }
 
+export interface ResearchLessonHistory {
+  lesson: string
+  recorded_at: string
+}
+
 export interface ResearchConfig {
   lessons: string[]
   blocked_symbols: string[]
@@ -783,6 +788,15 @@ export interface ResearchConfig {
   suggested_params: Record<string, unknown>
   last_run_at: string | null
   stats_snapshot: Record<string, unknown>
+  lesson_history: ResearchLessonHistory[]
+}
+
+export interface ResearchCycleTrade {
+  id: number
+  symbol: string
+  direction: string
+  profit: number
+  closed_at: string | null
 }
 
 export interface ResearchProgress {
@@ -791,6 +805,7 @@ export interface ResearchProgress {
   remaining: number        // trades until next loop fires
   last_run_at: string | null
   just_completed: boolean  // true when loop just fired (cycle_progress === 0 && closed_trades > 0)
+  cycle_trades: ResearchCycleTrade[]
 }
 
 // ── Optimization / Parameter Sweep ────────────────────────────────────────────

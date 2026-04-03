@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { llmAnalyticsApi } from "@/lib/api";
 import type {
   ConfidenceBucket,
@@ -212,6 +213,7 @@ function LessonsCard() {
 
 function ResearchConfigCard() {
   const [cfg, setCfg] = useState<ResearchConfig | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     llmAnalyticsApi
@@ -280,6 +282,34 @@ function ResearchConfigCard() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {cfg.lesson_history && cfg.lesson_history.length > 0 && (
+              <div>
+                <button
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setHistoryOpen((v) => !v)}
+                >
+                  {historyOpen ? (
+                    <ChevronDown className="h-3 w-3" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3" />
+                  )}
+                  Lesson History ({cfg.lesson_history.length} total)
+                </button>
+                {historyOpen && (
+                  <ul className="mt-2 space-y-1.5">
+                    {[...cfg.lesson_history].reverse().map((entry, i) => (
+                      <li key={i} className="rounded-md border border-border/40 p-2 space-y-0.5">
+                        <p className="text-xs text-muted-foreground">{entry.lesson}</p>
+                        <p className="text-[10px] text-muted-foreground/60 font-mono">
+                          {new Date(entry.recorded_at).toLocaleString()}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
             {cfg.suggested_params &&

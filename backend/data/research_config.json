@@ -1,0 +1,41 @@
+{
+  "lessons": [
+    "Validate support levels before entering trades",
+    "Avoid selling during bullish trends without reversal confirmation",
+    "Use multi-timeframe analysis to verify trend strength",
+    "Ensure stops provide adequate risk/reward"
+  ],
+  "blocked_symbols": [
+    "GBPJPY.s",
+    "AUDUSD.s"
+  ],
+  "suggested_params": {
+    "confidence_threshold": 0.7,
+    "notes": "Low win rates and negative PnL on GBPJPY/AUDUSD require stricter risk controls."
+  },
+  "last_run_at": "2026-04-03T05:11:03.827569+00:00",
+  "stats_snapshot": {
+    "total_trades": 158,
+    "win_rate": 0.405,
+    "pnl": -610.17
+  },
+  "trade_count_at_run": 737,
+  "lesson_history": [
+    {
+      "lesson": "Validate support levels before entering trades",
+      "recorded_at": "2026-04-03T05:11:03.831745+00:00"
+    },
+    {
+      "lesson": "Avoid selling during bullish trends without reversal confirmation",
+      "recorded_at": "2026-04-03T05:11:03.831745+00:00"
+    },
+    {
+      "lesson": "Use multi-timeframe analysis to verify trend strength",
+      "recorded_at": "2026-04-03T05:11:03.831745+00:00"
+    },
+    {
+      "lesson": "Ensure stops provide adequate risk/reward",
+      "recorded_at": "2026-04-03T05:11:03.831745+00:00"
+    }
+  ]
+}
