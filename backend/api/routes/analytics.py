@@ -60,6 +60,7 @@ async def get_summary(
             select(Trade, Account.account_type)
             .join(Account, Trade.account_id == Account.id)
             .where(Trade.closed_at != None)  # noqa: E711
+            .where(Trade.profit != None)  # noqa: E711
         )
         if is_live is not None:
             query = query.where(Account.is_live == is_live)
@@ -78,6 +79,7 @@ async def get_summary(
         query = (
             select(Trade)
             .where(Trade.closed_at != None)  # noqa: E711
+            .where(Trade.profit != None)  # noqa: E711
             .where(Trade.account_id == account_id)
         )
         result = await db.execute(query)
@@ -144,6 +146,7 @@ async def get_daily_pnl(
             )
             .join(Account, Trade.account_id == Account.id)
             .where(Trade.closed_at != None)  # noqa: E711
+            .where(Trade.profit != None)  # noqa: E711
             .where(extract("year", Trade.closed_at) == year)
             .where(extract("month", Trade.closed_at) == month)
         )
@@ -160,6 +163,7 @@ async def get_daily_pnl(
                 func.count(Trade.id).label("trade_count"),
             )
             .where(Trade.closed_at != None)  # noqa: E711
+            .where(Trade.profit != None)  # noqa: E711
             .where(extract("year", Trade.closed_at) == year)
             .where(extract("month", Trade.closed_at) == month)
             .where(Trade.account_id == account_id)

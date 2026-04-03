@@ -58,6 +58,9 @@ async def list_trades(
         query = select(Trade, Account.account_type).join(Account, Trade.account_id == Account.id)
         if open_only:
             query = query.where(Trade.closed_at == None)  # noqa: E711
+        else:
+            # Exclude cancelled/expired orders: closed_at set but no profit recorded
+            query = query.where((Trade.closed_at == None) | (Trade.profit != None))  # noqa: E711
         if date_from:
             query = query.where(cast(Trade.closed_at, Date) >= date_from)
         if date_to:
@@ -93,6 +96,9 @@ async def list_trades(
         query = select(Trade).where(Trade.account_id == account_id)
         if open_only:
             query = query.where(Trade.closed_at == None)  # noqa: E711
+        else:
+            # Exclude cancelled/expired orders: closed_at set but no profit recorded
+            query = query.where((Trade.closed_at == None) | (Trade.profit != None))  # noqa: E711
         if date_from:
             query = query.where(cast(Trade.closed_at, Date) >= date_from)
         if date_to:

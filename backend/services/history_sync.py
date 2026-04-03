@@ -35,8 +35,9 @@ class HistoryService:
 
     async def get_raw_deals(self, account: Account, days: int) -> list[dict]:
         """Connect to MT5 and return all deals for the last `days` days."""
-        date_to = datetime.now(UTC)
-        date_from = date_to - timedelta(days=days)
+        now = datetime.now(UTC)
+        date_from = now - timedelta(days=days) - timedelta(hours=1)  # start 1h earlier
+        date_to = now + timedelta(hours=1)  # end 1h later (broker history delay)
 
         password = decrypt(account.password_encrypted)
         creds = AccountCredentials(
