@@ -37,7 +37,7 @@ class HistoryService:
         """Connect to MT5 and return all deals for the last `days` days."""
         now = datetime.now(UTC)
         date_from = now - timedelta(days=days) - timedelta(hours=1)  # start 1h earlier
-        date_to = now + timedelta(hours=1)  # end 1h later (broker history delay)
+        date_to = now + timedelta(hours=24)  # end 24h later (broker history delay)
 
         password = decrypt(account.password_encrypted)
         creds = AccountCredentials(
