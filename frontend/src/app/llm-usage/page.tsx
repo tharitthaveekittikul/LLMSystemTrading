@@ -165,6 +165,7 @@ export default function LLMUsagePage() {
                 data={timeseries}
                 granularity={granularity}
                 onGranularityChange={setGranularity}
+                usdThbRate={summary?.usd_thb_rate}
               />
             ) : (
               <div className="h-72 rounded-lg border bg-muted/40 animate-pulse" />

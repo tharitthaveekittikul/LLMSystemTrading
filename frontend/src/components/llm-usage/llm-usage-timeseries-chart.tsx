@@ -19,6 +19,7 @@ interface TimeseriesChartProps {
   data: LLMTimeseriesPoint[]
   granularity: "daily" | "hourly"
   onGranularityChange: (g: "daily" | "hourly") => void
+  usdThbRate?: number
 }
 
 function formatLabel(date: string, granularity: "daily" | "hourly") {
@@ -34,9 +35,10 @@ function formatCostTick(v: number) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CustomTooltip({ active, payload, label, granularity }: any) {
+function CustomTooltip({ active, payload, label, granularity, usdThbRate }: any) {
   if (!active || !payload?.length) return null
   const total = payload.reduce((s: number, p: { value: number }) => s + (p.value ?? 0), 0)
+  const rate = (usdThbRate as number) || 36.0
   return (
     <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md space-y-1">
       <p className="font-semibold text-foreground">{formatLabel(label as string, granularity as "daily" | "hourly")}</p>
@@ -44,13 +46,19 @@ function CustomTooltip({ active, payload, label, granularity }: any) {
         <div key={p.name} className="flex items-center gap-2">
           <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: p.fill }} />
           <span className="capitalize text-muted-foreground">{p.name}</span>
-          <span className="ml-auto font-mono text-foreground">${p.value?.toFixed(6)}</span>
+          <div className="ml-auto text-right">
+            <span className="font-mono text-foreground">${p.value?.toFixed(6)}</span>
+            <span className="block font-mono text-muted-foreground opacity-70">≈ ฿{(p.value * rate).toFixed(4)}</span>
+          </div>
         </div>
       ))}
       {payload.length > 1 && (
         <div className="border-t pt-1 flex justify-between">
           <span className="text-muted-foreground">Total</span>
-          <span className="font-mono font-semibold">${total.toFixed(6)}</span>
+          <div className="text-right">
+            <span className="font-mono font-semibold">${total.toFixed(6)}</span>
+            <span className="block font-mono text-muted-foreground opacity-70">≈ ฿{(total * rate).toFixed(4)}</span>
+          </div>
         </div>
       )}
     </div>
@@ -74,7 +82,7 @@ function CustomLegend({ payload }: any) {
 }
 
 export function LLMUsageTimeseriesChart({
-  data, granularity, onGranularityChange,
+  data, granularity, onGranularityChange, usdThbRate,
 }: TimeseriesChartProps) {
   return (
     <Card className="h-full">
@@ -82,7 +90,7 @@ export function LLMUsageTimeseriesChart({
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-sm font-medium">Spend Over Time</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">Cost per provider (USD)</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Cost per provider (USD / ฿)</p>
           </div>
           <div className="flex rounded-md border text-xs overflow-hidden">
             {(["daily", "hourly"] as const).map(g => (
@@ -115,7 +123,7 @@ export function LLMUsageTimeseriesChart({
               tickFormatter={formatCostTick}
               width={56}
             />
-            <Tooltip content={<CustomTooltip granularity={granularity} />} />
+            <Tooltip content={<CustomTooltip granularity={granularity} usdThbRate={usdThbRate} />} />
             <Legend content={<CustomLegend />} />
             {(["google", "anthropic", "openai", "openrouter"] as const).map(p => (
               <Bar key={p} dataKey={p} stackId="a" fill={PROVIDER_COLORS[p]} name={p} radius={p === "openrouter" ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
