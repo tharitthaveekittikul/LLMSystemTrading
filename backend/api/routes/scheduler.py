@@ -100,12 +100,15 @@ def _job_name(job_id: str) -> str:
     if job_id in known:
         return known[job_id]
     if job_id.startswith("strat_"):
-        # strat_<binding_id>_<symbol>
+        # Format: strat_{strategy_id}_{symbol}
         parts = job_id.split("_", 2)
-        symbol = parts[2] if len(parts) >= 3 else "Unknown"
-        binding_id = parts[1] if len(parts) >= 2 else "?"
-        return f"Strategy Binding #{binding_id} — {symbol}"
+        if len(parts) >= 3:
+            strategy_id = parts[1]
+            symbol = parts[2]
+            return f"Strategy #{strategy_id} — {symbol}"
+        return job_id
     if job_id.startswith("manual_"):
+        # Format: manual_{strategy_id}_{symbol}_{timestamp}
         parts = job_id.split("_", 3)
         symbol = parts[2] if len(parts) >= 3 else "Unknown"
         return f"Manual Trigger — {symbol}"
@@ -130,10 +133,11 @@ async def list_scheduler_jobs() -> list[dict[str, Any]]:
         )
         for binding in result.scalars().all():
             s = binding.strategy
-            skip_h: list[int] = json.loads(s.skip_hours or "[]")
-            skip_wd: list[int] = json.loads(s.skip_weekdays or "[]")
-            strategy_name: str | None = s.name if s else None
-            skip_configs[binding.id] = (skip_h, skip_wd, s.skip_hours_timezone or "UTC", strategy_name)
+            sid = s.id  # key by strategy_id now (not binding_id)
+            if sid not in skip_configs:  # first binding wins
+                skip_h: list[int] = json.loads(s.skip_hours or "[]")
+                skip_wd: list[int] = json.loads(s.skip_weekdays or "[]")
+                skip_configs[sid] = (skip_h, skip_wd, s.skip_hours_timezone or "UTC", s.name)
 
     result_list = []
     for job in jobs:
@@ -146,8 +150,12 @@ async def list_scheduler_jobs() -> list[dict[str, Any]]:
         if job.id.startswith("strat_"):
             parts = job.id.split("_", 2)
             try:
-                binding_id = int(parts[1])
-                config = skip_configs.get(binding_id)
+                strategy_id = int(parts[1])
+                # Find skip config for this strategy
+                config = next(
+                    (cfg for sid, cfg in skip_configs.items() if sid == strategy_id),
+                    None,
+                )
                 if config:
                     skip_h, skip_wd, tz_str, strat_name = config
                     job_strategy_name = strat_name

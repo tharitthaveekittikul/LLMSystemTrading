@@ -300,7 +300,7 @@ async def update_strategy(
         .options(selectinload(AccountStrategy.account))
     )
     for binding in bindings_result.scalars().all():
-        remove_all_binding_jobs(binding.id)
+        remove_all_binding_jobs(binding.id, binding.account_id, strategy_id)
         if strategy.is_active and binding.is_active and binding.account.is_active:
             binding.strategy = strategy
             add_binding_jobs(binding)
@@ -316,7 +316,7 @@ async def delete_strategy(strategy_id: int, db: AsyncSession = Depends(get_db)):
     )
     bindings = result.scalars().all()
     for binding in bindings:
-        remove_all_binding_jobs(binding.id)
+        remove_all_binding_jobs(binding.id, binding.account_id, strategy_id)
     await db.delete(strategy)
     await db.commit()
     logger.info("Strategy deleted | id=%s", strategy_id)
@@ -421,7 +421,7 @@ async def toggle_binding(
         if binding.account.is_active and binding.strategy.is_active:
             add_binding_jobs(binding)
     elif old_active and not body.is_active:
-        remove_binding_jobs(binding.id, symbols)
+        remove_binding_jobs(binding.id, binding.account_id, binding.strategy_id, symbols)
     logger.info(
         "Binding toggled | id=%s account_id=%s strategy_id=%s is_active=%s",
         binding.id, account_id, strategy_id, binding.is_active,
@@ -456,7 +456,7 @@ async def unbind_account(
     if binding is None:
         raise HTTPException(status_code=404, detail="Binding not found")
     symbols = json.loads(binding.strategy.symbols or "[]")
-    remove_binding_jobs(binding.id, symbols)
+    remove_binding_jobs(binding.id, account_id, strategy_id, symbols)
     await db.delete(binding)
     await db.commit()
     logger.info(
