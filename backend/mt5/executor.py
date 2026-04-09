@@ -181,11 +181,42 @@ class MT5Executor:
         filling_mode = await self._bridge.get_filling_mode(request.symbol)
         logger.debug("Filling mode for %s: %s", request.symbol, filling_mode)
 
+        # ── Pending order price staleness check ───────────────────────────────
+        # LLM analysis can take 30+ seconds. Re-fetch live price and reject
+        # immediately if the entry is no longer valid rather than sending a
+        # doomed request that wastes a broker round-trip.
+        if is_pending:
+            live_tick = await self._bridge.get_tick(request.symbol)
+            if live_tick:
+                ask = live_tick.get("ask", 0.0)
+                bid = live_tick.get("bid", 0.0)
+                price = request.entry_price
+                invalid = False
+                if request.action == "SELL_LIMIT" and price <= ask:
+                    invalid = True
+                    reason = f"SELL_LIMIT entry {price} <= current ask {ask} — price moved past limit"
+                elif request.action == "BUY_LIMIT" and price >= bid:
+                    invalid = True
+                    reason = f"BUY_LIMIT entry {price} >= current bid {bid} — price moved past limit"
+                elif request.action == "SELL_STOP" and price >= bid:
+                    invalid = True
+                    reason = f"SELL_STOP entry {price} >= current bid {bid} — price already below stop"
+                elif request.action == "BUY_STOP" and price <= ask:
+                    invalid = True
+                    reason = f"BUY_STOP entry {price} <= current ask {ask} — price already above stop"
+                if invalid:
+                    logger.warning(
+                        "Stale pending order rejected | symbol=%s action=%s entry=%s ask=%s bid=%s | %s",
+                        request.symbol, request.action, price, ask, bid, reason,
+                    )
+                    return OrderResult(success=False, error=reason, retcode=10015)
+
         # Pending order expiry — anchored to broker server clock, not local machine clock.
         # tick["time"] is the broker server's Unix timestamp (authoritative "now").
         # Using datetime.now(UTC) risks expiry mismatches when local clock drifts vs broker.
+        # live_tick was already fetched during the staleness check above (is_pending=True always runs it).
         if is_pending and request.expiration_hours is not None:
-            tick = await self._bridge.get_tick(request.symbol)
+            tick = live_tick  # already fetched in the staleness check block above
             broker_now_ts = tick["time"] if tick else datetime.now(timezone.utc).timestamp()
             expiry_ts = int(broker_now_ts + request.expiration_hours * 3600)
             expiry_dt = datetime.fromtimestamp(expiry_ts, tz=timezone.utc)
