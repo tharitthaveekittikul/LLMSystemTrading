@@ -78,6 +78,7 @@ class ResearchCycleTrade(BaseModel):
     direction: str
     profit: float
     closed_at: str | None
+    excluded: bool = False
 
 
 class ResearchProgressResponse(BaseModel):
@@ -968,7 +969,7 @@ async def get_research_progress(account_id: int, db: AsyncSession = Depends(get_
         from sqlalchemy import select
         rows = (
             await db.execute(
-                select(Trade.id, Trade.symbol, Trade.direction, Trade.profit, Trade.closed_at)
+                select(Trade.id, Trade.symbol, Trade.direction, Trade.profit, Trade.closed_at, Trade.exclude_from_research)
                 .where(Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.profit != 0)
                 .order_by(Trade.closed_at.desc())
                 .limit(fetch_count)
@@ -981,6 +982,7 @@ async def get_research_progress(account_id: int, db: AsyncSession = Depends(get_
                 direction=r.direction or "—",
                 profit=float(r.profit or 0),
                 closed_at=r.closed_at.isoformat() if r.closed_at else None,
+                excluded=bool(r.exclude_from_research),
             )
             for r in rows
         ]
@@ -1011,6 +1013,18 @@ async def trigger_research_loop(account_id: int, db: AsyncSession = Depends(get_
     except Exception as exc:
         logger.exception("Manual research loop trigger failed | account_id=%s", account_id)
         raise HTTPException(status_code=500, detail=f"Research loop failed: {exc}") from exc
+
+
+@router.post("/{account_id}/research-progress/trades/{trade_id}/toggle-exclude", status_code=200)
+async def toggle_exclude_research_trade(account_id: int, trade_id: int, db: AsyncSession = Depends(get_db)):
+    """Toggle exclude_from_research flag on a trade. Excluded trades are skipped by the research loop."""
+    from db.models import Trade
+    trade = await db.get(Trade, trade_id)
+    if not trade or trade.account_id != account_id:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    trade.exclude_from_research = not trade.exclude_from_research
+    await db.commit()
+    return {"id": trade_id, "excluded": trade.exclude_from_research}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

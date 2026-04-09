@@ -797,6 +797,7 @@ export interface ResearchCycleTrade {
   direction: string
   profit: number
   closed_at: string | null
+  excluded: boolean
 }
 
 export interface ResearchProgress {

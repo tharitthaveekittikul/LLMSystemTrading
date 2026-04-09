@@ -41,4 +41,6 @@ export const accountsApi = {
     apiRequest<ResearchProgress>(`/accounts/${id}/research-progress`),
   triggerResearchLoop: (id: number) =>
     apiRequest<{ status: string; last_run_at: string | null }>(`/accounts/${id}/research-loop/trigger`, { method: "POST" }),
+  toggleExcludeResearchTrade: (accountId: number, tradeId: number) =>
+    apiRequest<{ id: number; excluded: boolean }>(`/accounts/${accountId}/research-progress/trades/${tradeId}/toggle-exclude`, { method: "POST" }),
 };

@@ -294,6 +294,7 @@ async def _count_closed_trades(db: AsyncSession, account_id: int) -> int:
                 Trade.account_id == account_id,
                 Trade.closed_at.is_not(None),
                 Trade.profit != 0,
+                Trade.exclude_from_research.is_not(True),
             )
         )
     ).scalar_one()
