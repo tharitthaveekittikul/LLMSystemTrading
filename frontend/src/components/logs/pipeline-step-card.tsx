@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { PipelineStep, LLMPricingEntry } from "@/types/trading";
 
@@ -89,6 +89,8 @@ interface PipelineStepCardProps {
 }
 
 function JsonViewer({ raw }: { raw: string | null }) {
+  const [copied, setCopied] = useState(false);
+
   if (!raw) return <span className="text-muted-foreground text-xs">—</span>;
 
   let formattedContent = raw;
@@ -102,14 +104,44 @@ function JsonViewer({ raw }: { raw: string | null }) {
     // Keep raw
   }
 
-  if (isJson) {
-    return (
-      <pre className="text-xs bg-muted/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap break-all">
-        {formattedContent}
-      </pre>
-    );
-  }
-  return <pre className="text-xs text-muted-foreground">{raw}</pre>;
+  const handleCopy = () => {
+    navigator.clipboard.writeText(formattedContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const content = (
+    <pre
+      className={`text-xs rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap break-all ${
+        isJson ? "bg-muted/50" : "text-muted-foreground"
+      }`}
+    >
+      {formattedContent}
+    </pre>
+  );
+
+  return (
+    <div className="relative group/json">
+      <button
+        onClick={handleCopy}
+        className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground opacity-0 group-hover/json:opacity-100 transition-opacity bg-background/80 hover:bg-muted border border-border"
+        title="Copy to clipboard"
+      >
+        {copied ? (
+          <>
+            <Check className="h-3 w-3 text-green-500" />
+            <span className="text-green-500">Copied!</span>
+          </>
+        ) : (
+          <>
+            <Copy className="h-3 w-3" />
+            <span>Copy</span>
+          </>
+        )}
+      </button>
+      {content}
+    </div>
+  );
 }
 
 export function PipelineStepCard({
