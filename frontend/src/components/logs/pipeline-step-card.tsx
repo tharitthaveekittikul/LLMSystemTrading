@@ -124,7 +124,7 @@ function JsonViewer({ raw }: { raw: string | null }) {
     <div className="relative group/json">
       <button
         onClick={handleCopy}
-        className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground opacity-0 group-hover/json:opacity-100 transition-opacity bg-background/80 hover:bg-muted border border-border"
+        className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground opacity-100 sm:opacity-0 group-hover/json:opacity-100 transition-opacity bg-background/80 hover:bg-muted border border-border"
         title="Copy to clipboard"
       >
         {copied ? (

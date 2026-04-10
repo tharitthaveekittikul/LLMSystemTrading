@@ -96,7 +96,11 @@ export function PipelineRunsList({
         strategy_name: null,
         created_at: new Date().toISOString(),
       };
-      setRuns((prev) => [runningSummary, ...prev.slice(0, 99)]);
+      setRuns((prev) => {
+        // Guard: if complete event already arrived before started (race), don't add duplicate
+        if (prev.some((r) => r.id === data.run_id)) return prev;
+        return [runningSummary, ...prev.slice(0, 99)];
+      });
     });
   }, [onRunStarted, activeAccountId]);
 

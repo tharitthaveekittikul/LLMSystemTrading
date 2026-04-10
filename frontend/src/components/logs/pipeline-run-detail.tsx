@@ -117,9 +117,17 @@ export function PipelineRunDetailPanel({
             <Skeleton key={i} className="h-8 w-full" />
           ))
         ) : displaySteps.length > 0 ? (
-          displaySteps.map((step) => (
-            <PipelineStepCard key={step.id} step={step} pricing={pricing} usdThbRate={usdThbRate} />
-          ))
+          <>
+            {displaySteps.map((step) => (
+              <PipelineStepCard key={step.id} step={step} pricing={pricing} usdThbRate={usdThbRate} />
+            ))}
+            {isLiveRun && (
+              <div className="border-l-2 border-muted pl-4 py-1 flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-ping shrink-0" />
+                <span className="text-xs text-muted-foreground animate-pulse">Running next step…</span>
+              </div>
+            )}
+          </>
         ) : isLiveRun ? (
           <p className="text-sm text-muted-foreground animate-pulse">Waiting for first step…</p>
         ) : (
