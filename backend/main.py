@@ -20,6 +20,7 @@ from api.routes import llm_analytics as llm_analytics_routes
 from api.routes import scheduler as scheduler_routes
 from api.routes import market_data as market_data_routes
 from api.routes import news as news_routes
+from api.routes import system as system_routes
 from core.config import settings
 from core.logging import fix_uvicorn_logging, setup_logging
 from db.postgres import init_db
@@ -153,6 +154,7 @@ app.include_router(llm_analytics_routes.router, prefix="/api/v1/llm-analytics", 
 app.include_router(scheduler_routes.router, prefix="/api/v1/scheduler", tags=["scheduler"])
 app.include_router(market_data_routes.router, prefix="/api/v1/market-data", tags=["market-data"])
 app.include_router(news_routes.router,        prefix="/api/v1/news",        tags=["news"])
+app.include_router(system_routes.router,      prefix="/api/v1/system",      tags=["system"])
 
 
 @app.get("/health", tags=["system"])

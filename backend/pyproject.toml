@@ -35,6 +35,10 @@ dependencies = [
     "mss>=9.0.0",
     # HTTP client
     "httpx>=0.28.0",
+    # System monitoring & orchestration
+    "psutil>=6.0.0",
+    "pynvml>=11.5.0",
+    "docker>=7.0.0",
     "pandas>=2.0.0",
     "hmmlearn>=0.3.2",
     # Scheduler
