@@ -46,19 +46,19 @@ const navItems = [
   { title: "Trades", url: "/trades", icon: TrendingUp },
   { title: "AI Signals", url: "/signals", icon: Brain },
   { title: "News", url: "/news", icon: Newspaper },
-  { title: "Pipeline Logs", url: "/logs", icon: ScrollText },
-  { title: "Schedule", url: "/schedule", icon: Timer },
-  { title: "LLM Usage", url: "/llm-usage", icon: Coins },
-  { title: "LLM Analytics", url: "/llm-analytics", icon: Activity },
-  { title: "Agent Workflow", url: "/agent-workflow", icon: Network },
-  { title: "Storage", url: "/storage", icon: Database },
-  { title: "System Usage", url: "/system-usage", icon: Monitor },
+  { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Backtest", url: "/backtest", icon: FlaskConical },
   { title: "Optimize", url: "/backtest/optimize", icon: SlidersHorizontal },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
 const systemItems = [
+  { title: "Pipeline Logs", url: "/logs", icon: ScrollText },
+  { title: "Agent Workflow", url: "/agent-workflow", icon: Network },
+  { title: "Schedule", url: "/schedule", icon: Timer },
+  { title: "LLM Usage", url: "/llm-usage", icon: Coins },
+  { title: "LLM Analytics", url: "/llm-analytics", icon: Activity },
+  { title: "Storage", url: "/storage", icon: Database },
+  { title: "System Usage", url: "/system-usage", icon: Monitor },
   { title: "Kill Switch", url: "/kill-switch", icon: Shield },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
