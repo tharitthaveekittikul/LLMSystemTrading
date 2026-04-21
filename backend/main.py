@@ -117,6 +117,8 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     await close_redis()
+    from db.postgres import engine as _pg_engine
+    await _pg_engine.dispose()
     logger.info("Shutting down LLM Trading System")
 
 
