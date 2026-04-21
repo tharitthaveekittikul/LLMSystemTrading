@@ -962,17 +962,20 @@ async def get_research_progress(account_id: int, db: AsyncSession = Depends(get_
     just_completed = cycle_progress == 0 and last_run_at is not None
 
     # Fetch trades in the current cycle (since last successful run)
+    last_trade_id_at_run: int = config.get("last_trade_id_at_run", 0)
     cycle_trades: list[ResearchCycleTrade] = []
-    fetch_count = cycle_progress
-    if fetch_count > 0:
+    if cycle_progress > 0 or last_trade_id_at_run:
         from db.models import Trade
         from sqlalchemy import select
+        base_where = [Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.profit != 0]
+        if last_trade_id_at_run:
+            base_where.append(Trade.id > last_trade_id_at_run)
         rows = (
             await db.execute(
                 select(Trade.id, Trade.symbol, Trade.direction, Trade.profit, Trade.closed_at, Trade.exclude_from_research)
-                .where(Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.profit != 0)
+                .where(*base_where)
                 .order_by(Trade.closed_at.desc())
-                .limit(fetch_count)
+                .limit(cycle_progress if not last_trade_id_at_run else None)
             )
         ).all()
         cycle_trades = [

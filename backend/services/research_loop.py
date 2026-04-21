@@ -48,6 +48,10 @@ async def run(account_id: int, db: AsyncSession) -> None:
     """Run the full research loop and write research_config.json."""
     config = await _run_research_agent(account_id, db)
     config["trade_count_at_run"] = await _count_closed_trades(db, account_id)
+    from db.models import Trade
+    from sqlalchemy import func, select as sa_select
+    max_id = (await db.execute(sa_select(func.max(Trade.id)).where(Trade.account_id == account_id))).scalar() or 0
+    config["last_trade_id_at_run"] = max_id
     _write_config(config)
     logger.info(
         "research_loop complete | lessons=%d blocked_symbols=%s",
