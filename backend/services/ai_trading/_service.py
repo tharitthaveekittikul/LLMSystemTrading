@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.ws import broadcast
 from core.config import settings
+from core.security import decrypt
 from db.models import AIJournal
+from mt5.bridge import AccountCredentials, MT5Bridge
+from mt5.executor import OrderResult
 from db.redis import check_llm_rate_limit
 from services.ai_trading._context import (
     build_trade_history_context,
@@ -350,6 +353,67 @@ class AITradingService:
             built_shared_ctx=_built_shared_ctx,
             tracer=tracer,
         )
+
+        # Stale pending entry → re-request LLM with live market price (one retry)
+        if isinstance(order_result, OrderResult) and order_result.retcode == 10015:
+            logger.warning(
+                "Stale pending — re-requesting LLM with live price | "
+                "account_id=%s symbol=%s original_entry=%s",
+                account_id, mt5_symbol, signal.entry,
+            )
+            _password = decrypt(account.password_encrypted)
+            _creds = AccountCredentials(
+                login=account.login, password=_password,
+                server=account.server, path=account.mt5_path or settings.mt5_path,
+            )
+            live_price: float | None = None
+            async with MT5Bridge(_creds) as _bridge:
+                _tick = await _bridge.get_tick(mt5_symbol)
+                if _tick:
+                    live_price = _tick.get("ask") if "BUY" in signal.action else _tick.get("bid")
+
+            if live_price:
+                await tracer.record(
+                    "stale_entry_retry",
+                    input_data={"original_entry": signal.entry, "live_price": live_price},
+                )
+                spr2 = await run_signal_phase(
+                    account=account, account_id=account_id, symbol=symbol, tf_upper=tf_upper,
+                    strategy_id=strategy_id, strategy_overrides=strategy_overrides,
+                    strategy_instance=strategy_instance, shared_ctx=shared_ctx,
+                    open_positions=open_positions, recent_signals=recent_signals,
+                    trade_history_context=trade_history_context, candles=candles,
+                    indicators=indicators, current_price=live_price, mt5_symbol=mt5_symbol,
+                    db=db, tracer=tracer,
+                )
+                signal = spr2.signal
+                if signal.confidence < settings.llm_confidence_threshold:
+                    signal.action = "HOLD"
+
+                if signal.action == "HOLD":
+                    tracer.finalize(status="hold", final_action="HOLD", journal_id=journal.id)
+                    return AnalysisResult(
+                        signal=signal, order_placed=False, ticket=None,
+                        journal_id=journal.id, shared_ctx=_built_shared_ctx,
+                    )
+
+                effective_lot_size = await compute_lot_size(
+                    account=account, account_id=account_id, signal=signal,
+                    mt5_symbol=mt5_symbol, strategy_overrides=strategy_overrides, tracer=tracer,
+                )
+                order_req, _source = await build_order_request(
+                    signal=signal, mt5_symbol=mt5_symbol, effective_lot_size=effective_lot_size,
+                    timeframe=timeframe, account_id=account_id, strategy_id=strategy_id,
+                    db=db, tracer=tracer,
+                )
+                order_result = await execute_mt5_order(
+                    account=account, order_req=order_req, signal=signal,
+                    journal=journal, built_shared_ctx=_built_shared_ctx, tracer=tracer,
+                )
+            else:
+                tracer.finalize(status="failed", final_action=signal.action, journal_id=journal.id)
+                order_result = None
+
         if order_result is None:
             return AnalysisResult(
                 signal=signal, order_placed=False, ticket=None, journal_id=journal.id,

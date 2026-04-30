@@ -13,7 +13,7 @@ from core.config import settings
 from core.security import decrypt
 from db.models import AIJournal, Trade
 from mt5.bridge import AccountCredentials, MT5Bridge
-from mt5.executor import MT5Executor, OrderRequest, pending_expiry_hours
+from mt5.executor import MT5Executor, OrderRequest, OrderResult, pending_expiry_hours
 from services.ai_trading._helpers import _calculate_lot_size
 from services.alerting import send_alert
 from strategies.base_strategy import direction_from_action
@@ -153,7 +153,7 @@ async def execute_mt5_order(
     journal: "AIJournal",
     built_shared_ctx: "SharedMarketContext | None",
     tracer: "PipelineTracer",
-) -> object | None:
+) -> "OrderResult | None":
     """Place MT5 order. Returns order_result on success, None on failure.
 
     On failure: records mt5_executed error step, calls tracer.finalize(status='failed'), returns None.
@@ -182,6 +182,19 @@ async def execute_mt5_order(
         return None
 
     if not order_result.success:
+        if order_result.retcode == 10015:
+            # Stale pending entry — return to caller for LLM re-request (no finalize)
+            logger.warning(
+                "Stale pending entry — returning for re-request | account_id=%s symbol=%s error=%s",
+                account.id, order_req.symbol, order_result.error,
+            )
+            await tracer.record(
+                "mt5_executed", status="stale",
+                output_data={"success": False, "retcode": 10015, "error": order_result.error},
+                duration_ms=int((time.monotonic() - t0) * 1000),
+            )
+            return order_result
+
         logger.error(
             "Order failed | account_id=%s symbol=%s error=%s",
             account.id, order_req.symbol, order_result.error,
