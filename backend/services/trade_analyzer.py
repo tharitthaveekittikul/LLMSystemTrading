@@ -134,7 +134,11 @@ async def _analyze(trade_id: int, db) -> None:
     ai_msg = await llm.ainvoke(messages)
     from ai.orchestrator import log_llm_usage
     log_llm_usage(ai_msg, llm, "post_trade_analysis")
-    raw = ai_msg.content if hasattr(ai_msg, "content") else str(ai_msg)
+    content = ai_msg.content if hasattr(ai_msg, "content") else ai_msg
+    if isinstance(content, list):
+        raw = " ".join(c.get("text", "") if isinstance(c, dict) else str(c) for c in content)
+    else:
+        raw = str(content)
 
     # Strip markdown fences if present
     raw = raw.strip()
