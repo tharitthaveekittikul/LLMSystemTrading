@@ -5,6 +5,12 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Surface tokens */
+  --color-shell: var(--shell-bg);
+  --color-page: var(--page-bg);
+  --color-ink: var(--ink-primary);
+  --color-ink-muted: var(--ink-secondary);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -38,86 +44,125 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+html:root { color-scheme: light; }
+html:root.dark { color-scheme: dark; }
+
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  /* ── Surface ── */
+  --shell-bg: oklch(0.972 0 0);
+  --page-bg: oklch(0.955 0.006 264);
+  --ink-primary: oklch(0.06 0 0);
+  --ink-secondary: oklch(0.165 0 0);
+
+  /* ── Base palette (light — iOS blue-gray) ── */
+  --background: oklch(0.955 0.006 264);
+  --foreground: oklch(0.11 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  /* Indigo/violet primary — vivid, professional */
+  --card-foreground: oklch(0.11 0 0);
+  --popover: oklch(1 0 0 / 94%);
+  --popover-foreground: oklch(0.11 0 0);
   --primary: oklch(0.55 0.22 270);
   --primary-foreground: oklch(0.98 0.005 270);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.93 0.06 270);
-  --accent-foreground: oklch(0.35 0.18 270);
+  --secondary: oklch(0.925 0.004 264);
+  --secondary-foreground: oklch(0.11 0 0);
+  --muted: oklch(0.925 0.004 264);
+  --muted-foreground: oklch(0.48 0 0);
+  --accent: oklch(0.925 0.004 264);
+  --accent-foreground: oklch(0.11 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --success: oklch(0.55 0.15 145);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.65 0.18 270);
+  --border: oklch(0 0 0 / 8%);
+  --input: oklch(0 0 0 / 8%);
+  --ring: oklch(0.55 0.22 270);
+  --radius: 0.75rem;
+
+  /* ── Card ambient shadow (light) ── */
+  --card-shadow: 0 1px 4px oklch(0 0 0 / 5%), 0 6px 20px oklch(0 0 0 / 5%);
+
+  /* ── Charts ── */
   --chart-1: oklch(0.55 0.22 270);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
+
+  /* ── Sidebar (opaque shell — the floating card) ── */
+  --sidebar: oklch(0.972 0 0);
+  --sidebar-foreground: oklch(0.165 0 0);
   --sidebar-primary: oklch(0.55 0.22 270);
   --sidebar-primary-foreground: oklch(0.98 0.005 270);
-  --sidebar-accent: oklch(0.93 0.06 270);
-  --sidebar-accent-foreground: oklch(0.35 0.18 270);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.65 0.18 270);
+  --sidebar-accent: oklch(0.55 0.22 270 / 9%);
+  --sidebar-accent-foreground: oklch(0.30 0.15 270);
+  --sidebar-border: oklch(0 0 0 / 7%);
+  --sidebar-ring: oklch(0.55 0.22 270);
+
+  /* ── Glass tokens ── */
+  --glass-bg: oklch(1 0 0 / 92%);
+  --glass-border: oklch(0.11 0 0 / 8%);
+  --glass-specular: oklch(1 0 0 / 72%);
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.178 0.038 265);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  /* Lighter indigo for dark mode — still vibrant */
+  /* ── Surface ── */
+  --shell-bg: oklch(0.13 0.004 265);
+  --page-bg: oklch(0 0 0);
+  --ink-primary: oklch(0.97 0 0);
+  --ink-secondary: oklch(0.85 0 0);
+
+  /* ── Base palette (dark — true black iOS) ── */
+  --background: oklch(0 0 0);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.16 0 0);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.16 0 0 / 94%);
+  --popover-foreground: oklch(0.97 0 0);
   --primary: oklch(0.72 0.18 265);
   --primary-foreground: oklch(0.13 0.04 265);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.245 0.035 262);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.28 0.08 270);
-  --accent-foreground: oklch(0.88 0.09 265);
-  --destructive: oklch(0.704 0.191 22.216);
+  --secondary: oklch(0.18 0 0);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.60 0 0);
+  --accent: oklch(0.20 0 0);
+  --accent-foreground: oklch(0.97 0 0);
+  --destructive: oklch(0.65 0.22 25);
   --success: oklch(0.68 0.17 145);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --border: oklch(1 0 0 / 15%);
+  --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.72 0.18 265);
+
+  /* ── Card ambient shadow (dark) ── */
+  --card-shadow: 0 1px 0 oklch(1 0 0 / 9%), 0 4px 24px oklch(0 0 0 / 55%);
+
+  /* ── Charts ── */
   --chart-1: oklch(0.72 0.18 265);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.165 0.04 265);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
+
+  /* ── Sidebar ── */
+  --sidebar: oklch(0.13 0.004 265);
+  --sidebar-foreground: oklch(0.60 0 0);
   --sidebar-primary: oklch(0.72 0.18 265);
   --sidebar-primary-foreground: oklch(0.13 0.04 265);
-  --sidebar-accent: oklch(0.28 0.08 270);
+  --sidebar-accent: oklch(0.72 0.18 265 / 14%);
   --sidebar-accent-foreground: oklch(0.88 0.09 265);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 9%);
   --sidebar-ring: oklch(0.72 0.18 265);
+
+  /* ── Glass tokens ── */
+  --glass-bg: oklch(0.13 0 0 / 94%);
+  --glass-border: oklch(1 0 0 / 10%);
+  --glass-specular: oklch(1 0 0 / 18%);
 }
 
 @layer base {
@@ -126,5 +171,156 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* ── Hide scrollbars globally ── */
+  * { scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; }
+
+  /* ── Remove all vertical separator lines from sidebar ── */
+  [data-sidebar="rail"],
+  [data-slot="sidebar-rail"] {
+    display: none !important;
+  }
+  [data-slot="sidebar-container"] {
+    border-right: none !important;
+    border-left: none !important;
+  }
+
+  /* ── Floating sidebar card — desktop only (mobile uses Sheet) ── */
+  @media (min-width: 768px) {
+    /* Expanded: floating card with 1rem margin on all sides */
+    [data-state="expanded"] [data-sidebar="sidebar"] {
+      margin: 1rem 0 1rem 1rem;
+      height: calc(100% - 2rem) !important;
+      width: calc(100% - 1rem) !important;
+      border-radius: 1.5rem;
+      border-width: 0 !important;
+      overflow: hidden;
+      background: var(--shell-bg) !important;
+      box-shadow: var(--card-shadow);
+    }
+
+    /* Collapsed: compact pill — no left gap, small top/bottom margin */
+    [data-state="collapsed"] [data-sidebar="sidebar"] {
+      margin: 0.5rem 0 0.5rem 0.5rem;
+      height: calc(100% - 1rem) !important;
+      width: calc(100% - 0.5rem) !important;
+      border-radius: 1rem;
+      border-width: 0 !important;
+      overflow: hidden;
+      background: var(--shell-bg) !important;
+      box-shadow: var(--card-shadow);
+    }
+  }
+
+  /* ── Content shell panel — visual layer; body handles scroll naturally ── */
+  /* data-layout="fullscreen" pages (chart) are excluded */
+  @media (min-width: 768px) {
+    [data-slot="sidebar-inset"]:not([data-layout="fullscreen"]) > div:first-of-type {
+      background: var(--shell-bg) !important;
+      border-radius: 1.5rem 1.5rem 0 0;
+      margin-top: 0.75rem;
+      margin-right: 0.75rem;
+      margin-left: 0.75rem;
+    }
+  }
+
+  /* ── Fullscreen layout (chart page) — content fills available space ── */
+  [data-layout="fullscreen"] {
+    overflow: hidden;
+  }
+  [data-layout="fullscreen"] > div {
+    overflow: hidden;
+  }
+
+  /* ── Card surface — shadow replaces border in light mode ── */
+  [data-slot="card"] {
+    box-shadow: var(--card-shadow);
+    border-width: 0;
+    border-radius: 1rem;
+  }
+  .dark [data-slot="card"] {
+    border-width: 1px;
+  }
+
+  /* ── Glass for command palette / dialogs ── */
+  [role="dialog"][aria-modal] {
+    background: var(--card) !important;
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: 0 8px 40px oklch(0 0 0 / 20%), inset 0 1px 0 var(--glass-specular) !important;
+  }
+
+  /* ── Theme transition — smooth cross-fade on key surfaces ── */
+  body,
+  [data-slot="card"],
+  [data-sidebar="sidebar"],
+  header {
+    transition:
+      background-color 250ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
+      color 200ms cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ── Pointer cursor on interactive elements ── */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  label[for] {
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ── View Transition — circular reveal from theme toggle click ── */
+::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  mix-blend-mode: normal;
+  clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%));
+  animation: vt-circle-reveal 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes vt-circle-reveal {
+  from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to   { clip-path: circle(200vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation: none !important; }
+}
+
+@keyframes icon-spin-in {
+  from { transform: rotate(-90deg) scale(0.5); opacity: 0; }
+  to   { transform: rotate(0deg) scale(1); opacity: 1; }
+}
+
+@layer utilities {
+  /* Floating card surface — apply to custom card divs */
+  .card-surface {
+    box-shadow: var(--card-shadow);
+    border-width: 0;
+    border-radius: 1rem;
+    background: var(--card);
+  }
+  .dark .card-surface {
+    border-width: 1px;
+    border-color: var(--border);
+  }
+
+  .glass-chrome {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    box-shadow: inset 0 1px 0 var(--glass-specular);
   }
 }

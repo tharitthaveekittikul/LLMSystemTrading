@@ -149,7 +149,7 @@ function ChartPageContent() {
   const symbolOrders = pendingOrders.filter((o) => o.symbol === symbol);
 
   return (
-    <SidebarInset className="flex flex-col h-screen overflow-hidden">
+    <SidebarInset className="flex flex-col h-screen overflow-hidden" data-layout="fullscreen">
       <AppHeader title="Chart" subtitle={symbol} />
 
       <ChartToolbar

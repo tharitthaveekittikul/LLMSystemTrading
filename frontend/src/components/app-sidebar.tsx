@@ -1,8 +1,9 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
   Activity,
   BarChart3,
@@ -28,108 +29,123 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Chart", url: "/chart", icon: CandlestickChart },
-  { title: "Accounts", url: "/accounts", icon: Users },
-  { title: "Strategies", url: "/strategies", icon: Cpu },
-  { title: "Trades", url: "/trades", icon: TrendingUp },
-  { title: "AI Signals", url: "/signals", icon: Brain },
-  { title: "News", url: "/news", icon: Newspaper },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
-  { title: "Backtest", url: "/backtest", icon: FlaskConical },
-  { title: "Optimize", url: "/backtest/optimize", icon: SlidersHorizontal },
+const tradingItems = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/chart", label: "Chart", icon: CandlestickChart },
+  { href: "/accounts", label: "Accounts", icon: Users },
+  { href: "/strategies", label: "Strategies", icon: Cpu },
+  { href: "/trades", label: "Trades", icon: TrendingUp },
+  { href: "/signals", label: "AI Signals", icon: Brain },
+  { href: "/news", label: "News", icon: Newspaper },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/backtest", label: "Backtest", icon: FlaskConical },
+  { href: "/backtest/optimize", label: "Optimize", icon: SlidersHorizontal },
 ];
 
 const systemItems = [
-  { title: "Pipeline Logs", url: "/logs", icon: ScrollText },
-  { title: "Agent Workflow", url: "/agent-workflow", icon: Network },
-  { title: "Schedule", url: "/schedule", icon: Timer },
-  { title: "LLM Usage", url: "/llm-usage", icon: Coins },
-  { title: "LLM Analytics", url: "/llm-analytics", icon: Activity },
-  { title: "Storage", url: "/storage", icon: Database },
-  { title: "System Usage", url: "/system-usage", icon: Monitor },
-  { title: "Kill Switch", url: "/kill-switch", icon: Shield },
-  { title: "Settings", url: "/settings", icon: Settings },
+  { href: "/logs", label: "Pipeline Logs", icon: ScrollText },
+  { href: "/agent-workflow", label: "Agent Workflow", icon: Network },
+  { href: "/schedule", label: "Schedule", icon: Timer },
+  { href: "/llm-usage", label: "LLM Usage", icon: Coins },
+  { href: "/llm-analytics", label: "LLM Analytics", icon: Activity },
+  { href: "/storage", label: "Storage", icon: Database },
+  { href: "/system-usage", label: "System Usage", icon: Monitor },
+  { href: "/kill-switch", label: "Kill Switch", icon: Shield },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+function NavItem({
+  href,
+  label,
+  icon: Icon,
+  active,
+}: {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      title={label}
+      className={cn(
+        /* expanded: left/right margin + pill padding */
+        "mx-3 flex items-center gap-3 px-3 py-2.5 rounded-full",
+        "text-[14px] tracking-wide transition-colors duration-150",
+        /* collapsed: centered square pill */
+        "group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:justify-center",
+        active
+          ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+          : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-border/50",
+      )}
+    >
+      <Icon className="h-[18px] w-[18px] shrink-0 group-data-[collapsible=icon]:h-4 group-data-[collapsible=icon]:w-4" strokeWidth={1.3} />
+      <span className="group-data-[collapsible=icon]:hidden truncate">{label}</span>
+    </Link>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-6 mb-2 mt-1 text-[10px] font-semibold tracking-[0.12em] uppercase text-sidebar-foreground/35 group-data-[collapsible=icon]:hidden">
+      {children}
+    </p>
+  );
+}
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b">
-        <div className="flex h-12 items-center justify-between px-2">
-          <Link href="/">
-            <div className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden">
-              <Image src="/logo.png" alt="LLM Trading Logo" width={24} height={24} className="shrink-0 rounded-sm" />
-              <span className="text-sm font-semibold">LLM Trading</span>
-            </div>
-          </Link>
-          <SidebarTrigger />
+      {/* Header */}
+      <SidebarHeader>
+        <div className="flex h-[72px] items-center justify-between px-5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          <span className="text-[13px] font-semibold tracking-[0.06em] uppercase text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden select-none">
+            LLM Trading
+          </span>
+          <SidebarTrigger className="h-8 w-8 rounded-full text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-border/50 transition-colors shrink-0" />
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={item.url === "/" ? pathname === "/" : pathname.startsWith(item.url)}
-                    tooltip={item.title}
-                  >
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      {/* Header divider */}
+      <div className="mx-5 h-px bg-sidebar-border shrink-0 group-data-[collapsible=icon]:mx-3" />
 
-        <SidebarGroup>
-          <SidebarGroupLabel>System</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {systemItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === item.url}
-                    tooltip={item.title}
-                  >
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      {/* Nav */}
+      <SidebarContent className="py-3 gap-0">
+        <div className="flex flex-col gap-0.5">
+          <SectionLabel>Trading</SectionLabel>
+          {tradingItems.map((item) => (
+            <NavItem key={item.href} {...item} active={isActive(item.href)} />
+          ))}
+        </div>
+
+        {/* Section divider */}
+        <div className="mx-5 h-px bg-sidebar-border/60 my-3 group-data-[collapsible=icon]:mx-3 shrink-0" />
+
+        <div className="flex flex-col gap-0.5">
+          <SectionLabel>System</SectionLabel>
+          {systemItems.map((item) => (
+            <NavItem key={item.href} {...item} active={isActive(item.href)} />
+          ))}
+        </div>
       </SidebarContent>
 
-      <SidebarFooter className="border-t px-4 py-3">
-        <p className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-          AI-driven trading system
-        </p>
+      {/* Footer */}
+      <SidebarFooter className="px-5 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-3">
+        <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
+          <span className="size-1.5 shrink-0 rounded-full bg-emerald-500/60" />
+          <span className="text-[11px] text-sidebar-foreground/30 tracking-wide group-data-[collapsible=icon]:hidden">
+            system running
+          </span>
+        </div>
       </SidebarFooter>
     </Sidebar>
   );

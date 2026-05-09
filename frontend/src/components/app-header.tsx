@@ -8,11 +8,8 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 interface AppHeaderProps {
   title: string;
   subtitle?: string;
-  /** Right-side slot for page-specific controls (e.g. period selector, refresh button) */
   actions?: React.ReactNode;
-  /** Show the account selector dropdown — default true */
   showAccountSelector?: boolean;
-  /** Show the live connection status indicator — default true */
   showConnectionStatus?: boolean;
 }
 
@@ -24,32 +21,56 @@ export function AppHeader({
   showConnectionStatus = true,
 }: AppHeaderProps) {
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-2">
-      {/* Mobile-only sidebar trigger — desktop sidebar has its own trigger in its header */}
-      <SidebarTrigger className="md:hidden shrink-0" />
+    <header className="shrink-0 sticky top-0 z-10 pt-4 px-4 bg-background">
+      <div className="bg-card rounded-[24px] shadow-[var(--card-shadow)] px-5">
 
-      {/* Title + subtitle */}
-      <div className="min-w-0 flex-1 px-2">
-        <h1 className="text-lg font-bold leading-none truncate">{title}</h1>
-        {subtitle && (
-          <p className="text-xs text-muted-foreground mt-0.5 truncate hidden sm:block">
-            {subtitle}
-          </p>
-        )}
-      </div>
+        {/* ── Desktop: single flex row ── */}
+        <div className="hidden md:flex items-center h-16 gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[15px] font-semibold leading-none tracking-tight truncate">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="text-[11px] text-muted-foreground/55 mt-0.5 truncate">
+                {subtitle}
+              </p>
+            )}
+          </div>
+          {actions && <div className="shrink-0">{actions}</div>}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {showConnectionStatus && <ConnectionStatus />}
+            <ThemeToggle />
+            {showAccountSelector && <AccountSelector />}
+          </div>
+        </div>
 
-      {/* Page-specific actions slot */}
-      {actions && <div className="shrink-0">{actions}</div>}
+        {/* ── Mobile: two-row layout ── */}
+        <div className="flex md:hidden flex-col py-3 gap-2.5">
+          {/* Row 1: trigger + title + page actions + theme */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <SidebarTrigger className="shrink-0 h-8 w-8 rounded-full text-muted-foreground/60 hover:text-foreground transition-colors" />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[14px] font-semibold leading-none tracking-tight truncate">
+                {title}
+              </h1>
+            </div>
+            {actions && <div className="shrink-0">{actions}</div>}
+            <ThemeToggle />
+          </div>
 
-      {/* Global controls */}
-      <div className="flex items-center gap-2 shrink-0">
-        {showConnectionStatus && (
-          <span className="hidden sm:flex">
-            <ConnectionStatus />
-          </span>
-        )}
-        <ThemeToggle />
-        {showAccountSelector && <AccountSelector />}
+          {/* Row 2: account selector (left) + connection status (right) */}
+          {(showAccountSelector || showConnectionStatus) && (
+            <div className="flex items-center gap-2 pl-1">
+              {showAccountSelector && <AccountSelector />}
+              {showConnectionStatus && (
+                <span className="ml-auto">
+                  <ConnectionStatus />
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
       </div>
     </header>
   );

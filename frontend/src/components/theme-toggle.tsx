@@ -1,38 +1,67 @@
 "use client";
 
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-
-const CYCLE: Record<string, string> = {
-  system: "light",
-  light: "dark",
-  dark: "system",
-};
-
-const ICON: Record<string, React.ReactNode> = {
-  system: <Monitor className="h-4 w-4" />,
-  light: <Sun className="h-4 w-4" />,
-  dark: <Moon className="h-4 w-4" />,
-};
-
-const LABEL: Record<string, string> = {
-  system: "System theme",
-  light: "Light theme",
-  dark: "Dark theme",
-};
+import { useRef, useState, useEffect } from "react";
 
 export function ThemeToggle() {
-  const { theme = "system", setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  function handleToggle() {
+    if (!resolvedTheme) return;
+    const newTheme = resolvedTheme === "dark" ? "light" : "dark";
+
+    const btn = toggleRef.current;
+    const rect = btn?.getBoundingClientRect();
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+    document.documentElement.style.setProperty("--vt-x", `${x}px`);
+    document.documentElement.style.setProperty("--vt-y", `${y}px`);
+
+    if (!("startViewTransition" in document)) {
+      setTheme(newTheme);
+      return;
+    }
+
+    (
+      document as Document & {
+        startViewTransition: (cb: () => void | Promise<void>) => void;
+      }
+    ).startViewTransition(() => setTheme(newTheme));
+  }
 
   return (
     <Button
+      ref={toggleRef}
       variant="ghost"
       size="icon"
-      onClick={() => setTheme(CYCLE[theme] ?? "system")}
-      title={LABEL[theme] ?? "Toggle theme"}
+      onClick={handleToggle}
+      className="h-9 w-9 shrink-0 rounded-full"
+      title={
+        mounted && resolvedTheme === "dark"
+          ? "Switch to light mode"
+          : "Switch to dark mode"
+      }
     >
-      {ICON[theme] ?? <Monitor className="h-4 w-4" />}
+      <span
+        key={mounted ? resolvedTheme : "init"}
+        style={{
+          animation: mounted
+            ? "icon-spin-in 300ms cubic-bezier(0.16,1,0.3,1) both"
+            : undefined,
+          display: "flex",
+        }}
+      >
+        {mounted && resolvedTheme === "dark" ? (
+          <Sun className="h-[17px] w-[17px]" strokeWidth={1.5} />
+        ) : (
+          <Moon className="h-[17px] w-[17px]" strokeWidth={1.5} />
+        )}
+      </span>
     </Button>
   );
 }
