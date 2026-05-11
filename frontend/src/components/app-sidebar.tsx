@@ -81,7 +81,7 @@ function NavItem({
         "group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:justify-center",
         active
           ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
-          : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-border/50",
+          : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-border/50",
       )}
     >
       <Icon className="h-[18px] w-[18px] shrink-0 group-data-[collapsible=icon]:h-4 group-data-[collapsible=icon]:w-4" strokeWidth={1.3} />
@@ -92,7 +92,7 @@ function NavItem({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-6 mb-2 mt-1 text-[10px] font-semibold tracking-[0.12em] uppercase text-sidebar-foreground/35 group-data-[collapsible=icon]:hidden">
+    <p className="px-6 mb-2 mt-1 text-[10px] font-semibold tracking-[0.12em] uppercase text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
       {children}
     </p>
   );
@@ -108,10 +108,10 @@ export function AppSidebar() {
       {/* Header */}
       <SidebarHeader>
         <div className="flex h-[72px] items-center justify-between px-5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-          <span className="text-[13px] font-semibold tracking-[0.06em] uppercase text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden select-none">
+          <span className="text-[13px] font-semibold tracking-[0.06em] uppercase text-sidebar-foreground/80 group-data-[collapsible=icon]:hidden select-none">
             LLM Trading
           </span>
-          <SidebarTrigger className="h-8 w-8 rounded-full text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-border/50 transition-colors shrink-0" />
+          <SidebarTrigger className="h-8 w-8 rounded-full text-sidebar-foreground/65 hover:text-sidebar-foreground hover:bg-sidebar-border/50 transition-colors shrink-0" />
         </div>
       </SidebarHeader>
 
@@ -142,7 +142,7 @@ export function AppSidebar() {
       <SidebarFooter className="px-5 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-3">
         <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
           <span className="size-1.5 shrink-0 rounded-full bg-emerald-500/60" />
-          <span className="text-[11px] text-sidebar-foreground/30 tracking-wide group-data-[collapsible=icon]:hidden">
+          <span className="text-[11px] text-sidebar-foreground/55 tracking-wide group-data-[collapsible=icon]:hidden">
             system running
           </span>
         </div>
