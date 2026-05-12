@@ -204,8 +204,8 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
 
     @tool
     def save_research_config(
-        lessons: list,
-        blocked_symbols: list,
+        lessons: list[str],
+        blocked_symbols: list[str],
         confidence_threshold: float = 0.0,
         notes: str = "",
     ) -> str:

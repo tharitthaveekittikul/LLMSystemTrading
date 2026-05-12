@@ -215,18 +215,22 @@ function ResearchConfigCard() {
   const [cfg, setCfg] = useState<ResearchConfig | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  useEffect(() => {
+  const fetchConfig = () => {
     llmAnalyticsApi
       .getResearchConfig()
       .then(setCfg)
       .catch(() => setCfg(null));
+  };
+
+  useEffect(() => {
+    fetchConfig();
   }, []);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">Research Loop</CardTitle>
-        <ResearchLoopProgress />
+        <ResearchLoopProgress onComplete={fetchConfig} />
         <p className="text-xs text-muted-foreground">
           Auto-runs every 30 closed trades.
           {cfg?.last_run_at && (

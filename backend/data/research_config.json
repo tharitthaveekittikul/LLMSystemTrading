@@ -1,26 +1,23 @@
 {
   "lessons": [
-    "Validate support levels before entering trades",
-    "Avoid selling during bullish trends without reversal confirmation",
-    "Use multi-timeframe analysis to verify trend strength",
-    "Ensure stops provide adequate risk/reward"
+    "Avoid long positions when RSI > 70 to prevent buying into pullbacks.",
+    "Prioritize the 200-period EMA trend over short-term chart patterns.",
+    "Avoid shorting near SMA 20 as it often acts as dynamic support.",
+    "Do not short near established recent lows due to reversal risk."
   ],
-  "blocked_symbols": [
-    "GBPJPY.s",
-    "AUDUSD.s"
-  ],
+  "blocked_symbols": [],
   "suggested_params": {
-    "confidence_threshold": 0.7,
-    "notes": "Low win rates and negative PnL on GBPJPY/AUDUSD require stricter risk controls."
+    "confidence_threshold": 0.75,
+    "notes": "Overall win rate is low (37%). No symbols meet the criteria for blocking (min 20 trades). Increased confidence threshold to 0.75 to filter out low-reliability signals like trendline and RSI_14."
   },
-  "last_run_at": "2026-04-03T05:11:03.827569+00:00",
+  "last_run_at": "2026-05-12T20:26:22.257976+00:00",
   "stats_snapshot": {
-    "total_trades": 158,
-    "win_rate": 0.405,
-    "pnl": -610.17
+    "total_trades": 112,
+    "win_rate": 0.429,
+    "pnl": -294.58
   },
-  "trade_count_at_run": 737,
-  "last_trade_id_at_run": 809,
+  "trade_count_at_run": 768,
+  "last_trade_id_at_run": 888,
   "lesson_history": [
     {
       "lesson": "Validate support levels before entering trades",
@@ -37,6 +34,42 @@
     {
       "lesson": "Ensure stops provide adequate risk/reward",
       "recorded_at": "2026-04-03T05:11:03.831745+00:00"
+    },
+    {
+      "lesson": "Overall WR is 43% \u2014 be more selective, require higher confluence.",
+      "recorded_at": "2026-05-12T20:20:47.738768+00:00"
+    },
+    {
+      "lesson": "High-confidence signals are underperforming \u2014 reduce over-confidence bias.",
+      "recorded_at": "2026-05-12T20:20:47.738768+00:00"
+    },
+    {
+      "lesson": "GBPJPY.s WR is 38% \u2014 auto-blocked.",
+      "recorded_at": "2026-05-12T20:20:47.738768+00:00"
+    },
+    {
+      "lesson": "Avoid entering long positions when the RSI is above 70, as the risk of a sharp pullback often outweighs the momentum signal.",
+      "recorded_at": "2026-05-12T20:20:47.738768+00:00"
+    },
+    {
+      "lesson": "Never prioritize short-term chart patterns over the long-term trend defined by the 200-period EMA.",
+      "recorded_at": "2026-05-12T20:20:47.738768+00:00"
+    },
+    {
+      "lesson": "Avoid long positions when RSI > 70 to prevent buying into pullbacks.",
+      "recorded_at": "2026-05-12T20:26:22.264563+00:00"
+    },
+    {
+      "lesson": "Prioritize the 200-period EMA trend over short-term chart patterns.",
+      "recorded_at": "2026-05-12T20:26:22.264563+00:00"
+    },
+    {
+      "lesson": "Avoid shorting near SMA 20 as it often acts as dynamic support.",
+      "recorded_at": "2026-05-12T20:26:22.264563+00:00"
+    },
+    {
+      "lesson": "Do not short near established recent lows due to reversal risk.",
+      "recorded_at": "2026-05-12T20:26:22.264563+00:00"
     }
   ]
 }

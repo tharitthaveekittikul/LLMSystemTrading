@@ -17,7 +17,11 @@ import type { ResearchProgress } from "@/types/trading";
 
 const CYCLE_SIZE = 30;
 
-export function ResearchLoopProgress() {
+interface ResearchLoopProgressProps {
+  onComplete?: () => void;
+}
+
+export function ResearchLoopProgress({ onComplete }: ResearchLoopProgressProps = {}) {
   const activeAccountId = useTradingStore((s) => s.activeAccountId);
   const [progress, setProgress] = useState<ResearchProgress | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -82,6 +86,7 @@ export function ResearchLoopProgress() {
     try {
       await accountsApi.triggerResearchLoop(activeAccountId);
       await fetchProgress();
+      onComplete?.();
     } catch (err) {
       setTriggerError(err instanceof Error ? err.message : "Trigger failed");
     } finally {
