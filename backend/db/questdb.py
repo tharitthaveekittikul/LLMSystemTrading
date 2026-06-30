@@ -38,24 +38,27 @@ async def _get_conn() -> asyncpg.Connection:
 
 async def init_questdb() -> None:
     """Create QuestDB tables if they do not already exist. Called once on startup."""
-    conn = await _get_conn()
     try:
-        await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS equity_snapshots (
-                ts TIMESTAMP,
-                account_id INT,
-                equity DOUBLE,
-                balance DOUBLE,
-                margin DOUBLE
-            ) TIMESTAMP(ts) PARTITION BY DAY WAL;
-            """
-        )
-        logger.info("QuestDB tables ready")
+        conn = await _get_conn()
+        try:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS equity_snapshots (
+                    ts TIMESTAMP,
+                    account_id INT,
+                    equity DOUBLE,
+                    balance DOUBLE,
+                    margin DOUBLE
+                ) TIMESTAMP(ts) PARTITION BY DAY WAL;
+                """
+            )
+            logger.info("QuestDB tables ready")
+        except Exception as exc:
+            logger.warning("QuestDB init skipped (not available): %s", exc)
+        finally:
+            await conn.close()
     except Exception as exc:
-        logger.warning("QuestDB init skipped (not available): %s", exc)
-    finally:
-        await conn.close()
+        logger.warning("QuestDB not reachable, skipping time-series init: %s", exc)
 
 
 async def insert_equity_snapshot(
