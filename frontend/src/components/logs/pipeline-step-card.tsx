@@ -82,6 +82,56 @@ function extractTokenInfo(step: PipelineStep): TokenInfo | null {
   }
 }
 
+interface ConfidenceGateInfo {
+  confidence: number;
+  baseThreshold: number;
+  effectiveThreshold: number | null;
+  trustScore: number | null;
+  actionBefore: string;
+  actionAfter: string;
+}
+
+function extractConfidenceGateInfo(step: PipelineStep): ConfidenceGateInfo | null {
+  if (step.step_name !== "confidence_gate" || !step.input_json || !step.output_json) return null;
+  try {
+    const input = JSON.parse(step.input_json);
+    const output = JSON.parse(step.output_json);
+    if (input.confidence == null || input.base_threshold == null) return null;
+    return {
+      confidence: input.confidence,
+      baseThreshold: input.base_threshold,
+      effectiveThreshold: input.effective_threshold ?? null,
+      trustScore: input.symbol_trust_score ?? null,
+      actionBefore: output.action_before ?? "?",
+      actionAfter: output.action_after ?? "?",
+    };
+  } catch {
+    return null;
+  }
+}
+
+interface VoteSummaryInfo {
+  counts: Record<string, number>;
+  outcome: string;
+  majorityDirection?: string;
+}
+
+function extractVoteSummary(step: PipelineStep): VoteSummaryInfo | null {
+  if (step.step_name !== "execution_decision_llm" || !step.input_json) return null;
+  try {
+    const parsed = JSON.parse(step.input_json);
+    const voteSummary = parsed.vote_summary ?? parsed.summary?.vote_summary ?? null;
+    if (!voteSummary || !voteSummary.counts) return null;
+    return {
+      counts: voteSummary.counts,
+      outcome: voteSummary.outcome,
+      majorityDirection: voteSummary.majority_direction,
+    };
+  } catch {
+    return null;
+  }
+}
+
 interface PipelineStepCardProps {
   step: PipelineStep;
   pricing?: LLMPricingEntry[];
@@ -153,6 +203,8 @@ export function PipelineStepCard({
   const hasDetail = step.input_json || step.output_json || step.error;
   const label = STEP_LABELS[step.step_name] ?? step.step_name;
   const tokenInfo = extractTokenInfo(step);
+  const gateInfo = extractConfidenceGateInfo(step);
+  const voteInfo = extractVoteSummary(step);
 
   return (
     <div className="border-l-2 border-muted pl-4 py-1">
@@ -233,6 +285,39 @@ export function PipelineStepCard({
               </span>
             );
           })()}
+        </div>
+      )}
+
+      {gateInfo && (
+        <div className="mt-1 ml-6 text-xs text-muted-foreground">
+          confidence {gateInfo.confidence.toFixed(2)} vs{" "}
+          {gateInfo.effectiveThreshold != null ? (
+            <>
+              effective threshold {gateInfo.effectiveThreshold.toFixed(2)}
+              {gateInfo.trustScore != null &&
+                ` (trust score ${gateInfo.trustScore.toFixed(2)}, base ${gateInfo.baseThreshold.toFixed(2)})`}
+            </>
+          ) : (
+            <>threshold {gateInfo.baseThreshold.toFixed(2)}</>
+          )}
+          {gateInfo.actionBefore !== gateInfo.actionAfter && (
+            <span className="ml-1 font-medium text-yellow-700 dark:text-yellow-400">
+              → downgraded {gateInfo.actionBefore} to {gateInfo.actionAfter}
+            </span>
+          )}
+        </div>
+      )}
+
+      {voteInfo && (
+        <div className="mt-1 ml-6 text-xs text-muted-foreground">
+          Sub-agent votes:{" "}
+          {Object.entries(voteInfo.counts)
+            .map(([direction, count]) => `${direction} ${count}`)
+            .join(" / ") || "n/a"}{" "}
+          →{" "}
+          {voteInfo.outcome === "skip_hold"
+            ? "no majority, decision call skipped"
+            : `majority ${voteInfo.majorityDirection ?? "?"}, decision LLM consulted`}
         </div>
       )}
 
