@@ -52,10 +52,10 @@ async def test_analyze_market_accepts_position_and_signal_args():
     ed_result = _mock_role_result(_execution_content())
 
     with (
-        patch("ai.orchestrator._build_llm"),
-        patch("ai.orchestrator._run_market_analysis", new=AsyncMock(return_value=ma_result)),
-        patch("ai.orchestrator._run_execution_decision", new=AsyncMock(return_value=ed_result)),
-        patch("ai.orchestrator.settings") as mock_cfg,
+        patch("ai.orchestrator._pipeline._build_llm"),
+        patch("ai.orchestrator._pipeline._run_market_analysis", new=AsyncMock(return_value=ma_result)),
+        patch("ai.orchestrator._pipeline._run_execution_decision", new=AsyncMock(return_value=ed_result)),
+        patch("ai.orchestrator._pipeline.settings") as mock_cfg,
     ):
         mock_cfg.llm_provider = "openai"
         mock_cfg.llm_confidence_threshold = 0.70
@@ -81,10 +81,10 @@ async def test_analyze_market_works_without_optional_args():
     ed_result = _mock_role_result(_execution_content())
 
     with (
-        patch("ai.orchestrator._build_llm"),
-        patch("ai.orchestrator._run_market_analysis", new=AsyncMock(return_value=ma_result)),
-        patch("ai.orchestrator._run_execution_decision", new=AsyncMock(return_value=ed_result)),
-        patch("ai.orchestrator.settings") as mock_cfg,
+        patch("ai.orchestrator._pipeline._build_llm"),
+        patch("ai.orchestrator._pipeline._run_market_analysis", new=AsyncMock(return_value=ma_result)),
+        patch("ai.orchestrator._pipeline._run_execution_decision", new=AsyncMock(return_value=ed_result)),
+        patch("ai.orchestrator._pipeline.settings") as mock_cfg,
     ):
         mock_cfg.llm_provider = "openai"
         mock_cfg.llm_confidence_threshold = 0.70
@@ -116,10 +116,10 @@ async def test_analyze_market_confidence_gate_downgrades_to_hold():
     ed_result = _mock_role_result(low_conf_content)
 
     with (
-        patch("ai.orchestrator._build_llm"),
-        patch("ai.orchestrator._run_market_analysis", new=AsyncMock(return_value=ma_result)),
-        patch("ai.orchestrator._run_execution_decision", new=AsyncMock(return_value=ed_result)),
-        patch("ai.orchestrator.settings") as mock_cfg,
+        patch("ai.orchestrator._pipeline._build_llm"),
+        patch("ai.orchestrator._pipeline._run_market_analysis", new=AsyncMock(return_value=ma_result)),
+        patch("ai.orchestrator._pipeline._run_execution_decision", new=AsyncMock(return_value=ed_result)),
+        patch("ai.orchestrator._pipeline.settings") as mock_cfg,
     ):
         mock_cfg.llm_provider = "openai"
         mock_cfg.llm_confidence_threshold = 0.70
@@ -175,10 +175,10 @@ async def test_analyze_market_returns_pending_action():
                 "take_profit": 1.092, "confidence": 0.85, "rationale": "PRZ entry", "timeframe": "M15"})
 
     with (
-        patch("ai.orchestrator._build_llm"),
-        patch("ai.orchestrator._run_market_analysis", new=AsyncMock(return_value=ma)),
-        patch("ai.orchestrator._run_execution_decision", new=AsyncMock(return_value=ed)),
-        patch("ai.orchestrator.settings") as mock_cfg,
+        patch("ai.orchestrator._pipeline._build_llm"),
+        patch("ai.orchestrator._pipeline._run_market_analysis", new=AsyncMock(return_value=ma)),
+        patch("ai.orchestrator._pipeline._run_execution_decision", new=AsyncMock(return_value=ed)),
+        patch("ai.orchestrator._pipeline.settings") as mock_cfg,
     ):
         mock_cfg.llm_confidence_threshold = 0.5
         result = await analyze_market(

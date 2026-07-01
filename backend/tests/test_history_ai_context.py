@@ -88,10 +88,10 @@ async def test_analyze_market_injects_history_in_prompt():
     history_text = "Recent closed trades (last 10):\n  - EURUSD BUY profit=+30.0"
 
     with (
-        patch("ai.orchestrator._build_llm"),
-        patch("ai.orchestrator._run_market_analysis", side_effect=mock_run_market_analysis),
-        patch("ai.orchestrator._run_execution_decision", new=AsyncMock(return_value=ed_result)),
-        patch("ai.orchestrator.settings") as mock_cfg,
+        patch("ai.orchestrator._pipeline._build_llm"),
+        patch("ai.orchestrator._pipeline._run_market_analysis", side_effect=mock_run_market_analysis),
+        patch("ai.orchestrator._pipeline._run_execution_decision", new=AsyncMock(return_value=ed_result)),
+        patch("ai.orchestrator._pipeline.settings") as mock_cfg,
     ):
         mock_cfg.llm_provider = "openai"
         mock_cfg.llm_confidence_threshold = 0.70
@@ -132,10 +132,10 @@ async def test_analyze_market_empty_history_section_when_none():
     })
 
     with (
-        patch("ai.orchestrator._build_llm"),
-        patch("ai.orchestrator._run_market_analysis", side_effect=mock_run_market_analysis),
-        patch("ai.orchestrator._run_execution_decision", new=AsyncMock(return_value=ed_result)),
-        patch("ai.orchestrator.settings") as mock_cfg,
+        patch("ai.orchestrator._pipeline._build_llm"),
+        patch("ai.orchestrator._pipeline._run_market_analysis", side_effect=mock_run_market_analysis),
+        patch("ai.orchestrator._pipeline._run_execution_decision", new=AsyncMock(return_value=ed_result)),
+        patch("ai.orchestrator._pipeline.settings") as mock_cfg,
     ):
         mock_cfg.llm_provider = "openai"
         mock_cfg.llm_confidence_threshold = 0.70
