@@ -185,6 +185,45 @@ async def test_pipeline_partial_failure():
 
 
 @pytest.mark.asyncio
+async def test_pipeline_all_agents_enabled_end_to_end():
+    """With all three sub-agents enabled and both chart images provided
+    (the default configuration once enable_agent_pipeline=True), every
+    node in the graph must actually execute and contribute a report."""
+    market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
+    indicator_llm = mock_llm(_INDICATOR_RESPONSE)
+    decision_llm = mock_llm(_DECISION_RESPONSE)
+
+    # chart_vision_llm is shared by both pattern and trend agents in build_pipeline();
+    # each call must resolve to a valid response regardless of which agent invokes it.
+    vision_llm = mock_llm(_PATTERN_RESPONSE)
+
+    settings = _make_settings(
+        enable_indicator_agent=True,
+        enable_pattern_agent=True,
+        enable_trend_agent=True,
+    )
+
+    pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
+    state = _make_initial_state()
+    state["chart_image_b64"] = "fake-base64-chart-data"
+    state["trendline_chart_b64"] = "fake-base64-trendline-data"
+
+    final_state = await pipeline.ainvoke(state)
+
+    assert final_state["indicator_report"] is not None
+    assert final_state["pattern_report"] is not None
+    assert final_state["trend_report"] is not None
+    assert final_state["final_signal"] is not None
+    assert final_state["final_signal"]["signal"] == "LONG"
+    # every node's token usage should be recorded for the pipeline trace/cost dashboard
+    assert final_state["market_analysis_tokens"] is not None
+    assert final_state["indicator_tokens"] is not None
+    assert final_state["pattern_tokens"] is not None
+    assert final_state["trend_tokens"] is not None
+    assert final_state["decision_tokens"] is not None
+
+
+@pytest.mark.asyncio
 async def test_pipeline_disabled_indicator_agent():
     """With enable_indicator_agent=False, indicator_report stays None."""
     market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)

@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     enable_chart_vision: bool = True  # set ENABLE_CHART_VISION=false to disable chart analysis
 
     # ── Multi-agent pipeline ──────────────────────────────────────────────────
-    enable_agent_pipeline: bool = False    # master toggle; False = use existing 3-role pipeline
+    enable_agent_pipeline: bool = True     # master toggle; False = use legacy 3-role pipeline
     enable_indicator_agent: bool = True
     enable_pattern_agent: bool = True
     enable_trend_agent: bool = True
