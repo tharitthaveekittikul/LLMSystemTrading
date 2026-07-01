@@ -25,7 +25,8 @@ async def test_poll_account_calls_insert_and_broadcast():
     broadcast_mock = AsyncMock()
 
     with patch("services.equity_poller.decrypt", return_value="plainpass"), \
-         patch("services.equity_poller.MT5Bridge") as mock_bridge_cls:
+         patch("services.equity_poller.MT5Bridge") as mock_bridge_cls, \
+         patch("services.equity_poller._reconcile_account_orders", new=AsyncMock()) as reconcile_mock:
         mock_bridge = AsyncMock()
         mock_bridge.get_account_info = AsyncMock(return_value=mock_info)
         mock_bridge_cls.return_value.__aenter__ = AsyncMock(return_value=mock_bridge)
@@ -43,6 +44,8 @@ async def test_poll_account_calls_insert_and_broadcast():
     data = call_args[0][2]
     assert data["equity"] == 10050.0
     assert data["currency"] == "USD"
+    # Reconciliation (Part B) runs once per successful equity poll cycle.
+    reconcile_mock.assert_called_once_with(1)
 
 
 @pytest.mark.asyncio
@@ -62,7 +65,8 @@ async def test_poll_account_swallows_mt5_error():
     broadcast_mock = AsyncMock()
 
     with patch("services.equity_poller.decrypt", return_value="plainpass"), \
-         patch("services.equity_poller.MT5Bridge") as mock_bridge_cls:
+         patch("services.equity_poller.MT5Bridge") as mock_bridge_cls, \
+         patch("services.equity_poller._reconcile_account_orders", new=AsyncMock()) as reconcile_mock:
         mock_bridge_cls.return_value.__aenter__ = AsyncMock(side_effect=ConnectionError("MT5 down"))
         mock_bridge_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -70,6 +74,8 @@ async def test_poll_account_swallows_mt5_error():
 
     insert_mock.assert_not_called()
     broadcast_mock.assert_not_called()
+    # Equity fetch failed — reconciliation must not run for this cycle either.
+    reconcile_mock.assert_not_called()
 
 
 async def _noop(*args, **kwargs):
@@ -106,7 +112,8 @@ async def test_poll_account_activates_kill_switch_on_drawdown(monkeypatch):
     from services.equity_poller import _poll_account
     with patch("services.equity_poller.settings") as mock_cfg, \
          patch("services.equity_poller.load_risk_config", new=AsyncMock(return_value=risk_cfg)), \
-         patch("services.equity_poller.AsyncSessionLocal", return_value=mock_ctx):
+         patch("services.equity_poller.AsyncSessionLocal", return_value=mock_ctx), \
+         patch("services.equity_poller._reconcile_account_orders", new=AsyncMock()):
         mock_cfg.mt5_path = ""
 
         with patch("services.equity_poller.MT5Bridge") as mock_bridge_cls:
@@ -125,3 +132,42 @@ async def test_poll_account_activates_kill_switch_on_drawdown(monkeypatch):
     assert ks.is_active() is True
     # Clean up kill switch state
     await ks.deactivate()
+
+
+# ── _reconcile_account_orders (plan 01, Part B) ────────────────────────────
+
+@pytest.mark.asyncio
+async def test_reconcile_account_orders_calls_sync_account():
+    """Reconciliation must delegate to the SAME sync_account() the dashboard
+    "Sync" button uses — not a duplicate reimplementation of the diff logic."""
+    from services.equity_poller import _reconcile_account_orders
+
+    mock_session = AsyncMock()
+    mock_ctx = AsyncMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    sync_mock = AsyncMock()
+    with patch("services.equity_poller.AsyncSessionLocal", return_value=mock_ctx), \
+         patch("api.routes.accounts._sync.sync_account", new=sync_mock):
+        await _reconcile_account_orders(42)
+
+    sync_mock.assert_called_once_with(42, db=mock_session)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_account_orders_swallows_errors():
+    """A reconciliation failure for one account must not raise — equity polling
+    for other accounts must keep running (same isolation guarantee as the
+    equity fetch itself)."""
+    from services.equity_poller import _reconcile_account_orders
+
+    mock_session = AsyncMock()
+    mock_ctx = AsyncMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    sync_mock = AsyncMock(side_effect=RuntimeError("MT5 unavailable"))
+    with patch("services.equity_poller.AsyncSessionLocal", return_value=mock_ctx), \
+         patch("api.routes.accounts._sync.sync_account", new=sync_mock):
+        await _reconcile_account_orders(42)  # must not raise

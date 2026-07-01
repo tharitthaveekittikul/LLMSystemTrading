@@ -141,3 +141,44 @@ async def _poll_account(account, insert_fn, broadcast_fn) -> None:
         logger.debug("Equity polled | account_id=%s equity=%.2f", account["id"], equity)
     except Exception as exc:
         logger.exception("Equity poller failed for account_id=%s: %s", account["id"], exc)
+        return
+
+    # ── Order/position reconciliation (plan 01, Part B) ───────────────────────
+    # Runs after the equity fetch above so its MT5 connection never overlaps
+    # the one used for the equity fetch (see docstring on the helper below).
+    await _reconcile_account_orders(account["id"])
+
+
+async def _reconcile_account_orders(account_id: int) -> None:
+    """Reconcile pending/open/closed trade state against live MT5 state.
+
+    Delegates to ``sync_account()`` in ``api/routes/accounts/_sync.py`` — the
+    SAME reconciliation + closed-deal-backfill + research-loop-trigger logic
+    already used by the dashboard's manual "Sync" button. Before this change
+    `sync_account`/`sync_orders` were reachable *only* via their FastAPI
+    routes (confirmed by grepping the whole backend for callers) — a
+    pending/filled trade sat unreconciled until a human clicked Sync. Wiring
+    it into this always-on 60s per-account loop means it now runs even when
+    nobody has the dashboard open.
+
+    `sync_account()` opens its own `MT5Bridge` connection, sequential *after*
+    (not concurrent with) the equity-poll connection in `_poll_account`
+    above. `MT5Bridge.__aenter__`/`__aexit__` serialize every bridge session
+    process-wide via `_MT5_LOCK` (see `mt5/bridge.py`), so there is still only
+    ever one live MT5-thread-bound session at a time — honoring the
+    single-thread-per-process constraint documented in
+    `documents/mt5-python/connection.md`. This does mean two sequential
+    connect/disconnect cycles per account per 60s tick rather than one;
+    that trade-off was chosen deliberately to reuse `sync_account`'s
+    existing, already-tested-by-the-dashboard reconciliation logic instead
+    of duplicating it here.
+    """
+    from api.routes.accounts._sync import sync_account
+
+    try:
+        async with AsyncSessionLocal() as session:
+            await sync_account(account_id, db=session)
+    except Exception as exc:
+        # Isolated from the equity poll above — a reconciliation failure for
+        # one account must never stop equity polling for that or other accounts.
+        logger.warning("Order reconciliation failed | account_id=%s | %s", account_id, exc)

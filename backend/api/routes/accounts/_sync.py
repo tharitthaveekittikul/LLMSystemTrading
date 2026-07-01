@@ -35,6 +35,27 @@ _ORDER_STATE_EXPIRED   = 6
 _DEAL_ENTRY_OUT        = 1   # closing deal
 
 
+async def _broadcast_positions_update(account_id: int, positions: list[dict]) -> None:
+    """Push a `positions_update` WS event after reconciliation changes trade state.
+
+    Reuses the same normalized position shape `services/mt5_poller.py` already
+    broadcasts on its 5s live-dashboard loop (`_normalize_position`), so the
+    frontend's `positions_update` handler — which replaces its entire open-
+    positions list with the payload (see
+    `frontend/src/components/dashboard/dashboard-provider.tsx`) — stays
+    consistent no matter which poller triggered the update.
+    """
+    from api.routes.ws import broadcast
+    from services.mt5_poller import _normalize_position
+
+    await broadcast(account_id, "positions_update", {
+        "account_id": account_id,
+        "positions": [
+            {**_normalize_position(p), "account_id": account_id} for p in positions
+        ],
+    })
+
+
 @router.post("/{account_id}/sync-orders", response_model=SyncOrdersResponse)
 async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
     """Reconcile DB open trades against MT5.
@@ -101,6 +122,7 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
     counts = {"positions_closed": 0, "orders_cancelled": 0, "unchanged": 0}
     now_ts = datetime.now(timezone.utc)
     newly_closed_trade_ids: list[int] = []
+    changed_any = False  # any trade row mutated this cycle — drives the WS broadcast below
 
     for trade in open_trades:
         # ── Case 1: filled position ───────────────────────────────────────────
@@ -109,6 +131,7 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
                 counts["unchanged"] += 1
                 continue
 
+            changed_any = True
             # Position no longer active — resolve position ticket then find closing deal.
             # trade.ticket stores the order ticket from order_send(); in MT5 hedging mode
             # the position ticket equals the order ticket, but hist_orders["position_id"]
@@ -156,12 +179,14 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
                     # Position still open — upgrade status, leave closed_at=None
                     trade.order_status = "filled"
                     counts["unchanged"] += 1
+                    changed_any = True
                     logger.info(
                         "Pending order filled, position open | account_id=%s ticket=%s position=%s",
                         account_id, trade.ticket, position_ticket,
                     )
                     continue
                 # Position was closed (SL / TP / manual)
+                changed_any = True
                 trade.order_status = "filled"
                 deal = closing_deals.get(position_ticket)
                 if deal:
@@ -182,6 +207,7 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
                 )
 
             elif state == _ORDER_STATE_EXPIRED:
+                changed_any = True
                 trade.order_status = "expired"
                 trade.closed_at = now_ts
                 counts["orders_cancelled"] += 1
@@ -190,6 +216,7 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
                     account_id, trade.ticket, state,
                 )
             else:
+                changed_any = True
                 trade.order_status = "cancelled"
                 trade.closed_at = now_ts
                 counts["orders_cancelled"] += 1
@@ -199,6 +226,10 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
                 )
 
     await db.commit()
+
+    # ── WebSocket broadcast (Part B, plan 01) — dashboard updates without a refresh ──
+    if changed_any:
+        await _broadcast_positions_update(account_id, active_positions)
 
     # ── Post-trade analysis + research loop (fire-and-forget) ────────────────
     if newly_closed_trade_ids:
@@ -337,6 +368,7 @@ async def sync_account(account_id: int, db: AsyncSession = Depends(get_db)):
     counts = {"positions_closed": 0, "orders_expired": 0, "orders_cancelled": 0, "unchanged": 0}
     now_ts = datetime.now(timezone.utc)
     newly_closed_trade_ids: list[int] = []
+    changed_any = False  # any trade row mutated this cycle — drives the WS broadcast below
 
     # ── Phase 1: reconcile open DB trades ─────────────────────────────────────
     for trade in open_trades:
@@ -345,6 +377,7 @@ async def sync_account(account_id: int, db: AsyncSession = Depends(get_db)):
                 counts["unchanged"] += 1
                 continue
 
+            changed_any = True
             hist_order = hist_orders_by_ticket.get(trade.ticket)
             position_ticket = (
                 hist_order.get("position_id") or trade.ticket
@@ -385,7 +418,9 @@ async def sync_account(account_id: int, db: AsyncSession = Depends(get_db)):
                 if position_ticket in active_position_tickets:
                     trade.order_status = "filled"
                     counts["unchanged"] += 1
+                    changed_any = True
                     continue
+                changed_any = True
                 trade.order_status = "filled"
                 deal = closing_deals.get(position_ticket)
                 if deal:
@@ -406,12 +441,14 @@ async def sync_account(account_id: int, db: AsyncSession = Depends(get_db)):
                 )
 
             elif state == _ORDER_STATE_EXPIRED:
+                changed_any = True
                 trade.order_status = "expired"
                 trade.closed_at = now_ts
                 counts["orders_expired"] += 1
                 logger.info("Order expired | account_id=%s ticket=%s", account_id, trade.ticket)
 
             else:
+                changed_any = True
                 trade.order_status = "cancelled"
                 trade.closed_at = now_ts
                 counts["orders_cancelled"] += 1
@@ -425,6 +462,12 @@ async def sync_account(account_id: int, db: AsyncSession = Depends(get_db)):
     newly_imported = backfill["imported"]
     updated = backfill["updated"]
     backfill_ids: list[int] = backfill.get("new_trade_ids", [])
+    if newly_imported or updated:
+        changed_any = True
+
+    # ── WebSocket broadcast (Part B, plan 01) — dashboard updates without a refresh ──
+    if changed_any:
+        await _broadcast_positions_update(account_id, active_positions)
 
     # ── Post-trade analysis (fire-and-forget, skip manual terminal trades) ────
     all_new_ids = newly_closed_trade_ids + [
