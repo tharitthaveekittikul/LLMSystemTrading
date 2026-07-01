@@ -7,6 +7,7 @@ import type {
   LLMHeatmapResponse,
   LLMTimelinePoint,
   PipelineCombinationRow,
+  SymbolPnLRow,
 } from "@/types/trading"
 import { SidebarInset } from "@/components/ui/sidebar"
 import { AppHeader } from "@/components/app-header"
@@ -17,6 +18,7 @@ import { CostVsWinrateScatter } from "@/components/llm-analytics/cost-vs-winrate
 import { ActionDistributionChart } from "@/components/llm-analytics/action-distribution-chart"
 import { PnlTimelineChart } from "@/components/llm-analytics/pnl-timeline-chart"
 import { PipelineCombinationsTable } from "@/components/llm-analytics/pipeline-combinations-table"
+import { SymbolPnLTable } from "@/components/llm-analytics/symbol-pnl-table"
 import { LearningTab } from "@/components/llm-analytics/learning-tab"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
@@ -27,7 +29,7 @@ const PERIODS = [
   { label: "90d", days: 90 },
 ]
 
-const TABS = ["Models", "Pipelines", "Learning"] as const
+const TABS = ["Models", "Pipelines", "P&L Attribution", "Learning"] as const
 type Tab = typeof TABS[number]
 
 export default function LLMAnalyticsPage() {
@@ -40,17 +42,20 @@ export default function LLMAnalyticsPage() {
   const [pnlTimeline, setPnlTimeline] = useState<LLMTimelinePoint[]>([])
   const [costTrend, setCostTrend] = useState<LLMTimelinePoint[]>([])
   const [pipelines, setPipelines] = useState<PipelineCombinationRow[]>([])
+  const [symbolPnl, setSymbolPnl] = useState<SymbolPnLRow[]>([])
+  const [pnlGroupBy, setPnlGroupBy] = useState<"symbol" | "source">("symbol")
 
-  const fetchAll = async (d: number) => {
+  const fetchAll = async (d: number, groupBy: "symbol" | "source" = pnlGroupBy) => {
     setLoading(true)
     try {
-      const [s, p, h, pnl, cost, pipe] = await Promise.all([
+      const [s, p, h, pnl, cost, pipe, symPnl] = await Promise.all([
         llmAnalyticsApi.getSummary(d),
         llmAnalyticsApi.getModelPerformance(d),
         llmAnalyticsApi.getHeatmap(d),
         llmAnalyticsApi.getPnlTimeline(d),
         llmAnalyticsApi.getCostTrend(d),
         llmAnalyticsApi.getPipelineCombinations(d),
+        llmAnalyticsApi.getSymbolPnl(d, groupBy),
       ])
       setSummary(s)
       setPerformance(p)
@@ -58,6 +63,7 @@ export default function LLMAnalyticsPage() {
       setPnlTimeline(pnl)
       setCostTrend(cost)
       setPipelines(pipe)
+      setSymbolPnl(symPnl)
     } catch (e) {
       console.error("LLM analytics fetch failed", e)
     } finally {
@@ -66,6 +72,11 @@ export default function LLMAnalyticsPage() {
   }
 
   useEffect(() => { fetchAll(days) }, [days])
+
+  const handleGroupByChange = (g: "symbol" | "source") => {
+    setPnlGroupBy(g)
+    fetchAll(days, g)
+  }
 
   const headerActions = (
     <div className="flex items-center gap-2">
@@ -138,6 +149,14 @@ export default function LLMAnalyticsPage() {
 
         {tab === "Pipelines" && (
           <PipelineCombinationsTable data={pipelines} />
+        )}
+
+        {tab === "P&L Attribution" && (
+          <SymbolPnLTable
+            data={symbolPnl}
+            groupBy={pnlGroupBy}
+            onGroupByChange={handleGroupByChange}
+          />
         )}
 
         {tab === "Learning" && (

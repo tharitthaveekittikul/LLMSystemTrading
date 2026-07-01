@@ -54,6 +54,16 @@ class TimelinePoint(BaseModel):
     by_model: dict[str, float]
 
 
+class SymbolPnLRow(BaseModel):
+    group: str                      # symbol (e.g. "EURUSD") or source (e.g. "ai", "HarmonicStrategy")
+    trade_count: int
+    realized_pnl_usd: float         # sum of Trade.profit for this group's AI/strategy-originated trades
+    attributed_llm_cost_usd: float  # sum of llm_calls.cost_usd across ALL pipeline runs tied to those trades
+    net_pnl_usd: float              # realized_pnl_usd - attributed_llm_cost_usd
+    manual_trade_count: int         # trades in this group placed manually (source == "manual")
+    manual_pnl_usd: float           # their P&L, tracked separately — never netted against LLM cost
+
+
 class PipelineCombinationRow(BaseModel):
     analysis_model: str
     execution_model: str
@@ -117,6 +127,81 @@ async def _fetch_pipeline_rows(db: AsyncSession, since: datetime) -> list:
         .where(LLMCall.pipeline_step_id.is_not(None))
     )
     return (await db.execute(stmt)).all()
+
+
+async def _fetch_symbol_pnl_rows(db: AsyncSession, since: datetime) -> list:
+    """Join Trade -> PipelineRun -> PipelineStep -> LLMCall, outer-joined so that
+    manually-placed trades (no PipelineRun at all) still appear with zero
+    attributed cost, and so that maintenance-pipeline LLM calls (not just the
+    entry decision) are included in a held trade's attributed cost.
+
+    Unlike _fetch_rows/_fetch_pipeline_rows, this does NOT filter to
+    task_type == "signal" — a trade's maintenance-review calls while it was
+    held are real cost attributable to that trade too.
+    """
+    stmt = (
+        select(
+            Trade.id.label("trade_id"),
+            Trade.symbol,
+            Trade.source,
+            Trade.profit,
+            LLMCall.cost_usd,
+        )
+        .select_from(Trade)
+        .outerjoin(PipelineRun, PipelineRun.trade_id == Trade.id)
+        .outerjoin(PipelineStep, PipelineStep.run_id == PipelineRun.id)
+        .outerjoin(LLMCall, LLMCall.pipeline_step_id == PipelineStep.id)
+        .where(Trade.closed_at.is_not(None))
+        .where(Trade.closed_at >= since)
+    )
+    return (await db.execute(stmt)).all()
+
+
+def _aggregate_symbol_pnl(rows: list, group_by: str) -> list[SymbolPnLRow]:
+    """Group by `symbol` or `source` (the latter doubling as "strategy", since
+    Trade.source already holds "ai" | "manual" | a strategy class name)."""
+    # Dedup profit/source per trade first (a trade can join to many llm_calls rows
+    # via multiple pipeline runs), while summing cost across all of them.
+    trades: dict[int, dict] = {}
+    for row in rows:
+        t = trades.setdefault(row.trade_id, {
+            "symbol": row.symbol,
+            "source": row.source,
+            "profit": float(row.profit or 0.0),
+            "cost": 0.0,
+        })
+        if row.cost_usd is not None:
+            t["cost"] += float(row.cost_usd)
+
+    buckets: dict[str, dict] = defaultdict(lambda: {
+        "trade_count": 0, "realized": 0.0, "cost": 0.0,
+        "manual_count": 0, "manual_pnl": 0.0,
+    })
+    for t in trades.values():
+        is_manual = t["source"] == "manual"
+        key = t["symbol"] if group_by == "symbol" else t["source"]
+        b = buckets[key]
+        b["trade_count"] += 1
+        if is_manual:
+            b["manual_count"] += 1
+            b["manual_pnl"] += t["profit"]
+        else:
+            b["realized"] += t["profit"]
+            b["cost"] += t["cost"]  # never attribute LLM cost to a manual trade
+
+    result = [
+        SymbolPnLRow(
+            group=key,
+            trade_count=b["trade_count"],
+            realized_pnl_usd=round(b["realized"], 6),
+            attributed_llm_cost_usd=round(b["cost"], 8),
+            net_pnl_usd=round(b["realized"] - b["cost"], 6),
+            manual_trade_count=b["manual_count"],
+            manual_pnl_usd=round(b["manual_pnl"], 6),
+        )
+        for key, b in buckets.items()
+    ]
+    return sorted(result, key=lambda r: -r.net_pnl_usd)
 
 
 def _aggregate_pipeline_combinations(rows: list) -> list[PipelineCombinationRow]:
@@ -410,6 +495,21 @@ async def get_pnl_timeline(
         TimelinePoint(date=date, by_model=dict(by_model))
         for date, by_model in sorted(buckets.items())
     ]
+
+
+@router.get("/symbol-pnl", response_model=list[SymbolPnLRow])
+async def get_symbol_pnl(
+    days: int = Query(30, ge=1, le=365),
+    group_by: str = Query("symbol", pattern="^(symbol|source)$"),
+    db: AsyncSession = Depends(get_db),
+) -> list[SymbolPnLRow]:
+    """Realized P&L net of attributed LLM cost, grouped by symbol or by
+    source (source doubles as "strategy" — see Trade.source). Manual trades
+    are tracked separately and never netted against LLM cost, since they
+    have no attributable AI decision cost."""
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = await _fetch_symbol_pnl_rows(db, since)
+    return _aggregate_symbol_pnl(rows, group_by)
 
 
 @router.get("/pipelines", response_model=list[PipelineCombinationRow])
