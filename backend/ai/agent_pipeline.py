@@ -56,6 +56,8 @@ class AgentPipelineState(TypedDict):
     pattern_prompt: dict | None
     trend_prompt: dict | None
     decision_prompt: dict | None
+    # Sub-agent vote breakdown + quorum verdict (see _quorum_verdict / decision_node)
+    vote_summary: dict | None
 
 
 def _extract_text(content: Any) -> str:
@@ -296,9 +298,111 @@ def _make_parallel_agents_node(
     return parallel_agents_node
 
 
+_CONFIDENCE_WORD_TO_FLOAT = {"low": 0.3, "medium": 0.6, "high": 0.9}
+
+
+def _confidence_to_float(value: Any) -> float:
+    """Sub-agents report confidence as low/medium/high strings; normalize to 0-1."""
+    if isinstance(value, int | float):
+        return max(0.0, min(1.0, float(value)))
+    return _CONFIDENCE_WORD_TO_FLOAT.get(str(value).lower(), 0.5)
+
+
+def _extract_vote(report: dict | None, direction_key: str, direction_map: dict[str, str]) -> dict | None:
+    """Normalize a sub-agent's free-form report into a {direction, confidence} vote.
+
+    Returns None if the agent didn't run (report is None) or returned a parse-failure
+    marker — an abstaining agent shouldn't count toward quorum either way.
+    """
+    if not report or report.get("error"):
+        return None
+    raw_direction = str(report.get(direction_key, "")).lower()
+    direction = direction_map.get(raw_direction, "HOLD")
+    return {"direction": direction, "confidence": _confidence_to_float(report.get("confidence"))}
+
+
+def _indicator_vote(report: dict | None) -> dict | None:
+    return _extract_vote(report, "overall", {"bullish": "BUY", "bearish": "SELL"})
+
+
+def _pattern_vote(report: dict | None) -> dict | None:
+    return _extract_vote(report, "bias", {"bullish": "BUY", "bearish": "SELL"})
+
+
+def _trend_vote(report: dict | None) -> dict | None:
+    return _extract_vote(report, "trend_prediction", {"upward": "BUY", "downward": "SELL"})
+
+
+MIN_VOTERS_FOR_QUORUM = 2
+
+
+def _quorum_verdict(votes: list[dict]) -> dict:
+    """Decide whether the sub-agents reached a majority, and on what direction.
+
+    With fewer than 2 available votes (agents disabled/failed) there's nothing
+    meaningful to vote on, so quorum is skipped — the decision LLM always runs.
+    Otherwise, a strict majority among available voters (>=2 of 3, or 2 of 2)
+    on ANY direction — including HOLD — counts as agreement and the decision
+    LLM runs, informed by the vote breakdown. Only a genuine split with no
+    majority direction (e.g. 1 BUY / 1 SELL / 1 HOLD) skips the decision call
+    and short-circuits straight to HOLD.
+    """
+    if len(votes) < MIN_VOTERS_FOR_QUORUM:
+        return {"outcome": "call_decision", "reason": "insufficient_voters", "counts": {}, "votes": votes}
+
+    counts: dict[str, int] = {}
+    for v in votes:
+        counts[v["direction"]] = counts.get(v["direction"], 0) + 1
+    majority_direction, majority_count = max(counts.items(), key=lambda kv: kv[1])
+    quorum_needed = len(votes) // 2 + 1
+
+    outcome = "call_decision" if majority_count >= quorum_needed else "skip_hold"
+    return {
+        "outcome": outcome,
+        "majority_direction": majority_direction,
+        "majority_count": majority_count,
+        "total_votes": len(votes),
+        "counts": counts,
+        "votes": votes,
+    }
+
+
 def _make_decision_node(execution_decision_llm: BaseChatModel):
     async def decision_node(state: AgentPipelineState) -> dict:
         logger.info("decision_node start")
+
+        indicator_vote = _indicator_vote(state.get("indicator_report"))
+        pattern_vote = _pattern_vote(state.get("pattern_report"))
+        trend_vote = _trend_vote(state.get("trend_report"))
+        votes = [v for v in (indicator_vote, pattern_vote, trend_vote) if v is not None]
+        verdict = _quorum_verdict(votes)
+        vote_summary = {
+            "indicator": indicator_vote,
+            "pattern": pattern_vote,
+            "trend": trend_vote,
+            **verdict,
+        }
+
+        if verdict["outcome"] == "skip_hold":
+            logger.info(
+                "decision_node: sub-agents split with no majority (%s) — "
+                "skipping execution_decision, defaulting HOLD",
+                verdict["counts"],
+            )
+            return {
+                "final_signal": {
+                    "signal": "HOLD",
+                    "confidence": 0.0,
+                    "justification": (
+                        f"Sub-agents disagreed (votes={verdict['counts']}) — "
+                        "no majority direction, decision call skipped."
+                    ),
+                },
+                "decision_tokens": None,
+                "decision_prompt": None,
+                "vote_summary": vote_summary,
+            }
+
         t0 = time.monotonic()
         try:
             result, response, prompt = await run_decision_agent(
@@ -307,6 +411,7 @@ def _make_decision_node(execution_decision_llm: BaseChatModel):
                 state.get("trend_report"),
                 state.get("market_context"),
                 execution_decision_llm,
+                vote_summary=vote_summary,
             )
             dur = int((time.monotonic() - t0) * 1000)
             logger.info(
@@ -318,6 +423,7 @@ def _make_decision_node(execution_decision_llm: BaseChatModel):
                 "final_signal": result,
                 "decision_tokens": _build_usage(response, execution_decision_llm, dur),
                 "decision_prompt": prompt or None,
+                "vote_summary": vote_summary,
             }
         except Exception as exc:
             dur = int((time.monotonic() - t0) * 1000)
@@ -330,6 +436,7 @@ def _make_decision_node(execution_decision_llm: BaseChatModel):
                 },
                 "decision_tokens": _build_usage(None, execution_decision_llm, dur),
                 "decision_prompt": None,
+                "vote_summary": vote_summary,
             }
 
     return decision_node

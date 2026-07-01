@@ -614,6 +614,7 @@ async def run_agent_pipeline(
         "pattern_prompt": None,
         "trend_prompt": None,
         "decision_prompt": None,
+        "vote_summary": None,
     }
     final_state = await pipeline.ainvoke(initial_state)
 
@@ -717,4 +718,5 @@ async def run_agent_pipeline(
             final_state.get("trend_prompt") or "",
         ),
         trendline_chart_b64=trendline_chart_b64,
+        vote_summary=final_state.get("vote_summary"),
     )
