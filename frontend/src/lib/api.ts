@@ -347,6 +347,10 @@ export const llmAnalyticsApi = {
     apiRequest<import("@/types/trading").PipelineCombinationRow[]>(
       `/llm-analytics/pipelines?days=${days}`
     ),
+  getSymbolPnl: (days = 30, groupBy: "symbol" | "source" = "symbol") =>
+    apiRequest<import("@/types/trading").SymbolPnLRow[]>(
+      `/llm-analytics/symbol-pnl?days=${days}&group_by=${groupBy}`
+    ),
   getConfidenceCalibration: (days = 90, accountId?: number) =>
     apiRequest<import("@/types/trading").ConfidenceBucket[]>(
       `/llm-analytics/learning/confidence-calibration?days=${days}${accountId ? `&account_id=${accountId}` : ""}`

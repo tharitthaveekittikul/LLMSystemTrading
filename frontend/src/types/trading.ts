@@ -673,6 +673,16 @@ export interface LLMTimelinePoint {
   by_model: Record<string, number>
 }
 
+export interface SymbolPnLRow {
+  group: string
+  trade_count: number
+  realized_pnl_usd: number
+  attributed_llm_cost_usd: number
+  net_pnl_usd: number
+  manual_trade_count: number
+  manual_pnl_usd: number
+}
+
 export interface PipelineCombinationRow {
   analysis_model: string
   execution_model: string
