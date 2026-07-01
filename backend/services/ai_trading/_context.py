@@ -191,31 +191,3 @@ async def build_trade_history_context(
         )
 
     return trade_history_context
-
-
-async def fetch_news_context(symbol: str) -> str | None:
-    """Fetch news context for symbol if news is enabled in settings.
-
-    Returns None if news is disabled or if fetching fails.
-
-    Args:
-        symbol: Trading symbol
-
-    Returns:
-        News context string, or None
-    """
-    if not getattr(settings, "news_enabled", False):
-        return None
-
-    try:
-        from services.market_context import (
-            fetch_upcoming_events,
-            format_news_context,
-        )
-
-        events = await fetch_upcoming_events([symbol])
-        news_context_str = format_news_context(events) or None
-        return news_context_str
-    except Exception as exc:
-        logger.warning("Could not fetch news context for symbol=%s: %s", symbol, exc)
-        return None

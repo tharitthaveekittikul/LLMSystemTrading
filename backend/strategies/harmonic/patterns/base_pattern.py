@@ -43,14 +43,6 @@ class BaseHarmonicPattern(ABC):
             return 0.0
         return max(0.0, 1.0 - abs(actual - ideal) / ideal)
 
-    def _fib_ratio(self, leg_start: float, leg_end: float, ref_start: float,
-                   ref_end: float) -> float:
-        """Compute ratio = abs(leg) / abs(ref). Returns 0 if ref is zero."""
-        ref = abs(ref_end - ref_start)
-        if ref < 1e-10:
-            return 0.0
-        return abs(leg_end - leg_start) / ref
-
     def _retracement_ratio(self, point: float, start: float, end: float) -> float:
         """Compute how far 'point' retraces the start→end move. 0=no retrace, 1=full."""
         move = abs(end - start)

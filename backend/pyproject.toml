@@ -30,9 +30,8 @@ dependencies = [
     "langchain-ollama>=0.3.0",
     "langchain-community>=0.3.0",
     "google-genai>=1.0.0",
-    # Vision (chart screenshots)
+    # Vision (chart rendering)
     "pillow>=11.0.0",
-    "mss>=9.0.0",
     # HTTP client
     "httpx>=0.28.0",
     # System monitoring & orchestration

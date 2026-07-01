@@ -58,18 +58,6 @@ def _calculate_lot_size(
     return max(min_lot, min(raw, max_lot))
 
 
-def _provider_name(llm: object) -> str:
-    """Derive a short provider name from a LangChain LLM class."""
-    mod = type(llm).__module__
-    if "openai" in mod:
-        return "openai"
-    if "google" in mod or "gemini" in mod:
-        return "gemini"
-    if "anthropic" in mod:
-        return "anthropic"
-    return "unknown"
-
-
 async def _get_task_llm(task: str, db: AsyncSession):
     """Load task-specific LLM from DB assignments. Returns None to use env-var default."""
     from sqlalchemy import select as _select

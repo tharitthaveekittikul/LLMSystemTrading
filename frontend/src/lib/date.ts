@@ -25,14 +25,6 @@ export function formatDateTime(date: Date | string | number): string {
 }
 
 /**
- * Format any date value to "dd/MM/YYYY" (date only).
- */
-export function formatDate(date: Date | string | number): string {
-  const d = new Date(date);
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-
-/**
  * Format any date value to "hh:mm AM|PM" (time only — for compact labels).
  */
 export function formatTime(date: Date | string | number): string {

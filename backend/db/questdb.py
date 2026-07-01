@@ -3,7 +3,6 @@
 Used for time-series data: OHLCV candles, ticks, and equity snapshots.
 QuestDB is append-only — never UPDATE or DELETE rows.
 """
-import asyncio
 import logging
 import re
 from datetime import UTC, datetime, timedelta
@@ -121,28 +120,6 @@ async def get_equity_history(account_id: int, hours: int = 24) -> list[dict]:
         await conn.close()
 
 
-async def insert_ohlcv(
-    symbol: str,
-    timeframe: str,
-    ts: datetime,
-    open_: float,
-    high: float,
-    low: float,
-    close: float,
-    volume: int,
-) -> None:
-    table = _safe_table_name(symbol, timeframe)
-    conn = await _get_conn()
-    try:
-        await conn.execute(
-            f"INSERT INTO {table} (ts, open, high, low, close, volume) "
-            f"VALUES ($1, $2, $3, $4, $5, $6)",
-            ts, open_, high, low, close, volume,
-        )
-    finally:
-        await conn.close()
-
-
 async def get_ohlcv(
     symbol: str,
     timeframe: str,
@@ -162,11 +139,6 @@ async def get_ohlcv(
         return []
     finally:
         await conn.close()
-
-
-def fire_and_forget(coro) -> None:
-    """Schedule a coroutine as a background task (for non-blocking DB writes)."""
-    asyncio.create_task(coro)
 
 
 async def get_conn() -> asyncpg.Connection:
