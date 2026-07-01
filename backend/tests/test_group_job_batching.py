@@ -134,11 +134,11 @@ async def test_run_group_strategy_job_skips_llm_when_all_accounts_blocked():
         (102, {"lot_size": 0.05, "sl_pips": 20.0, "tp_pips": 40.0, "news_filter": True, "custom_prompt": None}),
     ]
 
-    with patch("services.scheduler._preflight_risk_check", new_callable=AsyncMock,
+    with patch("services.scheduler._group_job._preflight_risk_check", new_callable=AsyncMock,
                return_value=([], [(101, {}), (102, {})])), \
          patch("services.ai_trading.AITradingService.analyze_and_trade",
                new_callable=AsyncMock) as mock_analyze, \
-         patch("services.scheduler.AsyncSessionLocal"):
+         patch("services.scheduler._group_job.AsyncSessionLocal"):
 
         await sched_module._run_group_strategy_job(
             strategy_id=10, symbol="EURUSD", timeframe="H1",
@@ -185,9 +185,9 @@ async def test_run_group_strategy_job_executes_only_clear_accounts():
     MockSession.return_value.__aenter__ = AsyncMock(return_value=mock_db)
     MockSession.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("services.scheduler._preflight_risk_check", new_callable=AsyncMock,
+    with patch("services.scheduler._group_job._preflight_risk_check", new_callable=AsyncMock,
                return_value=(clear, blocked)), \
-         patch("services.scheduler.AsyncSessionLocal", MockSession), \
+         patch("services.scheduler._group_job.AsyncSessionLocal", MockSession), \
          patch("services.ai_trading.AITradingService.analyze_and_trade",
                new_callable=AsyncMock, return_value=fake_primary_result) as mock_analyze:
 
@@ -244,9 +244,9 @@ async def test_run_group_strategy_job_calls_llm_once_executes_twice():
     # First call (primary) returns shared_ctx, second call (secondary) returns no shared_ctx
     mock_analyze = AsyncMock(side_effect=[fake_primary_result, fake_secondary_result])
 
-    with patch("services.scheduler._preflight_risk_check", new_callable=AsyncMock,
+    with patch("services.scheduler._group_job._preflight_risk_check", new_callable=AsyncMock,
                return_value=(clear, [])), \
-         patch("services.scheduler.AsyncSessionLocal", MockSession), \
+         patch("services.scheduler._group_job.AsyncSessionLocal", MockSession), \
          patch("services.ai_trading.AITradingService.analyze_and_trade", mock_analyze):
 
         await sched_module._run_group_strategy_job(
