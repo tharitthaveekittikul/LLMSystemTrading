@@ -54,3 +54,75 @@ Flip the default to Mode B and verify it end-to-end before relying on it.
   assumed acceptable.
 - `uv run pytest -v` passes, including whatever existing tests cover
   `run_agent_pipeline()`/`build_pipeline()` in `ai/agent_pipeline.py`.
+
+## Post-implementation note (what already existed vs. what was built)
+
+Verified before writing code, per the lesson from sibling plans 01/02 that
+these docs can be stale:
+
+1. **`enable_agent_pipeline` is a single global flag, not per-strategy.**
+   `core/config.py` (in-memory `Settings`) + a `GlobalSettings` DB row
+   (`db/models.py:309`), loaded at startup in `main.py` only if the row
+   already exists. No `strategy_overrides`-style per-strategy mechanism
+   exists for this flag — confirmed by grepping every reference across
+   the backend. The sub-agent toggles (`enable_indicator_agent`/
+   `enable_pattern_agent`/`enable_trend_agent`) already defaulted to
+   `True` in both `core/config.py` and the DB model — only the master
+   toggle needed flipping.
+2. **The trend-agent wiring the plan worried about is already correct.**
+   `run_agent_pipeline()` (`ai/orchestrator/_pipeline.py:520-713`)
+   internally generates `trendline_chart_b64` from OHLCV via
+   `fit_trendlines()`/`render_trendline_chart()` whenever a base chart
+   image is available and OHLCV has ≥50 candles — the caller doesn't need
+   to supply it separately. So as long as `chart_b64` is populated (gated
+   by `enable_chart_vision`, default `True`) and OHLCV has enough candles,
+   indicator/pattern/trend all get real inputs by default. No production
+   wiring gap found.
+3. **The pipeline-trace UI already visually distinguishes every sub-agent
+   step.** `frontend/src/components/logs/pipeline-step-card.tsx` has
+   distinct `STEP_LABELS` for `indicator_agent_llm`/`pattern_agent_llm`/
+   `trend_agent_llm`/`execution_decision_llm`, each with its own token
+   usage, model/provider badge, and cost display. Step 5 of this plan
+   (UI fix) was unnecessary — skipped.
+4. **A settings UI toggle for `enable_agent_pipeline` already exists**
+   (`frontend/src/components/settings/agent-pipeline-section.tsx`) — no
+   frontend work needed there either.
+
+### Actual changes on this branch
+
+- `backend/core/config.py` — `enable_agent_pipeline` default → `True`.
+- `backend/db/models.py` — `GlobalSettings.enable_agent_pipeline` column
+  default → `True` (matches the in-memory default, avoiding the same
+  "lazily-created row pins the old default" bug plan 02 found and fixed
+  for `news_enabled`).
+- `backend/tests/test_agent_pipeline.py` — new
+  `test_pipeline_all_agents_enabled_end_to_end`: runs the full graph with
+  all three sub-agents enabled and both chart images present (the
+  realistic default-config case), asserting every node executes, every
+  report is populated, and token usage is recorded for the cost dashboard
+  on every step. This is the closest verification available without live
+  MT5/LLM access.
+
+### Cost-multiplier estimate (analytical, no live cost data available in this sandbox)
+
+Per signal:
+- **Mode A**: 2 LLM calls (`market_analysis`, `execution_decision`) +
+  1 optional (`chart_vision`, gated by `enable_chart_vision`) ≈ 2-3 calls.
+- **Mode B**: `market_analysis` (1) + `indicator_agent`/`pattern_agent`/
+  `trend_agent` (3, parallel) + `decision_node`/`execution_decision`
+  equivalent (1) = **5 calls**, roughly **2x Mode A's cost** when Mode A
+  already had chart vision on, or **~2.5x** if it didn't. This is lower
+  than the plan's original "3x-ish" guess because Mode A already made a
+  chart_vision call in most configurations. Real confirmation still
+  needs live `llm_calls` data once this runs against a real account —
+  recommend checking this against plan 06's cost dashboard once both are
+  live, per the plan's own step 4.
+
+### Not verified (needs a human + Windows/MT5 + demo account)
+
+- Live demo-account runs across each timeframe you use (M15/H1/H4/D1),
+  confirming `pipeline_runs`/`pipeline_steps` show all three sub-agent
+  steps completing without error against real market data and a real LLM
+  provider — this sandbox has no MT5 and no live LLM credentials.
+- Real cost delta measurement (the analytical estimate above is a
+  starting point, not a substitute for actual `llm_calls` data).
