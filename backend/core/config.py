@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: list[str] = ["http://localhost:3000"]
     news_enabled: bool = True  # Set NEWS_ENABLED=false in .env to disable ForexFactory calendar
+    # News gate window: an event within [now - news_lookback_minutes, now + news_lookahead_minutes]
+    # gates the signal (runs analyze_news_impact, may force HOLD on contradiction).
+    news_lookahead_minutes: int = 60  # upcoming events — anticipation risk
+    news_lookback_minutes: int = 60   # recently-fired events — post-release volatility risk
+    news_impact_levels: list[str] = ["High", "Medium"]  # impact tiers that gate a signal
 
     # ── Alerting ──────────────────────────────────────────────────────────────
     telegram_bot_token: str = ""    # BotFather token — leave empty to disable
@@ -78,6 +83,20 @@ class Settings(BaseSettings):
             return json.loads(v)
         # Accept comma-separated: "http://localhost:3000,http://localhost:8000"
         return [origin.strip() for origin in v.split(",") if origin.strip()]
+
+    @field_validator("news_impact_levels", mode="before")
+    @classmethod
+    def parse_news_impact_levels(cls, v: object) -> object:
+        if not isinstance(v, str):
+            return v
+        v = v.strip()
+        if not v:
+            return ["High", "Medium"]
+        # Accept JSON array: '["High","Medium"]'
+        if v.startswith("["):
+            return json.loads(v)
+        # Accept comma-separated: "High,Medium"
+        return [level.strip() for level in v.split(",") if level.strip()]
 
     @field_validator("llm_provider")
     @classmethod

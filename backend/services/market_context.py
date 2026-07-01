@@ -13,6 +13,8 @@ from typing import Any
 
 import httpx
 
+from core.config import settings
+
 logger = logging.getLogger(__name__)
 
 _FF_CALENDAR_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
@@ -20,9 +22,10 @@ _REQUEST_TIMEOUT = 10.0
 
 
 async def fetch_upcoming_events(
-    symbols: list[str], hours_ahead: int = 24
+    symbols: list[str], hours_ahead: float = 24, hours_back: float = 0
 ) -> list[dict[str, Any]]:
-    """Return High/Medium-impact events for currencies in `symbols`, within `hours_ahead` hours.
+    """Return High/Medium-impact events for currencies in `symbols`, within
+    [now - hours_back, now + hours_ahead].
 
     Returns [] on any error — never raises.
     """
@@ -37,6 +40,7 @@ async def fetch_upcoming_events(
 
     now = datetime.now(UTC)
     cutoff = now + timedelta(hours=hours_ahead)
+    window_start = now - timedelta(hours=hours_back)
     currencies = _extract_currencies(symbols)
 
     filtered = []
@@ -49,7 +53,7 @@ async def fetch_upcoming_events(
             event_dt = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
         except (KeyError, ValueError):
             continue
-        if event_dt <= now or event_dt > cutoff:
+        if event_dt <= window_start or event_dt > cutoff:
             continue
         filtered.append(
             {
@@ -65,19 +69,26 @@ async def fetch_upcoming_events(
 
 
 async def fetch_high_impact_events(
-    symbols: list[str], minutes: int = 60
+    symbols: list[str],
+    lookahead_minutes: int | None = None,
+    lookback_minutes: int | None = None,
+    impact_levels: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return only High-impact (Red) events within `minutes` window for symbol currencies.
+    """Return events within the news gate window for symbol currencies —
+    upcoming events (anticipation risk) and recently-fired events (post-
+    release volatility risk). Defaults come from settings.news_lookahead_minutes
+    / news_lookback_minutes / news_impact_levels.
 
     Used by the news filter gate — never raises.
     """
-    events = await fetch_upcoming_events(symbols, hours_ahead=24)
-    cutoff = datetime.now(UTC) + timedelta(minutes=minutes)
-    return [
-        e for e in events
-        if e["impact"] == "High"
-        and datetime.fromisoformat(e["time"]) <= cutoff
-    ]
+    lookahead = lookahead_minutes if lookahead_minutes is not None else settings.news_lookahead_minutes
+    lookback = lookback_minutes if lookback_minutes is not None else settings.news_lookback_minutes
+    levels = set(impact_levels if impact_levels is not None else settings.news_impact_levels)
+
+    events = await fetch_upcoming_events(
+        symbols, hours_ahead=lookahead / 60.0, hours_back=lookback / 60.0
+    )
+    return [e for e in events if e["impact"] in levels]
 
 
 def format_news_context(events: list[dict[str, Any]]) -> str:

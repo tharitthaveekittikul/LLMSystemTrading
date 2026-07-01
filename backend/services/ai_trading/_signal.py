@@ -90,11 +90,11 @@ async def _run_llm_analysis(
         else None
     )
 
-    # ── News analysis gate (fires only on imminent High-impact events) ───
+    # ── News analysis gate (imminent + recently-fired events, per settings) ───
     news_signal: str | None = None
     if strategy_overrides and strategy_overrides.news_filter:
         from services.market_context import fetch_high_impact_events
-        news_events = await fetch_high_impact_events([symbol], minutes=60)
+        news_events = await fetch_high_impact_events([symbol])
         await tracer.record(
             "news_fetch",
             output_data={
