@@ -68,28 +68,29 @@ async def lifespan(app: FastAPI):
     from sqlalchemy import select as sa_select
 
     from core.security import decrypt as _decrypt
-    from db.models import GlobalSettings as GlobalSettingsModel
     from db.models import TelegramSettings as TelegramSettingsModel
     from db.postgres import AsyncSessionLocal
+    from services.settings_bootstrap import ensure_global_settings_row
     async with AsyncSessionLocal() as _db:
-        _row = (await _db.execute(
-            sa_select(GlobalSettingsModel).where(GlobalSettingsModel.id == 1)
-        )).scalar_one_or_none()
-        if _row:
-            settings.maintenance_interval_minutes = _row.maintenance_interval_minutes
-            settings.maintenance_task_enabled = _row.maintenance_task_enabled
-            settings.llm_confidence_threshold = _row.llm_confidence_threshold
-            settings.news_enabled = _row.news_enabled
-            settings.enable_agent_pipeline = _row.enable_agent_pipeline
-            settings.enable_indicator_agent = _row.enable_indicator_agent
-            settings.enable_pattern_agent = _row.enable_pattern_agent
-            settings.enable_trend_agent = _row.enable_trend_agent
-            logger.info(
-                "Global settings loaded from DB | maintenance_interval=%dmin enabled=%s agent_pipeline=%s",
-                _row.maintenance_interval_minutes,
-                _row.maintenance_task_enabled,
-                _row.enable_agent_pipeline,
-            )
+        # Creates the row (seeded from config defaults/.env) only if one has
+        # never been persisted before — an existing row is never mutated, so
+        # a prior explicit choice (including news_enabled=False) is preserved.
+        _row = await ensure_global_settings_row(_db)
+        settings.maintenance_interval_minutes = _row.maintenance_interval_minutes
+        settings.maintenance_task_enabled = _row.maintenance_task_enabled
+        settings.llm_confidence_threshold = _row.llm_confidence_threshold
+        settings.news_enabled = _row.news_enabled
+        settings.enable_agent_pipeline = _row.enable_agent_pipeline
+        settings.enable_indicator_agent = _row.enable_indicator_agent
+        settings.enable_pattern_agent = _row.enable_pattern_agent
+        settings.enable_trend_agent = _row.enable_trend_agent
+        logger.info(
+            "Global settings loaded from DB | maintenance_interval=%dmin enabled=%s agent_pipeline=%s news_enabled=%s",
+            _row.maintenance_interval_minutes,
+            _row.maintenance_task_enabled,
+            _row.enable_agent_pipeline,
+            _row.news_enabled,
+        )
 
         _tg = (await _db.execute(
             sa_select(TelegramSettingsModel).where(TelegramSettingsModel.id == 1)

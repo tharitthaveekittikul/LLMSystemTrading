@@ -16,6 +16,7 @@ import { DisplaySection } from "@/components/settings/display-section";
 import { ProviderCard } from "@/components/settings/provider-card";
 import { TaskAssignmentsSection } from "@/components/settings/task-assignments-section";
 import { MaintenanceSection } from "@/components/settings/maintenance-section";
+import { NewsSection } from "@/components/settings/news-section";
 import { RiskManagerSection } from "@/components/settings/risk-manager-section";
 import { TelegramSection } from "@/components/settings/telegram-section";
 import { AgentPipelineSection } from "@/components/settings/agent-pipeline-section";
@@ -65,6 +66,8 @@ export default function SettingsPage() {
         </div>
 
         <MaintenanceSection />
+
+        <NewsSection />
 
         <AgentPipelineSection providers={providers} />
 

@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     cors_origins: list[str] = ["http://localhost:3000"]
-    news_enabled: bool = False  # Set NEWS_ENABLED=true in .env to enable ForexFactory calendar
+    news_enabled: bool = True  # Set NEWS_ENABLED=false in .env to disable ForexFactory calendar
 
     # ── Alerting ──────────────────────────────────────────────────────────────
     telegram_bot_token: str = ""    # BotFather token — leave empty to disable

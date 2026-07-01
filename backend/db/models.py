@@ -305,7 +305,7 @@ class GlobalSettings(Base):
     maintenance_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     maintenance_task_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     llm_confidence_threshold: Mapped[float] = mapped_column(Float, default=0.70)
-    news_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    news_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     enable_agent_pipeline: Mapped[bool] = mapped_column(Boolean, default=False)
     enable_indicator_agent: Mapped[bool] = mapped_column(Boolean, default=True)
     enable_pattern_agent: Mapped[bool] = mapped_column(Boolean, default=True)

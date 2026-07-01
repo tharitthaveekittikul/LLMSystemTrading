@@ -97,6 +97,8 @@ async def patch_global_settings(
     if body.news_enabled is not None:
         row.news_enabled = body.news_enabled
         settings.news_enabled = body.news_enabled
+        from services.scheduler import reschedule_news_jobs
+        reschedule_news_jobs(body.news_enabled)
     if body.enable_agent_pipeline is not None:
         row.enable_agent_pipeline = body.enable_agent_pipeline
         settings.enable_agent_pipeline = body.enable_agent_pipeline
