@@ -22,7 +22,15 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.confidence import confidence_bucket as _confidence_bucket
+
 logger = logging.getLogger(__name__)
+
+# UTC hour boundaries for the three trading sessions plus their overlap window.
+_TOKYO_SESSION_START_HOUR = 22
+_LONDON_SESSION_START_HOUR = 7
+_NY_SESSION_START_HOUR = 12
+_NY_SESSION_END_HOUR = 17
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,25 +39,13 @@ def _session_label(dt: datetime | None) -> str:
     if dt is None:
         return "unknown"
     h = dt.hour
-    if 22 <= h or h < 7:
+    if _TOKYO_SESSION_START_HOUR <= h or h < _LONDON_SESSION_START_HOUR:
         return "Tokyo"
-    if 7 <= h < 12:
+    if _LONDON_SESSION_START_HOUR <= h < _NY_SESSION_START_HOUR:
         return "London"
-    if 12 <= h < 17:
+    if _NY_SESSION_START_HOUR <= h < _NY_SESSION_END_HOUR:
         return "NY"
     return "overlap"
-
-
-def _confidence_bucket(confidence: float | None) -> str:
-    if confidence is None:
-        return "unknown"
-    if confidence >= 0.80:
-        return "very_high"
-    if confidence >= 0.65:
-        return "high"
-    if confidence >= 0.50:
-        return "medium"
-    return "low"
 
 
 # ── main builder ─────────────────────────────────────────────────────────────

@@ -1,5 +1,9 @@
 """Bat Pattern: AB/XA 0.382-0.500, BC/AB 0.382-0.886, CD/BC 1.618-2.618, D/XA 0.886"""
-from strategies.harmonic.patterns.base_pattern import BaseHarmonicPattern, PatternResult
+from strategies.harmonic.patterns.base_pattern import (
+    ZERO_DISTANCE_EPSILON,
+    BaseHarmonicPattern,
+    PatternResult,
+)
 
 
 class Bat(BaseHarmonicPattern):
@@ -10,12 +14,12 @@ class Bat(BaseHarmonicPattern):
         ab = abs(b.price - a.price)
         bc = abs(c.price - b.price)
         cd = abs(d.price - c.price)
-        if xa < 1e-10 or ab < 1e-10 or bc < 1e-10:
+        if xa < ZERO_DISTANCE_EPSILON or ab < ZERO_DISTANCE_EPSILON or bc < ZERO_DISTANCE_EPSILON:
             return None
 
         ab_xa = ab / xa
         bc_ab = bc / ab
-        cd_bc = cd / bc if bc > 1e-10 else 0.0
+        cd_bc = cd / bc if bc > ZERO_DISTANCE_EPSILON else 0.0
         d_xa  = self._retracement_ratio(d.price, a.price, x.price)
 
         if not self._ratio_in_range(ab_xa, 0.382, 0.500):

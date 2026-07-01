@@ -16,7 +16,7 @@ from core.security import decrypt
 from db.models import AIJournal
 from db.redis import check_llm_rate_limit
 from mt5.bridge import AccountCredentials, MT5Bridge
-from mt5.executor import OrderResult
+from mt5.executor import TRADE_RETCODE_INVALID_PRICE, OrderResult
 from services.ai_trading._context import (
     build_trade_history_context,
     fetch_open_positions,
@@ -355,7 +355,7 @@ class AITradingService:
         )
 
         # Stale pending entry → re-request LLM with live market price (one retry)
-        if isinstance(order_result, OrderResult) and order_result.retcode == 10015:
+        if isinstance(order_result, OrderResult) and order_result.retcode == TRADE_RETCODE_INVALID_PRICE:
             logger.warning(
                 "Stale pending — re-requesting LLM with live price | "
                 "account_id=%s symbol=%s original_entry=%s",

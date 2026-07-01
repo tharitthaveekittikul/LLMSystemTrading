@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.confidence import confidence_bucket
 from db.models import LLMCall, PipelineRun, PipelineStep, Trade
 from db.postgres import get_db
 
@@ -483,14 +484,17 @@ class ResearchConfigResponse(BaseModel):
     stats_snapshot: dict
 
 
+_CONFIDENCE_BUCKET_LABELS = {
+    "very_high": "≥80%",
+    "high": "65-80%",
+    "medium": "50-65%",
+    "low": "<50%",
+}
+
+
 def _conf_bucket(c: float) -> tuple[str, str]:
-    if c >= 0.80:
-        return "very_high", "≥80%"
-    if c >= 0.65:
-        return "high", "65-80%"
-    if c >= 0.50:
-        return "medium", "50-65%"
-    return "low", "<50%"
+    key = confidence_bucket(c)
+    return key, _CONFIDENCE_BUCKET_LABELS[key]
 
 
 @router.get("/learning/confidence-calibration", response_model=list[ConfidenceBucket])

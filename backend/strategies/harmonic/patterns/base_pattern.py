@@ -7,6 +7,10 @@ from typing import Literal
 
 from strategies.harmonic.swing_detector import Pivot
 
+# Leg lengths below this are treated as zero-distance (avoids division by zero
+# on degenerate XABCD swings without introducing a visible price tolerance).
+ZERO_DISTANCE_EPSILON = 1e-10
+
 
 @dataclass
 class PatternResult:
@@ -46,6 +50,6 @@ class BaseHarmonicPattern(ABC):
     def _retracement_ratio(self, point: float, start: float, end: float) -> float:
         """Compute how far 'point' retraces the start→end move. 0=no retrace, 1=full."""
         move = abs(end - start)
-        if move < 1e-10:
+        if move < ZERO_DISTANCE_EPSILON:
             return 0.0
         return abs(point - end) / move

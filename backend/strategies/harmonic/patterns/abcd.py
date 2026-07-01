@@ -4,7 +4,11 @@ BC/AB: 0.618 – 0.786
 CD/BC: 1.272 – 1.618  (CD ≈ AB in length)
 validate() accepts (a, b, c, d) — pass x=None or use the 4-point signature.
 """
-from strategies.harmonic.patterns.base_pattern import BaseHarmonicPattern, PatternResult
+from strategies.harmonic.patterns.base_pattern import (
+    ZERO_DISTANCE_EPSILON,
+    BaseHarmonicPattern,
+    PatternResult,
+)
 from strategies.harmonic.swing_detector import Pivot
 
 
@@ -16,11 +20,11 @@ class ABCD(BaseHarmonicPattern):
         ab = abs(b.price - a.price)
         bc = abs(c.price - b.price)
         cd = abs(d.price - c.price)
-        if ab < 1e-10 or bc < 1e-10:
+        if ab < ZERO_DISTANCE_EPSILON or bc < ZERO_DISTANCE_EPSILON:
             return None
 
         bc_ab = bc / ab
-        cd_bc = cd / bc if bc > 1e-10 else 0.0
+        cd_bc = cd / bc if bc > ZERO_DISTANCE_EPSILON else 0.0
 
         if not self._ratio_in_range(bc_ab, 0.618, 0.786):
             return None

@@ -66,7 +66,7 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
+select = ["E", "F", "I", "N", "W", "PLR2004"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
@@ -74,7 +74,8 @@ ignore = ["E501"]
 "mt5/bridge.py" = ["N813"]
 "mt5/executor.py" = ["N813"]
 # Mock*/X-as-feature-matrix are conventional test/ML names, not real style violations.
-"tests/*" = ["N806"]
+# Magic-value comparisons (status codes, fixture data) are expected and self-evident in tests.
+"tests/*" = ["N806", "PLR2004"]
 # `pytest.importorskip(...)` must run before the guarded import — moving the import
 # would defeat the skip guard, so E402 is expected here.
 "tests/test_risk_manager.py" = ["E402"]

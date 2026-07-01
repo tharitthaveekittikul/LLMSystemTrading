@@ -13,7 +13,13 @@ from core.config import settings
 from core.security import decrypt
 from db.models import AIJournal, Trade
 from mt5.bridge import AccountCredentials, MT5Bridge
-from mt5.executor import MT5Executor, OrderRequest, OrderResult, pending_expiry_hours
+from mt5.executor import (
+    TRADE_RETCODE_INVALID_PRICE,
+    MT5Executor,
+    OrderRequest,
+    OrderResult,
+    pending_expiry_hours,
+)
 from services.ai_trading._helpers import _calculate_lot_size
 from services.alerting import send_alert
 from strategies.base_strategy import direction_from_action
@@ -182,7 +188,7 @@ async def execute_mt5_order(
         return None
 
     if not order_result.success:
-        if order_result.retcode == 10015:
+        if order_result.retcode == TRADE_RETCODE_INVALID_PRICE:
             # Stale pending entry — return to caller for LLM re-request (no finalize)
             logger.warning(
                 "Stale pending entry — returning for re-request | account_id=%s symbol=%s error=%s",
@@ -190,7 +196,11 @@ async def execute_mt5_order(
             )
             await tracer.record(
                 "mt5_executed", status="stale",
-                output_data={"success": False, "retcode": 10015, "error": order_result.error},
+                output_data={
+                    "success": False,
+                    "retcode": TRADE_RETCODE_INVALID_PRICE,
+                    "error": order_result.error,
+                },
                 duration_ms=int((time.monotonic() - t0) * 1000),
             )
             return order_result

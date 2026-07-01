@@ -45,6 +45,11 @@ except ImportError:
     _TRADE_ACTION_SLTP = 6
     _ORDER_FILLING_IOC = 1
 
+# Broker response codes (present in every result dict regardless of whether
+# the MT5 library itself is importable — not gated behind the try/except above).
+_TRADE_RETCODE_DONE = 10009
+TRADE_RETCODE_INVALID_PRICE = 10015  # public — consumed by services/ai_trading
+
 logger = logging.getLogger(__name__)
 
 _VALID_ORDER_ACTIONS = frozenset({"BUY", "SELL", "BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP"})
@@ -176,7 +181,7 @@ class MT5Executor:
                 "DRY RUN order | symbol=%s action=%s volume=%s fake_ticket=%s",
                 request.symbol, request.action, request.volume, fake_ticket,
             )
-            return OrderResult(success=True, ticket=fake_ticket, retcode=10009)
+            return OrderResult(success=True, ticket=fake_ticket, retcode=_TRADE_RETCODE_DONE)
 
         logger.info(
             "Placing order | symbol=%s action=%s volume=%s entry=%s sl=%s tp=%s",
@@ -218,7 +223,7 @@ class MT5Executor:
                         "Stale pending order rejected | symbol=%s action=%s entry=%s ask=%s bid=%s | %s",
                         request.symbol, request.action, price, ask, bid, reason,
                     )
-                    return OrderResult(success=False, error=reason, retcode=10015)
+                    return OrderResult(success=False, error=reason, retcode=TRADE_RETCODE_INVALID_PRICE)
 
         # Pending order expiry — anchored to broker server clock, not local machine clock.
         # tick["time"] is the broker server's Unix timestamp (authoritative "now").
@@ -266,7 +271,7 @@ class MT5Executor:
             return OrderResult(success=False, error=msg, retcode=code)
 
         retcode = result.get("retcode", -1)
-        if retcode == 10009:  # TRADE_RETCODE_DONE
+        if retcode == _TRADE_RETCODE_DONE:
             ticket = result.get("order")
             logger.info(
                 "Order placed | symbol=%s action=%s volume=%s ticket=%s",
@@ -295,7 +300,7 @@ class MT5Executor:
 
         if dry_run:
             logger.info("DRY RUN close | ticket=%s symbol=%s volume=%s", ticket, symbol, volume)
-            return OrderResult(success=True, ticket=ticket, retcode=10009)
+            return OrderResult(success=True, ticket=ticket, retcode=_TRADE_RETCODE_DONE)
 
         logger.info("Closing position | ticket=%s symbol=%s volume=%s", ticket, symbol, volume)
 
@@ -338,7 +343,7 @@ class MT5Executor:
             return OrderResult(success=False, error=msg, retcode=code)
 
         retcode = result.get("retcode", -1)
-        success = retcode == 10009
+        success = retcode == _TRADE_RETCODE_DONE
         if success:
             logger.info("Position closed | ticket=%s symbol=%s", ticket, symbol)
         else:
@@ -385,7 +390,7 @@ class MT5Executor:
                 "DRY RUN modify | ticket=%s symbol=%s new_sl=%s new_tp=%s",
                 ticket, symbol, new_sl, new_tp,
             )
-            return OrderResult(success=True, ticket=ticket, retcode=10009)
+            return OrderResult(success=True, ticket=ticket, retcode=_TRADE_RETCODE_DONE)
 
         logger.info(
             "Modifying position | ticket=%s symbol=%s new_sl=%s new_tp=%s",
@@ -401,7 +406,7 @@ class MT5Executor:
             return OrderResult(success=False, error=msg, retcode=code)
 
         retcode = result.get("retcode", -1)
-        if retcode == 10009:
+        if retcode == _TRADE_RETCODE_DONE:
             logger.info("Position modified | ticket=%s symbol=%s", ticket, symbol)
             return OrderResult(success=True, ticket=ticket, retcode=retcode)
 

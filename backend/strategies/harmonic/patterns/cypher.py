@@ -1,5 +1,9 @@
 """Cypher: AB/XA 0.382-0.618, BC/XA 1.272-1.414, D retraces XC 0.786"""
-from strategies.harmonic.patterns.base_pattern import BaseHarmonicPattern, PatternResult
+from strategies.harmonic.patterns.base_pattern import (
+    ZERO_DISTANCE_EPSILON,
+    BaseHarmonicPattern,
+    PatternResult,
+)
 
 
 class Cypher(BaseHarmonicPattern):
@@ -10,11 +14,11 @@ class Cypher(BaseHarmonicPattern):
         ab = abs(b.price - a.price)
         bc = abs(c.price - b.price)
         xc = abs(c.price - x.price)
-        if xa < 1e-10 or xc < 1e-10:
+        if xa < ZERO_DISTANCE_EPSILON or xc < ZERO_DISTANCE_EPSILON:
             return None
 
         ab_xa = ab / xa
-        bc_xa = bc / xa if xa > 1e-10 else 0.0
+        bc_xa = bc / xa if xa > ZERO_DISTANCE_EPSILON else 0.0
         d_xc  = self._retracement_ratio(d.price, x.price, c.price)
 
         if not self._ratio_in_range(ab_xa, 0.382, 0.618):

@@ -3,6 +3,8 @@
  * All user-facing datetimes use: dd/MM/YYYY hh:mm:ss AM|PM
  */
 
+const HOURS_PER_12H_CYCLE = 12;
+
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -19,8 +21,8 @@ export function formatDateTime(date: Date | string | number): string {
   let hours = d.getHours();
   const minutes = pad(d.getMinutes());
   const seconds = pad(d.getSeconds());
-  const ampm = hours >= 12 ? "PM" : "AM";
-  hours = hours % 12 || 12;
+  const ampm = hours >= HOURS_PER_12H_CYCLE ? "PM" : "AM";
+  hours = hours % HOURS_PER_12H_CYCLE || HOURS_PER_12H_CYCLE;
   return `${day}/${month}/${year} ${pad(hours)}:${minutes}:${seconds} ${ampm}`;
 }
 
@@ -31,7 +33,7 @@ export function formatTime(date: Date | string | number): string {
   const d = new Date(date);
   let hours = d.getHours();
   const minutes = pad(d.getMinutes());
-  const ampm = hours >= 12 ? "PM" : "AM";
-  hours = hours % 12 || 12;
+  const ampm = hours >= HOURS_PER_12H_CYCLE ? "PM" : "AM";
+  hours = hours % HOURS_PER_12H_CYCLE || HOURS_PER_12H_CYCLE;
   return `${pad(hours)}:${minutes} ${ampm}`;
 }
