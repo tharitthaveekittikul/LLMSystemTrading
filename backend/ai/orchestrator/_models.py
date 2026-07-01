@@ -59,6 +59,8 @@ class LLMAnalysisResult:
     trend_agent: LLMRoleResult | None = None
     # Trendline chart used by trend_agent (for UI display)
     trendline_chart_b64: str | None = None
+    # Sub-agent vote breakdown + quorum verdict (Mode B only; None in the 3-role pipeline)
+    vote_summary: dict | None = None
 
 
 _VALID_MAINTENANCE_ACTIONS = frozenset({"HOLD", "CLOSE", "MODIFY"})

@@ -88,6 +88,7 @@ async def run_decision_agent(
     trend_report: dict | None,
     market_context: dict,
     llm,
+    vote_summary: dict | None = None,
 ) -> tuple[dict, any, str]:
     """Synthesize sub-agent reports into a final trading decision.
 
@@ -97,6 +98,10 @@ async def run_decision_agent(
         trend_report: Output from run_trend_agent, or None if unavailable.
         market_context: Supplementary market context (symbol, timeframe, price, etc.).
         llm: LangChain BaseChatModel instance.
+        vote_summary: Normalized BUY/SELL/HOLD vote per sub-agent plus the quorum
+            verdict (see ai.agent_pipeline._quorum_verdict) — only present when this
+            is called with a majority reached, so the decision LLM sees whether it's
+            confirming a 2/3 (or 3/3) agreement vs. reconciling a real split.
 
     Returns:
         Tuple of (result_dict, ai_message). result_dict has signal, confidence, justification,
@@ -115,12 +120,23 @@ async def run_decision_agent(
         "invalidation_condition": "unknown",
     }
 
+    vote_text = ""
+    if vote_summary:
+        vote_text = (
+            f"\n\nSub-agent vote breakdown: {json.dumps(vote_summary, default=str)}\n"
+            "A majority of sub-agents already agreed on this direction (or on HOLD) — "
+            "use it as corroborating evidence, but still apply your own judgment on "
+            "entry/stop/target levels and may still choose HOLD if the reports don't "
+            "support a good risk/reward setup."
+        )
+
     human_text = (
         f"Market context: {json.dumps(market_context)}\n\n"
         f"{_format_report('Momentum Indicators Report (40% weight)', indicator_report)}\n\n"
         f"{_format_report('Chart Pattern Report (35% weight)', pattern_report)}\n\n"
         f"{_format_report('Trendline Report (25% weight)', trend_report)}\n\n"
         "Based on these reports and their respective weights, provide your trading decision."
+        f"{vote_text}"
     )
 
     messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=human_text)]

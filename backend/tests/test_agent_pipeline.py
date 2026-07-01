@@ -4,7 +4,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai.agent_pipeline import AgentPipelineState, build_pipeline
+from ai.agent_pipeline import (
+    AgentPipelineState,
+    _indicator_vote,
+    _pattern_vote,
+    _quorum_verdict,
+    _trend_vote,
+    build_pipeline,
+)
 
 
 def make_ohlcv(n=60):
@@ -241,3 +248,131 @@ async def test_pipeline_disabled_indicator_agent():
     final_state = await pipeline.ainvoke(_make_initial_state())
 
     assert final_state["indicator_report"] is None
+
+
+# ── Plan 05: ensemble/quorum voting ──────────────────────────────────────────
+
+def test_indicator_vote_bullish_high_confidence():
+    vote = _indicator_vote({"overall": "bullish", "confidence": "high"})
+    assert vote == {"direction": "BUY", "confidence": 0.9}
+
+
+def test_pattern_vote_bearish():
+    vote = _pattern_vote({"bias": "bearish", "confidence": "medium"})
+    assert vote == {"direction": "SELL", "confidence": 0.6}
+
+
+def test_trend_vote_sideways_is_hold():
+    vote = _trend_vote({"trend_prediction": "sideways", "confidence": "low"})
+    assert vote == {"direction": "HOLD", "confidence": 0.3}
+
+
+def test_vote_is_none_for_missing_report():
+    assert _indicator_vote(None) is None
+    assert _pattern_vote(None) is None
+    assert _trend_vote(None) is None
+
+
+def test_vote_is_none_for_parse_failure_marker():
+    assert _indicator_vote({"overall": "neutral", "confidence": "low", "error": "parse_failed"}) is None
+
+
+def test_quorum_verdict_majority_direction_calls_decision():
+    votes = [
+        {"direction": "BUY", "confidence": 0.9},
+        {"direction": "BUY", "confidence": 0.6},
+        {"direction": "HOLD", "confidence": 0.3},
+    ]
+    verdict = _quorum_verdict(votes)
+    assert verdict["outcome"] == "call_decision"
+    assert verdict["majority_direction"] == "BUY"
+    assert verdict["majority_count"] == 2
+
+
+def test_quorum_verdict_three_way_split_skips_decision():
+    votes = [
+        {"direction": "BUY", "confidence": 0.9},
+        {"direction": "SELL", "confidence": 0.6},
+        {"direction": "HOLD", "confidence": 0.3},
+    ]
+    verdict = _quorum_verdict(votes)
+    assert verdict["outcome"] == "skip_hold"
+
+
+def test_quorum_verdict_unanimous_hold_is_agreement():
+    votes = [
+        {"direction": "HOLD", "confidence": 0.3},
+        {"direction": "HOLD", "confidence": 0.3},
+        {"direction": "HOLD", "confidence": 0.3},
+    ]
+    verdict = _quorum_verdict(votes)
+    assert verdict["outcome"] == "call_decision"
+    assert verdict["majority_direction"] == "HOLD"
+
+
+def test_quorum_verdict_insufficient_voters_calls_decision():
+    verdict = _quorum_verdict([{"direction": "BUY", "confidence": 0.9}])
+    assert verdict["outcome"] == "call_decision"
+    assert verdict["reason"] == "insufficient_voters"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_majority_agreement_calls_decision_agent_with_votes():
+    """2/3 agreement (BUY, BUY, HOLD) — decision LLM must still be called,
+    informed by the vote breakdown, per the plan's quorum design."""
+    market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
+    indicator_llm = mock_llm({"overall": "bullish", "confidence": "high"})
+    decision_llm = mock_llm(_DECISION_RESPONSE)
+    # pattern agent votes BUY (bullish/high), trend agent votes HOLD (sideways/low) —
+    # both share the vision_llm mock, so its single canned response must satisfy both.
+    vision_llm = mock_llm({
+        "bias": "bullish", "confidence": "high",
+        "trend_prediction": "sideways",
+        "pattern": "none", "completion_state": "forming",
+    })
+
+    settings = _make_settings(
+        enable_indicator_agent=True, enable_pattern_agent=True, enable_trend_agent=True,
+    )
+    pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
+    state = _make_initial_state()
+    state["chart_image_b64"] = "fake-chart"
+    state["trendline_chart_b64"] = "fake-trendline"
+
+    final_state = await pipeline.ainvoke(state)
+
+    decision_llm.ainvoke.assert_awaited()
+    assert final_state["vote_summary"]["outcome"] == "call_decision"
+    assert final_state["vote_summary"]["majority_direction"] == "BUY"
+    assert final_state["decision_tokens"] is not None
+    assert final_state["final_signal"]["signal"] == "LONG"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_three_way_split_skips_decision_agent():
+    """BUY / SELL / HOLD with no majority — decision LLM must NOT be called,
+    and the pipeline must resolve directly to HOLD at zero extra LLM cost."""
+    market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
+    indicator_llm = mock_llm({"overall": "bullish", "confidence": "high"})
+    decision_llm = mock_llm(_DECISION_RESPONSE)
+    vision_llm = mock_llm({
+        "bias": "bearish", "confidence": "high",
+        "trend_prediction": "sideways",
+        "pattern": "none", "completion_state": "forming",
+    })
+
+    settings = _make_settings(
+        enable_indicator_agent=True, enable_pattern_agent=True, enable_trend_agent=True,
+    )
+    pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
+    state = _make_initial_state()
+    state["chart_image_b64"] = "fake-chart"
+    state["trendline_chart_b64"] = "fake-trendline"
+
+    final_state = await pipeline.ainvoke(state)
+
+    decision_llm.ainvoke.assert_not_awaited()
+    assert final_state["vote_summary"]["outcome"] == "skip_hold"
+    assert final_state["decision_tokens"] is None
+    assert final_state["final_signal"]["signal"] == "HOLD"
+    assert final_state["final_signal"]["confidence"] == 0.0

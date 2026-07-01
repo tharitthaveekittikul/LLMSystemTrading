@@ -248,6 +248,11 @@ async def _run_llm_analysis(
         {
             "action": llm_result.signal.action,
             "confidence": llm_result.signal.confidence,
+            **(
+                {"vote_summary": llm_result.vote_summary}
+                if getattr(llm_result, "vote_summary", None)
+                else {}
+            ),
         },
     )
 
