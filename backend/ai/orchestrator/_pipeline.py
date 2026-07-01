@@ -29,6 +29,7 @@ from ai.orchestrator._prompts import (
     _MARKET_ANALYSIS_SYSTEM,
 )
 from core.config import settings
+from services.research_loop import effective_confidence_threshold
 
 logger = logging.getLogger(__name__)
 
@@ -393,11 +394,13 @@ async def analyze_market(
     raw = _normalize_raw(raw, timeframe=timeframe, current_price=current_price)
     signal = TradingSignal(**raw)
 
-    # Confidence gate
-    if signal.confidence < settings.llm_confidence_threshold:
+    # Confidence gate — threshold nudged by the research loop's per-symbol trust score
+    gate_threshold = effective_confidence_threshold(symbol, settings.llm_confidence_threshold)
+    if signal.confidence < gate_threshold:
         logger.info(
-            "Signal downgraded to HOLD — confidence %.2f below threshold %.2f | symbol=%s",
-            signal.confidence, settings.llm_confidence_threshold, symbol,
+            "Signal downgraded to HOLD — confidence %.2f below effective threshold %.2f "
+            "(base=%.2f) | symbol=%s",
+            signal.confidence, gate_threshold, settings.llm_confidence_threshold, symbol,
         )
         signal.action = "HOLD"
 
@@ -486,11 +489,12 @@ async def review_position(
             action="HOLD", confidence=0.0, rationale=f"Parse error: {exc}"
         )
 
-    # Confidence gate: downgrade to HOLD if below threshold
-    if decision.action != "HOLD" and decision.confidence < settings.llm_confidence_threshold:
+    # Confidence gate: downgrade to HOLD if below threshold (nudged by symbol trust score)
+    gate_threshold = effective_confidence_threshold(symbol, settings.llm_confidence_threshold)
+    if decision.action != "HOLD" and decision.confidence < gate_threshold:
         logger.info(
-            "Maintenance decision downgraded HOLD (confidence %.2f < threshold %.2f)",
-            decision.confidence, settings.llm_confidence_threshold,
+            "Maintenance decision downgraded HOLD (confidence %.2f < effective threshold %.2f, base=%.2f)",
+            decision.confidence, gate_threshold, settings.llm_confidence_threshold,
         )
         decision = MaintenanceDecision(
             action="HOLD",
@@ -637,10 +641,12 @@ async def run_agent_pipeline(
     raw = _normalize_raw(raw, timeframe=timeframe, current_price=current_price)
     signal = TradingSignal(**raw)
 
-    if signal.confidence < settings.llm_confidence_threshold:
+    gate_threshold = effective_confidence_threshold(symbol, settings.llm_confidence_threshold)
+    if signal.confidence < gate_threshold:
         logger.info(
-            "Agent pipeline signal downgraded HOLD — confidence %.2f below threshold %.2f",
-            signal.confidence, settings.llm_confidence_threshold,
+            "Agent pipeline signal downgraded HOLD — confidence %.2f below effective threshold %.2f "
+            "(base=%.2f)",
+            signal.confidence, gate_threshold, settings.llm_confidence_threshold,
         )
         signal.action = "HOLD"
 
