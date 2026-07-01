@@ -40,8 +40,9 @@ async def analyze_closed_trade(trade_id: int) -> None:
 
 
 async def _analyze(trade_id: int, db) -> None:
-    from db.models import AIJournal, Trade
     from langchain_core.messages import HumanMessage, SystemMessage
+
+    from db.models import AIJournal, Trade
 
     # ── Load trade + journal ──────────────────────────────────────────────────
     trade = await db.get(Trade, trade_id)
@@ -120,9 +121,9 @@ async def _analyze(trade_id: int, db) -> None:
     )
 
     # ── Get configured LLM for post_trade_analysis ───────────────────────────
-    from services.ai_trading import _get_task_llm
     from ai.orchestrator import _build_llm
     from core.config import settings
+    from services.ai_trading import _get_task_llm
     llm = await _get_task_llm("post_trade_analysis", db)
     if llm is None:
         # No task assignment configured — fall back to env-var default (e.g. Ollama/Qwen)

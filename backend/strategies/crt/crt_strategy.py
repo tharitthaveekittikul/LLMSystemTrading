@@ -11,8 +11,13 @@ Registration in DB:
 from __future__ import annotations
 
 import logging
-from strategies.base_strategy import RuleOnlyStrategy, StrategyResult
+from typing import TYPE_CHECKING
+
 from services.mtf_data import MTFMarketData
+from strategies.base_strategy import RuleOnlyStrategy, StrategyResult
+
+if TYPE_CHECKING:
+    from db.models import Strategy
 
 logger = logging.getLogger(__name__)
 

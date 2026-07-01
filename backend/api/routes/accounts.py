@@ -94,7 +94,7 @@ class ResearchProgressResponse(BaseModel):
 
 @router.get("", response_model=list[AccountResponse])
 async def list_accounts(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Account).where(Account.is_active == True))
+    result = await db.execute(select(Account).where(Account.is_active))
     accounts = result.scalars().all()
     return [_to_response(a) for a in accounts]
 
@@ -579,9 +579,10 @@ async def sync_orders(account_id: int, db: AsyncSession = Depends(get_db)):
     # ── Post-trade analysis + research loop (fire-and-forget) ────────────────
     if newly_closed_trade_ids:
         import asyncio
-        from services.trade_analyzer import analyze_closed_trade
-        from services.research_loop import maybe_run
+
         from db.postgres import AsyncSessionLocal
+        from services.research_loop import maybe_run
+        from services.trade_analyzer import analyze_closed_trade
         for tid in newly_closed_trade_ids:
             asyncio.ensure_future(analyze_closed_trade(tid))
 
@@ -637,6 +638,7 @@ async def sync_account_history(
     new_ids: list[int] = result.get("new_trade_ids", [])
     if new_ids:
         import asyncio
+
         from services.trade_analyzer import analyze_closed_trade
         for tid in new_ids:
             asyncio.ensure_future(analyze_closed_trade(tid))
@@ -820,8 +822,9 @@ async def sync_account(account_id: int, db: AsyncSession = Depends(get_db)):
     ]
     if all_new_ids:
         import asyncio
-        from services.trade_analyzer import analyze_closed_trade
+
         from services.research_loop import maybe_run
+        from services.trade_analyzer import analyze_closed_trade
 
         # Only analyze system-placed trades (source != "manual")
         result2 = await db.execute(
@@ -965,8 +968,9 @@ async def get_research_progress(account_id: int, db: AsyncSession = Depends(get_
     last_trade_id_at_run: int = config.get("last_trade_id_at_run", 0)
     cycle_trades: list[ResearchCycleTrade] = []
     if cycle_progress > 0 or last_trade_id_at_run:
-        from db.models import Trade
         from sqlalchemy import select
+
+        from db.models import Trade
         base_where = [Trade.account_id == account_id, Trade.closed_at.is_not(None), Trade.profit != 0]
         if last_trade_id_at_run:
             base_where.append(Trade.id > last_trade_id_at_run)

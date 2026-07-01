@@ -5,17 +5,16 @@ import re
 import time
 from typing import Any
 
-from typing_extensions import TypedDict
-
-from langgraph.graph import StateGraph, END
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import END, StateGraph
+from typing_extensions import TypedDict
 
-from core.config import Settings
+from ai.agents.decision_agent import run_decision_agent
 from ai.agents.indicator_agent import run_indicator_agent
 from ai.agents.pattern_agent import run_pattern_agent
 from ai.agents.trend_agent import run_trend_agent
-from ai.agents.decision_agent import run_decision_agent
+from core.config import Settings
 
 logger = logging.getLogger(__name__)
 

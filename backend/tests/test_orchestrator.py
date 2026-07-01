@@ -147,6 +147,7 @@ def test_trading_signal_accepts_pending_actions():
 
 def test_trading_signal_rejects_unknown_action():
     from pydantic import ValidationError
+
     from ai.orchestrator import TradingSignal
     with pytest.raises(ValidationError):
         TradingSignal(
@@ -159,6 +160,7 @@ def test_trading_signal_rejects_unknown_action():
 async def test_analyze_market_returns_pending_action():
     """analyze_market passes through BUY_LIMIT without downgrading it."""
     from unittest.mock import AsyncMock, patch
+
     from ai.orchestrator import LLMRoleResult, analyze_market
 
     def _role(content):

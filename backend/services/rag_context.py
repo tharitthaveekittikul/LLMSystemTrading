@@ -19,7 +19,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Float, Integer, case, cast, func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -308,7 +308,7 @@ async def _build(
             for lesson in cfg.get("lessons", [])[:3]:
                 lessons.append(f"  • [auto] {lesson[:120]}")
             # Historical lessons — 3 most recent unique ones not already shown
-            shown = {l.strip(" •[auto]") for l in lessons}
+            shown = {line.strip(" •[auto]") for line in lessons}
             history = cfg.get("lesson_history", [])
             added = 0
             for entry in reversed(history):  # newest first

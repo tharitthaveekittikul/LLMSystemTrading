@@ -1,4 +1,5 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 from services.mtf_data import OHLCV
 from strategies.harmonic.swing_detector import find_pivots
 
@@ -17,10 +18,10 @@ def test_scanner_returns_list():
 
 
 def test_prz_calculator_returns_strategy_result():
+    from services.mtf_data import MTFMarketData, TimeframeData
     from strategies.harmonic.patterns.base_pattern import PatternResult
-    from strategies.harmonic.swing_detector import Pivot
     from strategies.harmonic.prz_calculator import to_signal
-    from services.mtf_data import TimeframeData, MTFMarketData
+    from strategies.harmonic.swing_detector import Pivot
 
     t = datetime(2020, 1, 2, tzinfo=timezone.utc)
     d_pivot = Pivot(index=4, time=t, price=1.107, type="low")

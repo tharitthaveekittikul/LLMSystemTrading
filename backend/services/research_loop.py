@@ -48,8 +48,10 @@ async def run(account_id: int, db: AsyncSession) -> None:
     """Run the full research loop and write research_config.json."""
     config = await _run_research_agent(account_id, db)
     config["trade_count_at_run"] = await _count_closed_trades(db, account_id)
+    from sqlalchemy import func
+    from sqlalchemy import select as sa_select
+
     from db.models import Trade
-    from sqlalchemy import func, select as sa_select
     max_id = (await db.execute(sa_select(func.max(Trade.id)).where(Trade.account_id == account_id))).scalar() or 0
     config["last_trade_id_at_run"] = max_id
     _write_config(config)
@@ -71,6 +73,7 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
     from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
     from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
     from langchain_core.tools import tool
+
     from services.ai_trading import _get_task_llm
 
     # Mutable container for the agent's final output (populated by save_research_config tool)
@@ -81,8 +84,9 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
     @tool
     async def get_overall_stats(days: int = 90) -> str:
         """Get overall trading performance: total trades, win rate, total PnL for the past N days."""
-        from db.models import Trade
         from sqlalchemy import func, select
+
+        from db.models import Trade
 
         since = datetime.now(UTC) - timedelta(days=days)
         row = (
@@ -111,8 +115,9 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
     @tool
     async def get_symbol_stats(days: int = 90) -> str:
         """Get per-symbol trading breakdown: trade count, win rate, PnL for each symbol."""
-        from db.models import Trade
         from sqlalchemy import func, select
+
+        from db.models import Trade
 
         since = datetime.now(UTC) - timedelta(days=days)
         rows = (
@@ -140,8 +145,9 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
     @tool
     async def get_signal_reliability() -> str:
         """Get reliability scores for trading signals derived from the last 100 trade analyses."""
-        from db.models import Trade
         from sqlalchemy import select
+
+        from db.models import Trade
 
         rows = (
             await db.execute(
@@ -174,8 +180,9 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
     @tool
     async def get_loss_lessons(limit: int = 10) -> str:
         """Get lessons extracted from recent losing trades (from trade_analysis.lesson field)."""
-        from db.models import Trade
         from sqlalchemy import select
+
+        from db.models import Trade
 
         rows = (
             await db.execute(
@@ -289,8 +296,9 @@ async def _run_research_agent(account_id: int, db: AsyncSession) -> dict:
 
 async def _count_closed_trades(db: AsyncSession, account_id: int) -> int:
     """Count only trades that actually executed (profit != 0 — excludes expired/cancelled orders)."""
-    from db.models import Trade
     from sqlalchemy import func, select
+
+    from db.models import Trade
 
     row = (
         await db.execute(
@@ -320,8 +328,9 @@ async def _rule_based_fallback(db: AsyncSession, account_id: int) -> dict:
 
 async def _gather_stats(db: AsyncSession, account_id: int) -> dict:
     """Aggregate trading stats for the rule-based fallback path."""
-    from db.models import AIJournal, Trade
     from sqlalchemy import func, select
+
+    from db.models import AIJournal, Trade
 
     since = datetime.now(UTC) - timedelta(days=90)
 

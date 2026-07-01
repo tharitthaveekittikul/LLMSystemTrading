@@ -192,8 +192,9 @@ def _fetch_one_container_stat(c) -> ContainerStat:  # type: ignore[no-untyped-de
 
 def _get_docker_stats() -> list[ContainerStat] | None:
     try:
-        import docker  # optional — graceful skip if Docker unreachable
         from concurrent.futures import ThreadPoolExecutor
+
+        import docker  # optional — graceful skip if Docker unreachable
         client = docker.from_env(timeout=3)
         containers = client.containers.list(all=True)
         if not containers:

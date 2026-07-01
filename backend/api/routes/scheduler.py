@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, BackgroundTasks
+
 from db.postgres import AsyncSessionLocal
 from services.position_maintenance import PositionMaintenanceService
 from services.scheduler import get_scheduler
@@ -41,9 +42,9 @@ def _describe_trigger(job) -> tuple[str, str]:
         elif minute not in ("*", "None"):
             mins = minute.split(",")
             if len(mins) == 4:
-                return "cron", f"Every 15 min (M15 candle)"
+                return "cron", "Every 15 min (M15 candle)"
             elif len(mins) == 2:
-                return "cron", f"Every 30 min (M30 candle)"
+                return "cron", "Every 30 min (M30 candle)"
             else:
                 return "cron", f"At minutes: {minute}"
         return "cron", str(trigger)
@@ -118,9 +119,10 @@ def _job_name(job_id: str) -> str:
 @router.get("/jobs")
 async def list_scheduler_jobs() -> list[dict[str, Any]]:
     """Return all currently registered APScheduler jobs with effective next_run_time."""
-    from db.models import AccountStrategy
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
+
+    from db.models import AccountStrategy
 
     scheduler = get_scheduler()
     jobs = scheduler.get_jobs()

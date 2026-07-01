@@ -302,7 +302,7 @@ async def _call_llm_for_role(
             content_str = "\n".join(content_parts)
         else:
             content_str = str(m.content)
-            
+
         role_type = type(m).__name__.replace("Message", "").lower()
         prompt_payload.append({
             "role": role_type,
@@ -500,7 +500,7 @@ async def _run_market_analysis(
         f"\nIndicators (Primary {timeframe}):\n{json.dumps(indicators, indent=2)}",
     ]
     human_parts.append(f"\nLast 20 OHLCV candles ({timeframe}) (oldest → newest):\n{json.dumps(ohlcv[-20:], indent=2, default=str)}")
-    
+
     if context_ohlcv:
         for ctx_tf, ctx_candles in context_ohlcv.items():
             human_parts.append(f"\nContext Timeframe: {ctx_tf} (Last 20 candles):\n{json.dumps(ctx_candles[-20:], indent=2, default=str)}")
@@ -970,8 +970,13 @@ async def run_agent_pipeline(
     The execution_decision LLMRoleResult carries the final_signal as its content.
     """
     import time
-    from services.technical_indicators import compute_indicators, fit_trendlines, render_trendline_chart
-    from ai.agent_pipeline import build_pipeline, AgentPipelineState
+
+    from ai.agent_pipeline import AgentPipelineState, build_pipeline
+    from services.technical_indicators import (
+        compute_indicators,
+        fit_trendlines,
+        render_trendline_chart,
+    )
 
     t0 = time.monotonic()
     default_llm = _build_llm()

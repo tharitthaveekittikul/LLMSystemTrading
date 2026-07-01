@@ -12,8 +12,8 @@ import logging
 from datetime import datetime
 from typing import Iterator
 
-from services.mtf_data import OHLCV, MTFMarketData, TimeframeData
 from services.mtf_csv_loader import load_mt5_csv
+from services.mtf_data import OHLCV, MTFMarketData, TimeframeData
 
 logger = logging.getLogger(__name__)
 

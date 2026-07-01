@@ -16,8 +16,8 @@ Design:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, asdict
-from typing import Callable, Awaitable
+from dataclasses import asdict, dataclass
+from typing import Awaitable, Callable
 
 from services.instrument_spec import contract_size
 
@@ -502,7 +502,7 @@ def _check_exit(pos: OpenPosition, candle: dict, mode: str, tp_partial_close_rat
                     pos.tp_level_idx = tp_idx + 1
                 else:
                     fully_closed = {"exit_time": t, "exit_price": active_tp, "exit_reason": "tp"}
-                    
+
     return fully_closed, partial_closed
 
 
@@ -511,7 +511,7 @@ def _fill_price(
 ) -> float | None:
     """Determine fill price based on execution mode and order type."""
     action = signal["action"]
-    
+
     # Perfect fill simulation for pending orders
     # Note: A real backtester would verify the candle touches the limit price.
     # For speed and simplicity in harmonic pattern backtesting, we assume it gets hit

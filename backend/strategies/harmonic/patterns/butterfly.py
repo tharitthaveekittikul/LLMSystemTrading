@@ -1,5 +1,4 @@
 """Butterfly: AB/XA 0.786, BC/AB 0.382-0.886, CD/BC 1.618-2.618, D extends XA 1.272-1.618"""
-from strategies.harmonic.swing_detector import Pivot
 from strategies.harmonic.patterns.base_pattern import BaseHarmonicPattern, PatternResult
 
 
@@ -11,7 +10,8 @@ class Butterfly(BaseHarmonicPattern):
         ab = abs(b.price - a.price)
         bc = abs(c.price - b.price)
         cd = abs(d.price - c.price)
-        if xa < 1e-10 or ab < 1e-10 or bc < 1e-10: return None
+        if xa < 1e-10 or ab < 1e-10 or bc < 1e-10:
+            return None
 
         ab_xa = ab / xa
         bc_ab = bc / ab
@@ -19,10 +19,14 @@ class Butterfly(BaseHarmonicPattern):
         # D extends XA (beyond A): ratio = abs(D-X)/XA
         d_xa_ext = abs(d.price - x.price) / xa
 
-        if not self._ratio_in_range(ab_xa, 0.786, 0.786): return None
-        if not self._ratio_in_range(bc_ab, 0.382, 0.886): return None
-        if not self._ratio_in_range(cd_bc, 1.618, 2.618): return None
-        if not self._ratio_in_range(d_xa_ext, 1.272, 1.618): return None
+        if not self._ratio_in_range(ab_xa, 0.786, 0.786):
+            return None
+        if not self._ratio_in_range(bc_ab, 0.382, 0.886):
+            return None
+        if not self._ratio_in_range(cd_bc, 1.618, 2.618):
+            return None
+        if not self._ratio_in_range(d_xa_ext, 1.272, 1.618):
+            return None
 
         direction = "bullish" if x.type == "high" else "bearish"
         accuracy = (self._ratio_accuracy_score(ab_xa, 0.786) +

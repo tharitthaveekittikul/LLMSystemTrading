@@ -1,6 +1,7 @@
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+
 from main import app
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")

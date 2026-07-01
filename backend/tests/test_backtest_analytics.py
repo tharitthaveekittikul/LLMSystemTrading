@@ -1,4 +1,3 @@
-import pytest
 from services.backtest_analytics import aggregate_by_group, build_heatmap, generate_recommendations
 
 

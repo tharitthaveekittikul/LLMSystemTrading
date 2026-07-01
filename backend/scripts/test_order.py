@@ -13,13 +13,13 @@ Config — edit the variables in the CONFIG section below.
 
 import asyncio
 import logging
-import sys
 import os
+import sys
 
 # ── Ensure backend/ is on sys.path ──────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mt5.bridge import MT5Bridge, AccountCredentials
+from mt5.bridge import AccountCredentials, MT5Bridge
 from mt5.executor import MT5Executor, OrderRequest
 
 logging.basicConfig(

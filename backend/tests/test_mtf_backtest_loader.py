@@ -1,10 +1,9 @@
 """Tests for MTFBacktestLoader — multi-TF candle alignment with no data leak."""
 import io
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
-import pytest
-from services.mtf_data import OHLCV, MTFMarketData
 from services.mtf_backtest_loader import MTFBacktestLoader
+from services.mtf_data import MTFMarketData
 
 
 def _make_csv_content(n: int, start: datetime, tf_minutes: int,

@@ -77,7 +77,7 @@ export default function SystemUsagePage() {
     } finally {
       setLoading(false);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   useEffect(() => {
     fetchData();

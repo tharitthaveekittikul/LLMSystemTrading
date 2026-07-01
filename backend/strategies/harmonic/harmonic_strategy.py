@@ -11,8 +11,13 @@ Registration in DB:
 from __future__ import annotations
 
 import logging
-from strategies.base_strategy import RuleOnlyStrategy, StrategyResult
+from typing import TYPE_CHECKING
+
 from services.mtf_data import MTFMarketData
+from strategies.base_strategy import RuleOnlyStrategy, StrategyResult
+
+if TYPE_CHECKING:
+    from db.models import Strategy
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +39,9 @@ class HarmonicStrategy(RuleOnlyStrategy):
         self.candle_counts = counts
 
     def check_rule(self, market_data: MTFMarketData) -> StrategyResult | None:
-        from strategies.harmonic.swing_detector import find_pivots
         from strategies.harmonic.pattern_scanner import scan
         from strategies.harmonic.prz_calculator import to_signal
+        from strategies.harmonic.swing_detector import find_pivots
 
         # Lazy-init PRZ cooldown state (survives across candles within one backtest run)
         if not hasattr(self, "_prz_candle_count"):

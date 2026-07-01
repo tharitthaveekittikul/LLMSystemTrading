@@ -16,7 +16,13 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai.orchestrator import LLMAnalysisResult, NewsAnalysisResult, TradingSignal, analyze_market, analyze_news_impact
+from ai.orchestrator import (
+    LLMAnalysisResult,
+    NewsAnalysisResult,
+    TradingSignal,
+    analyze_market,
+    analyze_news_impact,
+)
 from core.config import settings
 from core.llm_pricing import compute_cost
 from services.ai_trading._helpers import _get_task_llm, _news_direction, record_llm_role
@@ -302,7 +308,7 @@ async def run_signal_phase(
 
     # ── 6.5 Risk limits pre-check ─────────────────────────────────────────
     t0 = time.monotonic()
-    from services.risk_manager import load_risk_config, check_position_limit, check_rate_limit
+    from services.risk_manager import check_position_limit, check_rate_limit, load_risk_config
     risk_cfg = await load_risk_config(db)
 
     exceeded_pos, pos_reason = check_position_limit(open_positions, risk_cfg)

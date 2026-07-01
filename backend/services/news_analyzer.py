@@ -44,8 +44,8 @@ Signal definitions:
 
 async def _resolve_llm(db: AsyncSession) -> Any:
     """Return a LangChain LLM for the news_analysis task, or the default LLM."""
-    from services.ai_trading import _get_task_llm
     from ai.orchestrator import _build_llm
+    from services.ai_trading import _get_task_llm
 
     llm = await _get_task_llm("news_analysis", db)
     return llm or _build_llm()
@@ -83,6 +83,7 @@ async def analyze_event(event: EconomicEvent, db: AsyncSession) -> None:
     Never raises — errors are stored in event.analysis_error.
     """
     from langchain_core.messages import HumanMessage, SystemMessage
+
     from ai.orchestrator import _call_llm_for_role
     from core.llm_pricing import compute_cost
     from db.models import LLMCall

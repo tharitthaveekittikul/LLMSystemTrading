@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import io
 import logging
-from datetime import datetime, timezone
 
 import pandas as pd
 

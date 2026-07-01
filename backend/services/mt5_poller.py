@@ -104,7 +104,7 @@ async def _poll_session(account_id: int) -> None:
     from core.security import decrypt
     from db.models import Account
     from db.postgres import AsyncSessionLocal
-    from mt5.bridge import MT5Bridge, AccountCredentials
+    from mt5.bridge import AccountCredentials, MT5Bridge
 
     state = _states.setdefault(account_id, AccountPollState(account_id=account_id))
     # Reset on each new session so a reconnect doesn't diff against stale tickets
@@ -243,8 +243,9 @@ async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState)
 async def _sync_history_with_bridge(account_id: int, bridge) -> None:
     """Sync closed deals using the already-open bridge — no new MT5 connection created."""
     from datetime import timedelta
-    from db.postgres import AsyncSessionLocal
+
     from db.models import Account
+    from db.postgres import AsyncSessionLocal
     from services.history_sync import HistoryService
 
     date_to = datetime.now(UTC)

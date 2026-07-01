@@ -157,7 +157,7 @@ export function TradingChart({
   const emaSeriesRef = useRef<Map<20 | 50 | 200, ISeriesApi<any>>>(new Map());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rsiSeriesRef = useRef<ISeriesApi<any> | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<UTCTimestamp> | null>(null);
 
   // Keep latest prop values accessible inside effects without adding to deps.

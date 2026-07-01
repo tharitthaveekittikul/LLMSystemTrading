@@ -1,8 +1,7 @@
-from datetime import datetime
 import zoneinfo
-import pytest
+from datetime import datetime
 
-from services.mtf_data import MTFMarketData, TimeframeData, OHLCV
+from services.mtf_data import OHLCV, MTFMarketData, TimeframeData
 from strategies.orb_strategy import ORBStrategy
 
 NY_TZ = zoneinfo.ZoneInfo("America/New_York")
@@ -21,13 +20,13 @@ def make_candle(dt_ny, open_p, high_p, low_p, close_p):
 
 def test_orb_strategy_bullish_fvg():
     strategy = ORBStrategy()
-    
+
     # 9:30 AM NY time M5 candle
     m5_candles = [
         make_candle(_make_utc_dt(2023, 10, 10, 9, 25), 1.0, 1.1, 0.9, 1.05),
         make_candle(_make_utc_dt(2023, 10, 10, 9, 30), 1.05, 1.5, 1.0, 1.4), # High = 1.5, Low = 1.0
     ]
-    
+
     # M1 candles around 9:36 AM closing above 1.5 with a bullish FVG
     m1_candles = [
         # FVG 3 candles ending at 9:38
@@ -37,7 +36,7 @@ def test_orb_strategy_bullish_fvg():
     ]
     # Here, c1.high is 1.45, c3.low is 1.46. FVG exists (1.45 < 1.46).
     # Breakout exists: c3.close (1.52) > orb_high (1.5).
-    
+
     market_data = MTFMarketData(
         symbol="EURUSD",
         primary_tf="M1",
@@ -49,7 +48,7 @@ def test_orb_strategy_bullish_fvg():
         indicators={},
         trigger_time=_make_utc_dt(2023, 10, 10, 9, 38)
     )
-    
+
     result = strategy.check_rule(market_data)
     assert result is not None
     assert result.action == "BUY"
@@ -61,12 +60,12 @@ def test_orb_strategy_bullish_fvg():
 
 def test_orb_strategy_bearish_fvg():
     strategy = ORBStrategy()
-    
+
     # 9:30 AM NY time M5 candle
     m5_candles = [
         make_candle(_make_utc_dt(2023, 10, 10, 9, 30), 1.05, 1.5, 1.0, 1.4), # High = 1.5, Low = 1.0
     ]
-    
+
     # M1 candles breaking below 1.0 with a bearish FVG
     m1_candles = [
         make_candle(_make_utc_dt(2023, 10, 10, 9, 36), 1.1, 1.15, 1.05, 1.05), # c1
@@ -75,7 +74,7 @@ def test_orb_strategy_bearish_fvg():
     ]
     # c1.low = 1.05, c3.high = 1.04. Bearish FVG exists (1.05 > 1.04)
     # Breakout exists: c3.close (0.9) < orb_low (1.0)
-    
+
     market_data = MTFMarketData(
         symbol="EURUSD",
         primary_tf="M1",
@@ -87,18 +86,18 @@ def test_orb_strategy_bearish_fvg():
         indicators={},
         trigger_time=_make_utc_dt(2023, 10, 10, 9, 38)
     )
-    
+
     result = strategy.check_rule(market_data)
     assert result is not None
     assert result.action == "SELL"
     assert result.entry == 0.9
     assert result.stop_loss == 1.15 # c1.high
     assert result.take_profit == 0.9 - ((1.15 - 0.9) * 3)
-    
+
 def test_orb_strategy_one_trade_per_day():
     strategy = ORBStrategy()
     strategy.last_traded_date = "2023-10-10"
-    
+
     # 9:30 AM NY time M5 candle
     m5_candles = [
         make_candle(_make_utc_dt(2023, 10, 10, 9, 30), 1.05, 1.5, 1.0, 1.4),
@@ -108,7 +107,7 @@ def test_orb_strategy_one_trade_per_day():
         make_candle(_make_utc_dt(2023, 10, 10, 9, 37), 1.38, 1.55, 1.37, 1.55),
         make_candle(_make_utc_dt(2023, 10, 10, 9, 38), 1.55, 1.6, 1.46, 1.52),
     ]
-    
+
     market_data = MTFMarketData(
         symbol="EURUSD",
         primary_tf="M1",
@@ -120,7 +119,7 @@ def test_orb_strategy_one_trade_per_day():
         indicators={},
         trigger_time=_make_utc_dt(2023, 10, 10, 9, 38)
     )
-    
+
     result = strategy.check_rule(market_data)
     # Should not trade because already traded on 2023-10-10
     assert result is None

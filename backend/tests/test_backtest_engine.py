@@ -1,5 +1,5 @@
 """Tests for BacktestEngine — event-loop simulation with synthetic OHLCV data."""
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest

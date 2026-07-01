@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import importlib
 import json
 import logging
@@ -9,11 +10,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+
 from db.postgres import AsyncSessionLocal
 from services.ai_trading import AITradingService
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from db.models import Account
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +55,7 @@ def _build_overrides(strategy):
             instance = getattr(mod, strategy.class_name)()
             if hasattr(instance, "apply_db_config"):
                 instance.apply_db_config(strategy)
-                
+
             # AbstractStrategy subclasses expose .symbols as a list attribute directly
             if hasattr(instance, "primary_tf"):
                 instance_symbols = getattr(instance, "symbols", None) or symbols
@@ -127,11 +131,12 @@ async def _preflight_risk_check(
     Returns (clear_entries, blocked_entries).
     An account is clear if neither position limit nor rate limit is exceeded.
     """
-    from db.models import Account as _Account
-    from services.risk_manager import load_risk_config, check_position_limit, check_rate_limit
-    from core.security import decrypt as _decrypt
-    from mt5.bridge import AccountCredentials as _Creds, MT5Bridge as _Bridge
     from core.config import settings
+    from core.security import decrypt as _decrypt
+    from db.models import Account as _Account
+    from mt5.bridge import AccountCredentials as _Creds
+    from mt5.bridge import MT5Bridge as _Bridge
+    from services.risk_manager import check_position_limit, check_rate_limit, load_risk_config
 
     risk_cfg = await load_risk_config(db)
     clear: list[tuple[int, dict]] = []
@@ -488,9 +493,10 @@ async def _run_strategy_job(
 
 
 async def start_scheduler(db: "AsyncSession") -> None:
-    from db.models import AccountStrategy
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
+
+    from db.models import AccountStrategy
     result = await db.execute(
         select(AccountStrategy)
         .where(AccountStrategy.is_active.is_(True))
@@ -520,8 +526,8 @@ async def start_scheduler(db: "AsyncSession") -> None:
 
     # Position maintenance sweep — runs every maintenance_interval_minutes
     from core.config import settings
-    from services.position_maintenance import PositionMaintenanceService
     from db.postgres import AsyncSessionLocal
+    from services.position_maintenance import PositionMaintenanceService
     _maintenance_service = PositionMaintenanceService()
 
     async def _run_maintenance_sweep() -> None:

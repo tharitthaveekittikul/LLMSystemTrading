@@ -1,7 +1,8 @@
 """Integration test: HarmonicStrategy.run() returns a StrategyResult."""
 import asyncio
-from datetime import datetime, timezone, timedelta
-from services.mtf_data import OHLCV, TimeframeData, MTFMarketData
+from datetime import datetime, timedelta, timezone
+
+from services.mtf_data import OHLCV, MTFMarketData, TimeframeData
 
 
 def _flat_candles(n: int, price: float = 1.1, tf_minutes: int = 15) -> list[OHLCV]:
@@ -49,8 +50,8 @@ def test_harmonic_strategy_execution_mode():
 
 def _make_bullish_gartley_pattern():
     """Return a minimal PatternResult for a bullish Gartley at known prices."""
-    from strategies.harmonic.swing_detector import Pivot
     from strategies.harmonic.patterns.base_pattern import PatternResult
+    from strategies.harmonic.swing_detector import Pivot
 
     t0 = datetime(2020, 1, 2, tzinfo=timezone.utc)
     x = Pivot(index=0, time=t0 + timedelta(hours=0), price=1.500, type="high")
@@ -73,8 +74,8 @@ def _make_bullish_gartley_pattern():
 
 def _make_bearish_gartley_pattern():
     """Return a minimal PatternResult for a bearish Gartley at known prices."""
-    from strategies.harmonic.swing_detector import Pivot
     from strategies.harmonic.patterns.base_pattern import PatternResult
+    from strategies.harmonic.swing_detector import Pivot
 
     t0 = datetime(2020, 1, 2, tzinfo=timezone.utc)
     x = Pivot(index=0, time=t0 + timedelta(hours=0), price=1.000, type="low")

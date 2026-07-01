@@ -171,11 +171,9 @@ async def fetch_ohlcv(
 
 def compute_indicators(candles: list[dict]) -> dict:
     """Compute pandas-ta indicators. Falls back to basic if pandas-ta unavailable or < 200 candles."""
-    t0 = time.monotonic()
-
     try:
         import pandas as pd
-        import pandas_ta as ta
+        import pandas_ta  # noqa: F401 — registers the `.ta` accessor on DataFrame
 
         # Build DataFrame from MT5 candles
         df = pd.DataFrame(candles)

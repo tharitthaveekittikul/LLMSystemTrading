@@ -1,10 +1,10 @@
 """Tests for trade history AI context wiring."""
 import inspect
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ai.orchestrator import LLMAnalysisResult, LLMRoleResult, TradingSignal
+import pytest
 
+from ai.orchestrator import LLMAnalysisResult, LLMRoleResult, TradingSignal
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 

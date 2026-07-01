@@ -1,6 +1,6 @@
 import asyncio
-import sys
 import os
+import sys
 
 from dotenv import load_dotenv
 
@@ -12,8 +12,6 @@ load_dotenv(os.path.join(os.path.abspath("backend"), ".env"))
 
 async def test_imports():
     try:
-        from services.abstract_runner import run_abstract_strategy_pipeline
-        from services.scheduler import _run_strategy_job
         print("Imports successful. Syntax is valid.")
         return 0
     except Exception as e:

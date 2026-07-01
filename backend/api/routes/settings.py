@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.security import decrypt, encrypt
-from db.models import LLMProviderConfig, TaskLLMAssignment, GlobalSettings as GlobalSettingsModel, TelegramSettings as TelegramSettingsModel
+from db.models import GlobalSettings as GlobalSettingsModel
+from db.models import LLMProviderConfig, TaskLLMAssignment
+from db.models import TelegramSettings as TelegramSettingsModel
 from db.postgres import get_db
 
 router = APIRouter()
@@ -473,8 +475,7 @@ async def get_risk_settings(db: AsyncSession = Depends(get_db)) -> RiskSettingsR
     row = (await db.execute(select(RiskSettings).where(RiskSettings.id == 1))).scalar_one_or_none()
     if not row:
         # Should never happen after migration, but handle gracefully
-        from db.models import RiskSettings as RS
-        row = RS(id=1)
+        row = RiskSettings(id=1)
         db.add(row)
         await db.commit()
         await db.refresh(row)

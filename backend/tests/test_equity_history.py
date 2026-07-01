@@ -20,7 +20,7 @@ async def test_equity_history_404_for_missing_account(client):
 
 async def test_equity_history_returns_list(client):
     """Endpoint returns a list (may be empty if QuestDB not running)."""
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
     unique_login = int(datetime.now(UTC).strftime("%H%M%S%f")) % 2_000_000_000
     create_resp = await client.post("/api/v1/accounts", json={
         "name": "Equity History Test",

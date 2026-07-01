@@ -1,10 +1,10 @@
 import json
 import random
-
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from ai.agent_pipeline import build_pipeline, AgentPipelineState
+import pytest
+
+from ai.agent_pipeline import AgentPipelineState, build_pipeline
 
 
 def make_ohlcv(n=60):
@@ -141,7 +141,7 @@ def test_build_pipeline_creates_compiled_graph():
 async def test_pipeline_happy_path():
     market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
     indicator_llm = mock_llm(_INDICATOR_RESPONSE)
-    pattern_llm = mock_llm(_PATTERN_RESPONSE)
+    mock_llm(_PATTERN_RESPONSE)
     decision_llm = mock_llm(_DECISION_RESPONSE)
 
     # chart_vision_llm handles both pattern and trend agents

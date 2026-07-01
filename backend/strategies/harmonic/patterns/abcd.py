@@ -16,13 +16,16 @@ class ABCD(BaseHarmonicPattern):
         ab = abs(b.price - a.price)
         bc = abs(c.price - b.price)
         cd = abs(d.price - c.price)
-        if ab < 1e-10 or bc < 1e-10: return None
+        if ab < 1e-10 or bc < 1e-10:
+            return None
 
         bc_ab = bc / ab
         cd_bc = cd / bc if bc > 1e-10 else 0.0
 
-        if not self._ratio_in_range(bc_ab, 0.618, 0.786): return None
-        if not self._ratio_in_range(cd_bc, 1.272, 1.618): return None
+        if not self._ratio_in_range(bc_ab, 0.618, 0.786):
+            return None
+        if not self._ratio_in_range(cd_bc, 1.272, 1.618):
+            return None
 
         direction = "bullish" if a.type == "high" else "bearish"
         accuracy = (self._ratio_accuracy_score(bc_ab, 0.618) +

@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from ai.orchestrator import LLMAnalysisResult, LLMRoleResult, TradingSignal
 
@@ -138,6 +139,7 @@ def test_strategy_overrides_defaults():
 
 def test_analyze_and_trade_has_strategy_params():
     import inspect
+
     from services.ai_trading import AITradingService
     sig = inspect.signature(AITradingService.analyze_and_trade)
     assert "strategy_id" in sig.parameters
@@ -146,6 +148,7 @@ def test_analyze_and_trade_has_strategy_params():
 
 def test_orchestrator_accepts_system_prompt_override():
     import inspect
+
     from ai.orchestrator import analyze_market
     sig = inspect.signature(analyze_market)
     assert "system_prompt_override" in sig.parameters

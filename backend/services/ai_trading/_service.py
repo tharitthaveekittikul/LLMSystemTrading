@@ -14,9 +14,9 @@ from api.routes.ws import broadcast
 from core.config import settings
 from core.security import decrypt
 from db.models import AIJournal
+from db.redis import check_llm_rate_limit
 from mt5.bridge import AccountCredentials, MT5Bridge
 from mt5.executor import OrderResult
-from db.redis import check_llm_rate_limit
 from services.ai_trading._context import (
     build_trade_history_context,
     fetch_open_positions,

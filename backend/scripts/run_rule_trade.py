@@ -2,13 +2,12 @@ import asyncio
 import logging
 import sys
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
 from core.database import AsyncSessionLocal
+from sqlalchemy import select
+from strategies.ema_atr_breakout import EmaAtrBreakout
+
 from db.models import Account, Strategy
 from services.ai_trading import AITradingService
-from strategies.ema_atr_breakout import EmaAtrBreakout
 
 # Configure basic logging for the script
 logging.basicConfig(
@@ -47,7 +46,7 @@ async def main():
         db_strategy = strategy_result.scalar_one_or_none()
 
         strategy_instance = EmaAtrBreakout()
-        
+
         symbols_to_trade = ["EURUSD", "GBPJPY", "XAGUSD", "XAUUSD", "AUDUSD"]
         timeframe = "H1"
         strategy_id = None
@@ -57,7 +56,7 @@ async def main():
             symbols_to_trade = db_strategy.symbols
             timeframe = db_strategy.timeframe
             strategy_id = db_strategy.id
-            # Also apply any overrides like lot sizes if available on db_strategy 
+            # Also apply any overrides like lot sizes if available on db_strategy
             # (assuming standard properties or logic to map from db_strategy to execution)
         else:
             logger.warning(

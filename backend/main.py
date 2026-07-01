@@ -6,20 +6,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.middleware import RequestLoggingMiddleware
-from api.routes import accounts, analytics, trades, ws
-from api.routes import signals
-from api.routes import status
-from api.routes import kill_switch as kill_switch_routes
-from api.routes import strategies
-from api.routes import pipeline as pipeline_routes
-from api.routes import settings as settings_routes
+from api.routes import accounts, analytics, signals, status, strategies, trades, ws
 from api.routes import backtest as backtest_routes
-from api.routes import storage as storage_routes
-from api.routes import llm_usage as llm_usage_routes
+from api.routes import kill_switch as kill_switch_routes
 from api.routes import llm_analytics as llm_analytics_routes
-from api.routes import scheduler as scheduler_routes
+from api.routes import llm_usage as llm_usage_routes
 from api.routes import market_data as market_data_routes
 from api.routes import news as news_routes
+from api.routes import pipeline as pipeline_routes
+from api.routes import scheduler as scheduler_routes
+from api.routes import settings as settings_routes
+from api.routes import storage as storage_routes
 from api.routes import system as system_routes
 from core.config import settings
 from core.logging import fix_uvicorn_logging, setup_logging
@@ -47,9 +44,10 @@ async def lifespan(app: FastAPI):
     # ── Recover optimization runs interrupted by a backend restart ────────────
     # Runs stuck in "running"/"cancelling" will never finish; mark them cancelled
     # so the UI unblocks and the user can resume from partial results.
-    from db.postgres import AsyncSessionLocal as _AsyncSessionLocal
-    from db.models import OptimizationRun
     from sqlalchemy import select as _sa_select
+
+    from db.models import OptimizationRun
+    from db.postgres import AsyncSessionLocal as _AsyncSessionLocal
     async with _AsyncSessionLocal() as _db:
         _stuck = (await _db.execute(
             _sa_select(OptimizationRun).where(
@@ -67,10 +65,12 @@ async def lifespan(app: FastAPI):
             )
 
     # ── Load persisted global settings from DB ────────────────────────────────
-    from db.postgres import AsyncSessionLocal
-    from db.models import GlobalSettings as GlobalSettingsModel, TelegramSettings as TelegramSettingsModel
     from sqlalchemy import select as sa_select
+
     from core.security import decrypt as _decrypt
+    from db.models import GlobalSettings as GlobalSettingsModel
+    from db.models import TelegramSettings as TelegramSettingsModel
+    from db.postgres import AsyncSessionLocal
     async with AsyncSessionLocal() as _db:
         _row = (await _db.execute(
             sa_select(GlobalSettingsModel).where(GlobalSettingsModel.id == 1)
@@ -103,8 +103,8 @@ async def lifespan(app: FastAPI):
     poller_task = asyncio.create_task(run_equity_poller())
     logger.info("Equity poller task started")
 
-    from services.scheduler import start_scheduler, stop_scheduler
     from db.postgres import AsyncSessionLocal
+    from services.scheduler import start_scheduler, stop_scheduler
     async with AsyncSessionLocal() as db:
         await start_scheduler(db)
 

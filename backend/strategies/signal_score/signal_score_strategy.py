@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from strategies.base_strategy import RuleThenLLMStrategy, StrategyResult
 
 if TYPE_CHECKING:
-    from services.mtf_data import MTFMarketData, OHLCV
+    from services.mtf_data import OHLCV, MTFMarketData
 
 logger = logging.getLogger(__name__)
 

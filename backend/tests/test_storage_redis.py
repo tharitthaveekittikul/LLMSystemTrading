@@ -1,8 +1,10 @@
 """Tests for storage API — Redis section."""
-import pytest
-from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
 from api.routes import storage
 
 _test_app = FastAPI()

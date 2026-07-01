@@ -1,6 +1,4 @@
 """Tests for mt5_path field on Account schema and credential construction."""
-import pytest
-from pydantic import ValidationError
 
 
 def test_account_create_accepts_mt5_path():
@@ -19,8 +17,9 @@ def test_account_create_mt5_path_defaults_empty():
 
 
 def test_account_response_includes_mt5_path():
-    from api.routes.accounts import AccountResponse
     import datetime
+
+    from api.routes.accounts import AccountResponse
     r = AccountResponse(
         id=1, name="Test", broker="ICM", login=12345,
         server="srv", is_live=False, is_active=True,

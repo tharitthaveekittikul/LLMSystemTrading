@@ -6,7 +6,7 @@ import io
 import json
 import logging
 import tempfile
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
@@ -14,9 +14,9 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.ws import broadcast_all
-from db.models import BacktestRun, BacktestTrade, Strategy, Account, OptimizationRun
-from db.postgres import get_db, AsyncSessionLocal
-from services.backtest_data import BacktestDataService, BacktestDataError
+from db.models import Account, BacktestRun, BacktestTrade, OptimizationRun, Strategy
+from db.postgres import AsyncSessionLocal, get_db
+from services.backtest_data import BacktestDataError, BacktestDataService
 from services.backtest_engine import BacktestEngine
 from services.backtest_metrics import compute_metrics, compute_monthly_pnl
 
@@ -330,8 +330,9 @@ async def get_candles(
     if not p.exists():
         raise HTTPException(status_code=404, detail="Candle data file not found on disk")
 
-    from services.backtest_data import BacktestDataService
     import io as _io
+
+    from services.backtest_data import BacktestDataService
     svc = BacktestDataService()
     raw = await svc.load_from_csv(_io.StringIO(p.read_text(encoding="utf-8", errors="replace")))
     return [
@@ -399,7 +400,7 @@ async def upload_csv(file: UploadFile = File(...)) -> dict:
             avg_spread_pts = round(sum(spreads) / len(spreads), 1)
         # Extract date range from raw text (format: YYYY.MM.DD\t...)
         lines = content.decode("utf-8", errors="replace").splitlines()
-        data_lines = [l for l in lines if l.strip() and not l.startswith("<")]
+        data_lines = [line for line in lines if line.strip() and not line.startswith("<")]
         if data_lines:
             start_date_str = data_lines[0].split("\t")[0].replace(".", "-")
             end_date_str = data_lines[-1].split("\t")[0].replace(".", "-")
@@ -502,7 +503,11 @@ async def get_analytics_combinations(
     limit: int = Query(10, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    from services.backtest_analytics import get_top_combinations, generate_recommendations, build_heatmap
+    from services.backtest_analytics import (
+        build_heatmap,
+        generate_recommendations,
+        get_top_combinations,
+    )
     run = await db.get(BacktestRun, run_id)
     if not run:
         raise HTTPException(404, "Backtest run not found")
@@ -552,7 +557,8 @@ async def _run_backtest_job(
                     candles = await data_svc.load_from_csv(io.StringIO(f.read()))
 
                 # ── Persist CSV for chart replay ────────────────────────────────
-                import pathlib, shutil
+                import pathlib
+                import shutil
                 _candle_store = pathlib.Path("uploads/candles")
                 _candle_store.mkdir(parents=True, exist_ok=True)
                 _dest = _candle_store / f"{run_id}.csv"
@@ -576,7 +582,7 @@ async def _run_backtest_job(
                             "Loaded context TF %s: %d candles", ctx_tf, len(ctx_c)
                         )
             else:
-                from mt5.bridge import MT5Bridge, AccountCredentials, MT5_AVAILABLE
+                from mt5.bridge import MT5_AVAILABLE, AccountCredentials, MT5Bridge
                 if not MT5_AVAILABLE:
                     raise BacktestDataError(
                         "MT5 is not available. Please upload a CSV file instead."

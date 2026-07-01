@@ -1,4 +1,5 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 from strategies.harmonic.swing_detector import Pivot
 
 
@@ -73,7 +74,7 @@ class TestBat:
         x = _pivot(2.000, "high", 0)
         a = _pivot(1.000, "low",  1)   # XA=1.000
         b = _pivot(1.450, "high", 2)   # AB=0.450, AB/XA=0.45 ✓
-        c = _pivot(1.225, "low",  3)   # BC=0.225, BC/AB=0.5 ✓
+        _pivot(1.225, "low",  3)   # BC=0.225, BC/AB=0.5 ✓
         # D at 0.886 retrace: D = X - 0.886*XA = 2.0 - 0.886 = 1.114
         # CD = |1.114 - 1.225| = 0.111, CD/BC = 0.111/0.225 = 0.493 — fails 1.618-2.618
         # Fix: adjust c to make CD/BC >= 1.618

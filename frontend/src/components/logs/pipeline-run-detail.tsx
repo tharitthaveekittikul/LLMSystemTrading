@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatDateTime } from "@/lib/date";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,12 +39,8 @@ export function PipelineRunDetailPanel({
 }: PipelineRunDetailPanelProps) {
   const [detail, setDetail] = useState<PipelineRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const prevIsLiveRef = useRef(isLiveRun);
 
   useEffect(() => {
-    const wasLive = prevIsLiveRef.current;
-    prevIsLiveRef.current = isLiveRun;
-
     if (isLiveRun) {
       // Run is in-progress — don't fetch from DB yet
       setLoading(false);
@@ -65,7 +61,7 @@ export function PipelineRunDetailPanel({
       }
     })();
   // Re-run when run.id changes OR when isLiveRun flips from true→false (run completed)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [run.id, isLiveRun]);
 
   const displaySteps: PipelineStep[] = isLiveRun ? liveSteps : (detail?.steps ?? []);

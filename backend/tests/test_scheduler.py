@@ -1,7 +1,10 @@
 from unittest.mock import MagicMock
-from apscheduler.triggers.interval import IntervalTrigger
+
 from apscheduler.triggers.cron import CronTrigger
-from services.scheduler import _make_trigger, _group_job_id, CANDLE_CRON
+from apscheduler.triggers.interval import IntervalTrigger
+
+from services.scheduler import CANDLE_CRON, _group_job_id, _make_trigger
+
 
 def _mock_strategy(trigger_type, timeframe="M15", interval_minutes=15):
     s = MagicMock()

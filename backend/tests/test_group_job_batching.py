@@ -1,14 +1,15 @@
 """Tests for group job batching — single LLM call across multiple accounts."""
 from __future__ import annotations
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ── SharedMarketContext tests ─────────────────────────────────────────────────
 
 def test_shared_market_context_fields():
-    from services.ai_trading import SharedMarketContext
     from ai.orchestrator import TradingSignal
+    from services.ai_trading import SharedMarketContext
 
     signal = TradingSignal(
         action="BUY", entry=1.1, stop_loss=1.09, take_profit=1.12,
@@ -35,7 +36,6 @@ async def test_fetch_strategy_signal_returns_result_and_market_data():
     """fetch_strategy_signal() should call strategy.run() once and return (signal, data, symbol)."""
     from services.abstract_runner import fetch_strategy_signal
     from strategies.base_strategy import StrategyResult
-    from services.mtf_data import MTFMarketData, TimeframeData, OHLCV
 
     fake_signal = StrategyResult(
         action="BUY", entry=1900.0, stop_loss=1880.0, take_profit=1940.0,
@@ -161,7 +161,7 @@ async def test_run_group_strategy_job_executes_only_clear_accounts():
     ]
 
     from ai.orchestrator import TradingSignal
-    from services.ai_trading import SharedMarketContext, AnalysisResult
+    from services.ai_trading import AnalysisResult, SharedMarketContext
 
     fake_signal = TradingSignal(action="HOLD", entry=0.0, stop_loss=0.0, take_profit=0.0,
                                 confidence=0.5, rationale="test", timeframe="H1")
@@ -213,7 +213,7 @@ async def test_run_group_strategy_job_calls_llm_once_executes_twice():
     ]
 
     from ai.orchestrator import TradingSignal
-    from services.ai_trading import SharedMarketContext, AnalysisResult
+    from services.ai_trading import AnalysisResult, SharedMarketContext
 
     fake_signal = TradingSignal(action="HOLD", entry=0.0, stop_loss=0.0, take_profit=0.0,
                                 confidence=0.5, rationale="test", timeframe="H1")

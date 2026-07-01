@@ -26,9 +26,9 @@ from db.models import Account, AccountStrategy, Strategy, Trade
 from db.redis import get_candle_cache, set_candle_cache
 from mt5.bridge import AccountCredentials, MT5Bridge
 from mt5.executor import MT5Executor
+from services.history_sync import HistoryService
 from services.kill_switch import is_active as kill_switch_active
 from services.market_context import fetch_upcoming_events, format_news_context
-from services.history_sync import HistoryService
 from services.pipeline_tracer import PipelineTracer
 
 logger = logging.getLogger(__name__)
@@ -154,9 +154,10 @@ def validate_modify(
 async def _get_task_llm(task: str, db: AsyncSession):
     """Load task-specific LLM from DB assignments. Returns None to use env-var default."""
     from sqlalchemy import select as _select
-    from db.models import LLMProviderConfig, TaskLLMAssignment
-    from core.security import decrypt as _decrypt
+
     from ai.orchestrator import _build_llm
+    from core.security import decrypt as _decrypt
+    from db.models import LLMProviderConfig, TaskLLMAssignment
 
     assignment = (await db.execute(
         _select(TaskLLMAssignment).where(TaskLLMAssignment.task == task)

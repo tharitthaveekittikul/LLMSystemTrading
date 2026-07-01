@@ -8,8 +8,8 @@ Given a confirmed PatternResult, computes:
 """
 from __future__ import annotations
 
+from services.mtf_data import OHLCV, MTFMarketData
 from strategies.harmonic.patterns.base_pattern import PatternResult
-from services.mtf_data import MTFMarketData, OHLCV
 
 
 def _atr(candles: list[OHLCV], period: int = 14) -> float:
@@ -31,7 +31,7 @@ def to_signal(
     atr_multiplier_sl: float = 0.5,
 ):
     """Convert a PatternResult to a StrategyResult with entry, SL, TP."""
-    from strategies.base_strategy import StrategyResult, _HOLD
+    from strategies.base_strategy import _HOLD, StrategyResult
 
     primary_candles = market_data.timeframes.get(market_data.primary_tf)
     candle_list = primary_candles.candles if primary_candles else []

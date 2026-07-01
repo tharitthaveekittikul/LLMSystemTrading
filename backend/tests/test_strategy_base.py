@@ -1,7 +1,9 @@
-import pytest
 import asyncio
 from datetime import datetime, timezone
-from services.mtf_data import OHLCV, TimeframeData, MTFMarketData
+
+import pytest
+
+from services.mtf_data import OHLCV, MTFMarketData, TimeframeData
 
 
 def _make_md(symbol: str = "EURUSD") -> MTFMarketData:
@@ -64,7 +66,7 @@ async def test_rule_then_llm_holds_when_trigger_false():
 
 
 def test_base_strategy_alias_works():
-    from strategies.base_strategy import BaseStrategy, AbstractStrategy
+    from strategies.base_strategy import AbstractStrategy, BaseStrategy
     assert BaseStrategy is AbstractStrategy
 
 
@@ -112,8 +114,9 @@ def test_strategy_result_accepts_pending_actions():
 async def test_multi_agent_consensus_uses_direction_not_exact_action():
     """Rule says BUY_LIMIT, LLM says BUY — same direction, should execute not HOLD."""
     from unittest.mock import AsyncMock, patch
-    from strategies.base_strategy import MultiAgentStrategy, StrategyResult
+
     from ai.orchestrator import LLMAnalysisResult, LLMRoleResult, TradingSignal
+    from strategies.base_strategy import MultiAgentStrategy, StrategyResult
 
     class TestMultiAgent(MultiAgentStrategy):
         primary_tf = "M15"

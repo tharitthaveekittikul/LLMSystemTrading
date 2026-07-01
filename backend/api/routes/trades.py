@@ -1,14 +1,14 @@
+import logging
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import cast, Date, select
+from sqlalchemy import Date, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Account, Trade
 from db.postgres import get_db
 
-import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -156,6 +156,7 @@ async def trigger_trade_analysis(trade_id: int, db: AsyncSession = Depends(get_d
     await db.commit()
 
     import asyncio
+
     from services.trade_analyzer import analyze_closed_trade
     asyncio.ensure_future(analyze_closed_trade(trade_id))
     logger.info("Post-trade analysis triggered | trade_id=%s", trade_id)

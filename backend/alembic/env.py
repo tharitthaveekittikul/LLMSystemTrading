@@ -7,10 +7,10 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
+from db import models  # noqa: F401 — registers all ORM classes
 
 # Import models to register them with Base.metadata
 from db.postgres import Base
-from db import models  # noqa: F401 — registers all ORM classes
 
 config = context.config
 

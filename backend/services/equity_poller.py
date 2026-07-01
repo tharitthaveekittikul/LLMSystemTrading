@@ -56,11 +56,12 @@ async def run_equity_poller() -> None:
 
 
 async def _poll_all_accounts() -> None:
-    from db.postgres import AsyncSessionLocal
-    from db.models import Account
-    from db.questdb import insert_equity_snapshot
-    from api.routes.ws import broadcast
     from sqlalchemy import select
+
+    from api.routes.ws import broadcast
+    from db.models import Account
+    from db.postgres import AsyncSessionLocal
+    from db.questdb import insert_equity_snapshot
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -110,7 +111,7 @@ async def _poll_account(account, insert_fn, broadcast_fn) -> None:
         currency = info.get("currency", "USD")
 
         # ── Drawdown monitor ─────────────────────────────────────────────────
-        from services.kill_switch import is_active, activate  # local import avoids circular
+        from services.kill_switch import activate, is_active  # local import avoids circular
 
         if not is_active():
             async with AsyncSessionLocal() as _db:

@@ -21,13 +21,13 @@ import json
 import logging
 import sys
 from concurrent.futures import ProcessPoolExecutor
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
 from db.models import OptimizationRun, Strategy
 from db.postgres import AsyncSessionLocal
-from services.backtest_data import BacktestDataService, BacktestDataError
+from services.backtest_data import BacktestDataError, BacktestDataService
 from services.backtest_engine import BacktestEngine
 from services.backtest_metrics import compute_metrics
 
@@ -58,10 +58,6 @@ def _worker_run_combo(worker_args: dict) -> dict:
     Returns {"params": ..., "metrics": ...} or raises on failure.
     """
     import asyncio
-    import importlib
-    from types import SimpleNamespace
-    from services.backtest_engine import BacktestEngine
-    from services.backtest_metrics import compute_metrics
 
     mod = importlib.import_module(worker_args["module_path"])
     cls = getattr(mod, worker_args["class_name"])

@@ -11,7 +11,6 @@ from services.risk_manager import (
     check_rate_limit,
 )
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def _cfg(**kwargs) -> RiskConfig:

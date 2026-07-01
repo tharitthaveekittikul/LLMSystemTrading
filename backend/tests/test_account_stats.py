@@ -20,7 +20,7 @@ async def test_account_stats_404_for_unknown_account(client):
 
 async def test_account_stats_schema(client):
     """Stats endpoint returns the expected shape (empty account = zeros)."""
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
     unique_login = int(datetime.now(UTC).strftime("%H%M%S%f")) % 2_000_000_000  # fits int32
     create_resp = await client.post("/api/v1/accounts", json={
         "name": "Stats Test",

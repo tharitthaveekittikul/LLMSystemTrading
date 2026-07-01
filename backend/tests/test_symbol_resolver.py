@@ -3,10 +3,8 @@
 This is a pure function (static method, no MT5 connection needed),
 so all tests run without any mock/patch overhead.
 """
-import pytest
 
 from mt5.bridge import MT5Bridge
-
 
 # ── resolve_broker_symbol ──────────────────────────────────────────────────────
 

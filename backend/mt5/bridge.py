@@ -331,9 +331,9 @@ class MT5Bridge:
         info = await self._run(mt5.symbol_info, symbol)
         if info is None:
             return False, "unavailable"
-        _MODE_NAMES = {0: "disabled", 1: "long_only", 2: "short_only", 3: "close_only", 4: "full"}
+        mode_names = {0: "disabled", 1: "long_only", 2: "short_only", 3: "close_only", 4: "full"}
         trade_mode = info.trade_mode
-        mode_name = _MODE_NAMES.get(trade_mode, f"unknown({trade_mode})")
+        mode_name = mode_names.get(trade_mode, f"unknown({trade_mode})")
         return trade_mode == mt5.SYMBOL_TRADE_MODE_FULL, mode_name
 
     # ── Order operations (used by executor.py only) ───────────────────────────

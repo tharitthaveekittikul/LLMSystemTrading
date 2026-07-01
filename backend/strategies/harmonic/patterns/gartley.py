@@ -10,8 +10,9 @@ Ratios:
   D retraces XA: 0.786
 """
 from __future__ import annotations
-from strategies.harmonic.swing_detector import Pivot
+
 from strategies.harmonic.patterns.base_pattern import BaseHarmonicPattern, PatternResult
+from strategies.harmonic.swing_detector import Pivot
 
 
 class Gartley(BaseHarmonicPattern):

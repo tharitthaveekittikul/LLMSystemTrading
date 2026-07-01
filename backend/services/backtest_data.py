@@ -51,7 +51,7 @@ class BacktestDataService:
         Returns dicts with keys: time, open, high, low, close, tick_volume, spread.
         Raises BacktestDataError on parse failure.
         """
-        from services.mtf_csv_loader import load_mt5_csv, MTFCSVError
+        from services.mtf_csv_loader import MTFCSVError, load_mt5_csv
 
         try:
             ohlcv_list = load_mt5_csv(file)

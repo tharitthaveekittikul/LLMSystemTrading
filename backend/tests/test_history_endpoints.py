@@ -1,7 +1,8 @@
 """Tests for /history and /history/sync endpoints."""
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from httpx import AsyncClient, ASGITransport
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 
 def _mock_account():
@@ -25,8 +26,8 @@ def test_sync_history_endpoint_exists():
 
 @pytest.mark.asyncio
 async def test_get_history_returns_deals():
-    from main import app
     from db.postgres import get_db as real_get_db
+    from main import app
 
     deals = [{"ticket": 1, "position_id": 100, "symbol": "EURUSD", "profit": 30.0}]
     mock_account = _mock_account()
@@ -56,8 +57,8 @@ async def test_get_history_returns_deals():
 
 @pytest.mark.asyncio
 async def test_sync_history_returns_imported_count():
-    from main import app
     from db.postgres import get_db as real_get_db
+    from main import app
 
     mock_account = _mock_account()
 
@@ -85,8 +86,8 @@ async def test_sync_history_returns_imported_count():
 
 @pytest.mark.asyncio
 async def test_get_history_404_when_account_not_found():
-    from main import app
     from db.postgres import get_db as real_get_db
+    from main import app
 
     async def override_db():
         mock_db = AsyncMock()
@@ -104,8 +105,8 @@ async def test_get_history_404_when_account_not_found():
 
 @pytest.mark.asyncio
 async def test_sync_history_404_when_account_not_found():
-    from main import app
     from db.postgres import get_db as real_get_db
+    from main import app
 
     async def override_db():
         mock_db = AsyncMock()
@@ -123,8 +124,8 @@ async def test_sync_history_404_when_account_not_found():
 
 @pytest.mark.asyncio
 async def test_sync_history_503_when_mt5_unavailable():
-    from main import app
     from db.postgres import get_db as real_get_db
+    from main import app
 
     mock_account = _mock_account()
 
@@ -149,8 +150,8 @@ async def test_sync_history_503_when_mt5_unavailable():
 
 @pytest.mark.asyncio
 async def test_sync_history_502_on_connection_error():
-    from main import app
     from db.postgres import get_db as real_get_db
+    from main import app
 
     mock_account = _mock_account()
 

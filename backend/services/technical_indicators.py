@@ -77,7 +77,6 @@ def compute_indicators(ohlcv: list[dict]) -> dict:
         If pandas-ta is not installed.
     """
     _ensure_pandas_ta()
-    import pandas_ta as ta
 
     if len(ohlcv) < 50:
         raise ValueError(

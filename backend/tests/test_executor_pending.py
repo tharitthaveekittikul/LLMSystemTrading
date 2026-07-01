@@ -1,6 +1,7 @@
 """Tests for executor pending order support."""
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from pydantic import ValidationError
 
 
@@ -14,8 +15,9 @@ def test_pending_expiry_hours_mapping():
 
 
 def test_order_request_expiration_hours_validation():
-    from mt5.executor import OrderRequest
     from pydantic import ValidationError
+
+    from mt5.executor import OrderRequest
     # valid
     req = OrderRequest(
         symbol="XAUUSD", action="BUY_LIMIT", volume=0.1,
@@ -133,9 +135,10 @@ async def test_place_order_uses_deal_action_for_buy():
 @pytest.mark.asyncio
 async def test_place_order_pending_with_expiration_sets_type_time_specified():
     """Pending order with expiration_hours sends type_time=2 and expiration as naive UTC datetime."""
+    from datetime import datetime, timedelta, timezone
+
     from mt5.executor import MT5Executor, OrderRequest
     from services.risk_manager import RiskConfig
-    from datetime import datetime, timezone, timedelta
 
     mock_bridge = AsyncMock()
     mock_bridge.get_positions = AsyncMock(return_value=[])

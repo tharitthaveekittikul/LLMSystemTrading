@@ -7,7 +7,7 @@ import pytest
 
 def test_get_rates_range_raises_when_mt5_unavailable():
     """When MetaTrader5 package is not installed, get_rates_range raises RuntimeError."""
-    from mt5.bridge import MT5Bridge, AccountCredentials
+    from mt5.bridge import AccountCredentials, MT5Bridge
 
     creds = AccountCredentials(login=1, password="x", server="s")
     bridge = MT5Bridge(creds)

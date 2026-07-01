@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import logging
 
@@ -11,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from db.models import Account, AccountStrategy, AIJournal, BacktestRun, Strategy, Trade
 from db.postgres import get_db
-from services.scheduler import add_binding_jobs, remove_binding_jobs, remove_all_binding_jobs
+from services.scheduler import add_binding_jobs, remove_all_binding_jobs, remove_binding_jobs
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -328,7 +329,7 @@ async def trigger_strategy(strategy_id: int, db: AsyncSession = Depends(get_db))
     strategy = await _get_or_404(db, strategy_id)
     if not strategy.is_active:
         raise HTTPException(status_code=400, detail="Cannot trigger an inactive strategy")
-        
+
     result = await db.execute(
         select(AccountStrategy)
         .where(AccountStrategy.strategy_id == strategy_id)
@@ -336,15 +337,15 @@ async def trigger_strategy(strategy_id: int, db: AsyncSession = Depends(get_db))
         .options(selectinload(AccountStrategy.account))
     )
     bindings = [b for b in result.scalars().all() if b.account.is_active]
-    
+
     if not bindings:
         raise HTTPException(status_code=400, detail="No active bindings to trigger")
-        
+
     from services.scheduler import trigger_binding_manually
     for binding in bindings:
         binding.strategy = strategy
         trigger_binding_manually(binding)
-        
+
     return {"message": f"Triggered {len(bindings)} active bindings"}
 
 

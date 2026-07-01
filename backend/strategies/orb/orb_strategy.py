@@ -29,9 +29,13 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from typing import TYPE_CHECKING
 
-from strategies.base_strategy import RuleOnlyStrategy, StrategyResult
 from services.mtf_data import MTFMarketData
+from strategies.base_strategy import RuleOnlyStrategy, StrategyResult
+
+if TYPE_CHECKING:
+    from db.models import Strategy
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,6 @@
 """Tests for BacktestDataService — CSV parsing and MT5 error handling."""
 import io
+
 import pytest
 
 # MT5 export format (tab-separated, angle-bracket headers)
@@ -36,7 +37,7 @@ async def test_load_from_csv_includes_spread():
 @pytest.mark.asyncio
 async def test_load_from_csv_missing_required_column_raises():
     """CSV missing required columns raises BacktestDataError."""
-    from services.backtest_data import BacktestDataService, BacktestDataError
+    from services.backtest_data import BacktestDataError, BacktestDataService
 
     bad_csv = "col1\tcol2\n1\t2\n"
     svc = BacktestDataService()
@@ -65,7 +66,8 @@ async def test_load_from_csv_sorted_by_time():
 async def test_load_from_mt5_empty_raises():
     """When MT5Bridge returns empty list, BacktestDataError is raised."""
     from unittest.mock import AsyncMock
-    from services.backtest_data import BacktestDataService, BacktestDataError
+
+    from services.backtest_data import BacktestDataError, BacktestDataService
 
     bridge = AsyncMock()
     bridge.get_rates_range = AsyncMock(return_value=[])
@@ -78,7 +80,8 @@ async def test_load_from_mt5_empty_raises():
 async def test_load_from_mt5_propagates_error():
     """When MT5Bridge raises, BacktestDataError wraps it."""
     from unittest.mock import AsyncMock
-    from services.backtest_data import BacktestDataService, BacktestDataError
+
+    from services.backtest_data import BacktestDataError, BacktestDataService
 
     bridge = AsyncMock()
     bridge.get_rates_range = AsyncMock(side_effect=RuntimeError("MT5 not connected"))

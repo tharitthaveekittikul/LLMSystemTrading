@@ -4,7 +4,8 @@ MTFMarketData replaces the old single-TF market_data dict throughout the strateg
 Strategies declare primary_tf and context_tfs; the engine fetches only what is declared.
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+
+from dataclasses import dataclass
 from datetime import datetime
 
 

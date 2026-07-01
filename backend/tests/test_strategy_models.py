@@ -1,6 +1,6 @@
 import json
-import pytest
-from db.models import Strategy, AccountStrategy, Trade, AIJournal
+
+from db.models import AccountStrategy, AIJournal, Strategy, Trade
 
 
 def test_strategy_defaults():

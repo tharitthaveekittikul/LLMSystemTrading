@@ -18,8 +18,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from services.mtf_data import MTFMarketData
     from db.models import Strategy
+    from services.mtf_data import MTFMarketData
 
 
 @dataclass

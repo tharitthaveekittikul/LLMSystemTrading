@@ -1,6 +1,8 @@
 import io
+
 import pytest
-from services.mtf_csv_loader import load_mt5_csv, MTFCSVError
+
+from services.mtf_csv_loader import MTFCSVError, load_mt5_csv
 
 # Exact MT5 export format (tab-separated, angle-bracket column names)
 SAMPLE_MT5_CSV = """\

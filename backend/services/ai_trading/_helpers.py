@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.orchestrator import LLMRoleResult
@@ -74,9 +73,10 @@ def _provider_name(llm: object) -> str:
 async def _get_task_llm(task: str, db: AsyncSession):
     """Load task-specific LLM from DB assignments. Returns None to use env-var default."""
     from sqlalchemy import select as _select
-    from db.models import LLMProviderConfig, TaskLLMAssignment
-    from core.security import decrypt as _decrypt
+
     from ai.orchestrator import _build_llm
+    from core.security import decrypt as _decrypt
+    from db.models import LLMProviderConfig, TaskLLMAssignment
 
     assignment = (await db.execute(
         _select(TaskLLMAssignment).where(TaskLLMAssignment.task == task)

@@ -1,10 +1,7 @@
 """Integration test: run HarmonicStrategy through MTFBacktestLoader with synthetic candles."""
-import asyncio
 import io
 import math
-from datetime import datetime, timezone, timedelta
-
-import pytest
+from datetime import datetime, timedelta, timezone
 
 
 def _make_csv(n: int, start: datetime, tf_minutes: int, base: float = 1.1) -> io.StringIO:

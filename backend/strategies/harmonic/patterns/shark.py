@@ -6,8 +6,8 @@ Ratios:
   BC/XA: 1.130 – 1.618  (extension of XA)
   C retraces OX: 0.886 – 1.130
 """
-from strategies.harmonic.swing_detector import Pivot
 from strategies.harmonic.patterns.base_pattern import BaseHarmonicPattern, PatternResult
+from strategies.harmonic.swing_detector import Pivot
 
 
 class Shark(BaseHarmonicPattern):
@@ -19,15 +19,19 @@ class Shark(BaseHarmonicPattern):
         xa = abs(a.price - x.price)
         ab = abs(b.price - a.price)
         bc = abs(c.price - b.price)
-        if ox < 1e-10 or xa < 1e-10 or ab < 1e-10: return None
+        if ox < 1e-10 or xa < 1e-10 or ab < 1e-10:
+            return None
 
         xa_ox = xa / ox
         bc_xa = bc / xa if xa > 1e-10 else 0.0
         c_ox_retrace = self._retracement_ratio(c.price, o.price, x.price)
 
-        if not self._ratio_in_range(xa_ox, 0.446, 0.618): return None
-        if not self._ratio_in_range(bc_xa, 1.130, 1.618): return None
-        if not self._ratio_in_range(c_ox_retrace, 0.886, 1.130): return None
+        if not self._ratio_in_range(xa_ox, 0.446, 0.618):
+            return None
+        if not self._ratio_in_range(bc_xa, 1.130, 1.618):
+            return None
+        if not self._ratio_in_range(c_ox_retrace, 0.886, 1.130):
+            return None
 
         direction = "bullish" if o.type == "high" else "bearish"
         accuracy = (self._ratio_accuracy_score(xa_ox, 0.500) +

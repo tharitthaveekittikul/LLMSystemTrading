@@ -6,20 +6,18 @@ Runs within a PipelineTracer context to log execution steps to the DB.
 import logging
 import time
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.security import decrypt
 from db.models import Account, AIJournal
-from db.redis import get_candle_cache, set_candle_cache
 from mt5.bridge import AccountCredentials, MT5Bridge
 from mt5.executor import MT5Executor, OrderRequest, pending_expiry_hours
-from services.ai_trading import _calculate_lot_size, _CACHE_TTL, _TIMEFRAME_MAP, StrategyOverrides
+from services.ai_trading import _TIMEFRAME_MAP, StrategyOverrides, _calculate_lot_size
 from services.kill_switch import is_active as kill_switch_active
-from services.mtf_data import MTFMarketData, TimeframeData, OHLCV
+from services.mtf_data import OHLCV, MTFMarketData, TimeframeData
 from services.pipeline_tracer import PipelineTracer
-from strategies.base_strategy import StrategyResult, AbstractStrategy
+from strategies.base_strategy import AbstractStrategy, StrategyResult
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +49,7 @@ async def _run_pipeline(
     strategy_instance: AbstractStrategy,
 ) -> tuple[StrategyResult | None, int | None]:
     """Internal runner logic with traced steps."""
-    
+
     # ── 1. Load account ──────────────────────────────────────────────────
     t0 = time.monotonic()
     account: Account | None = await db.get(Account, account_id)
@@ -63,7 +61,7 @@ async def _run_pipeline(
         )
         tracer.finalize(status="failed")
         return None, None
-        
+
     await tracer.record(
         "account_loaded",
         output_data={
@@ -92,7 +90,7 @@ async def _run_pipeline(
 
     # ── 3. Fetch Data for Required Timeframes ─────────────────────────────
     t0 = time.monotonic()
-    
+
     password = decrypt(account.password_encrypted)
     creds = AccountCredentials(
         login=account.login, password=password,
@@ -100,7 +98,7 @@ async def _run_pipeline(
     )
 
     timeframes_to_fetch = set([strategy_instance.primary_tf] + list(strategy_instance.context_tfs))
-    
+
     mtf_timeframes: dict[str, TimeframeData] = {}
     mt5_symbol = symbol
     current_price: float | None = None
@@ -113,19 +111,19 @@ async def _run_pipeline(
             tick = await bridge.get_tick(mt5_symbol)
             if tick:
                 current_price = (tick.get("ask", 0) + tick.get("bid", 0)) / 2
-                
+
             for tf_str in timeframes_to_fetch:
                 tf_int = _TIMEFRAME_MAP.get(tf_str)
                 if tf_int is None:
                     continue
-                    
+
                 count = strategy_instance.candle_counts.get(tf_str, 20)
                 # Ensure we fetch enough candles (add buffer)
                 candles_raw = await bridge.get_rates(mt5_symbol, tf_int, count + 10)
-                
+
                 if not candles_raw:
                     continue
-                    
+
                 ohlcv_list = []
                 for c in candles_raw:
                     ohlcv_list.append(OHLCV(
@@ -137,17 +135,17 @@ async def _run_pipeline(
                         tick_volume=c.get("tick_volume", 0),
                         spread=c.get("spread", 0)
                     ))
-                
+
                 # Keep exactly the number requested
                 ohlcv_list = ohlcv_list[-count:] if len(ohlcv_list) > count else ohlcv_list
                 mtf_timeframes[tf_str] = TimeframeData(tf=tf_str, candles=ohlcv_list)
-                
+
                 # Use primary_tf for trigger time
                 if tf_str == strategy_instance.primary_tf and ohlcv_list:
                     trigger_time = ohlcv_list[-1].time
                     if current_price is None:
                         current_price = ohlcv_list[-1].close
-                        
+
     except Exception as exc:
         await tracer.record(
             "ohlcv_fetch", status="error",
@@ -167,7 +165,7 @@ async def _run_pipeline(
         )
          tracer.finalize(status="failed")
          return None, None
-         
+
     # Build MTFMarketData
     market_data = MTFMarketData(
         symbol=symbol,
@@ -177,7 +175,7 @@ async def _run_pipeline(
         indicators={},  # Not computing default indicators for new strategy type right now
         trigger_time=trigger_time,
     )
-    
+
     await tracer.record(
         "ohlcv_fetch",
         input_data={"symbol": symbol, "mt5_symbol": mt5_symbol, "timeframes": list(timeframes_to_fetch)},
@@ -204,7 +202,7 @@ async def _run_pipeline(
         )
         tracer.finalize(status="failed")
         return None, None
-        
+
     await tracer.record(
         "strategy_execution",
         output_data={
@@ -288,7 +286,7 @@ async def _run_pipeline(
     sl_pips: float | None = None
     pip_value_per_lot: float | None = None
     balance: float | None = None
-    
+
     if strategy_overrides and strategy_overrides.lot_size is not None:
         effective_lot_size = strategy_overrides.lot_size
     else:
@@ -301,7 +299,7 @@ async def _run_pipeline(
                 balance = float(acct_info.get("balance", 0))
                 tick_value = float(sym_info.get("trade_tick_value", 0))
                 tick_size = float(sym_info.get("trade_tick_size", 0))
-                
+
                 pip_size = tick_size * 10 if tick_size > 0 else 0.0001
                 sl_distance = abs((signal.entry or 0) - (signal.stop_loss or 0))
                 sl_pips = sl_distance / pip_size if pip_size > 0 else 0
@@ -318,7 +316,7 @@ async def _run_pipeline(
                 "Dynamic lot size failed — using max_lot_size fallback | account_id=%s | %s",
                 account_id, exc,
             )
-            
+
     await tracer.record(
         "lot_size_calculated",
         output_data={
@@ -343,7 +341,7 @@ async def _run_pipeline(
         comment="AI-Trade",
         expiration_hours=pending_expiry_hours(timeframe),
     )
-    
+
     await tracer.record(
         "order_built",
         input_data={
@@ -467,7 +465,7 @@ async def fetch_strategy_signal(
 
     try:
         signal = await strategy_instance.run(market_data)
-    except Exception as exc:
+    except Exception:
         logger.exception("fetch_strategy_signal: strategy.run() failed | symbol=%s", symbol)
         return None, market_data, mt5_symbol
 
@@ -576,7 +574,7 @@ async def execute_abstract_for_account(
         t0 = time.monotonic()
         try:
             exec_result = await executor.execute(order_req)
-        except Exception as exc:
+        except Exception:
             logger.exception("MT5 execution failed in abstract group job | account_id=%s", account_id)
             tracer.finalize(status="failed", final_action=signal.action, journal_id=journal.id)
             return signal, journal.id

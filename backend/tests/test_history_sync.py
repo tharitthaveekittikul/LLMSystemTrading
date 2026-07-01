@@ -1,7 +1,7 @@
 """Tests for HistoryService."""
-import pytest
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 def _make_deal(ticket, position_id, entry, deal_type, symbol="EURUSD",
@@ -95,7 +95,7 @@ def test_format_for_llm_respects_limit():
     out_deals = [_make_deal(i, i+100, 1, 1, profit=10.0) for i in range(10)]
     result = HistoryService.format_for_llm(out_deals, {}, limit=3)
     # Only last 3 should appear
-    lines = [l for l in result.splitlines() if l.strip().startswith("-")]
+    lines = [line for line in result.splitlines() if line.strip().startswith("-")]
     assert len(lines) == 3
 
 

@@ -19,7 +19,8 @@ from pathlib import Path
 # when the script is run as: uv run python scripts/cleanup_test_data.py
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import delete, select, func
+from sqlalchemy import delete, func, select
+
 from db.postgres import AsyncSessionLocal
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

@@ -5,10 +5,10 @@ Key properties to verify:
   - Non-repainting: pivot only returned when 2 candles after it have closed
   - Alternating: consecutive same-type pivots collapsed to most extreme
 """
-from datetime import datetime, timezone, timedelta
-import pytest
+from datetime import datetime, timedelta, timezone
+
 from services.mtf_data import OHLCV
-from strategies.harmonic.swing_detector import find_pivots, Pivot
+from strategies.harmonic.swing_detector import Pivot, find_pivots
 
 
 def _candle(high: float, low: float, t_offset: int = 0) -> OHLCV:
@@ -18,7 +18,7 @@ def _candle(high: float, low: float, t_offset: int = 0) -> OHLCV:
 
 
 def _series(*high_low_pairs) -> list[OHLCV]:
-    return [_candle(h, l, i) for i, (h, l) in enumerate(high_low_pairs)]
+    return [_candle(h, low, i) for i, (h, low) in enumerate(high_low_pairs)]
 
 
 def test_find_pivot_high():

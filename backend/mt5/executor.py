@@ -13,7 +13,12 @@ from pydantic import BaseModel, Field, field_validator
 from db.postgres import AsyncSessionLocal
 from mt5.bridge import MT5Bridge
 from services.kill_switch import is_active as kill_switch_active
-from services.risk_manager import check_drawdown, check_hedging, check_position_limit, check_rate_limit, load_risk_config
+from services.risk_manager import (
+    check_hedging,
+    check_position_limit,
+    check_rate_limit,
+    load_risk_config,
+)
 
 try:
     import MetaTrader5 as mt5  # only for ORDER_TYPE_* and TRADE_ACTION_* constants
@@ -29,10 +34,14 @@ try:
     _TRADE_ACTION_SLTP     = mt5.TRADE_ACTION_SLTP      # 6
     _ORDER_FILLING_IOC     = mt5.ORDER_FILLING_IOC
 except ImportError:
-    _ORDER_TYPE_BUY = 0;        _ORDER_TYPE_SELL = 1
-    _ORDER_TYPE_BUY_LIMIT = 2;  _ORDER_TYPE_SELL_LIMIT = 3
-    _ORDER_TYPE_BUY_STOP = 4;   _ORDER_TYPE_SELL_STOP = 5
-    _TRADE_ACTION_DEAL = 1;     _TRADE_ACTION_PENDING = 5
+    _ORDER_TYPE_BUY = 0
+    _ORDER_TYPE_SELL = 1
+    _ORDER_TYPE_BUY_LIMIT = 2
+    _ORDER_TYPE_SELL_LIMIT = 3
+    _ORDER_TYPE_BUY_STOP = 4
+    _ORDER_TYPE_SELL_STOP = 5
+    _TRADE_ACTION_DEAL = 1
+    _TRADE_ACTION_PENDING = 5
     _TRADE_ACTION_SLTP = 6
     _ORDER_FILLING_IOC = 1
 

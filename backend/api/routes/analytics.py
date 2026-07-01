@@ -1,8 +1,9 @@
 import logging
 from datetime import date
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import case, cast, Date, extract, func, select
+from sqlalchemy import Date, case, cast, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Account, Trade

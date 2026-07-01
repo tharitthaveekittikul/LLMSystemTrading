@@ -9,8 +9,9 @@ modules each spin up the app lifespan in sequence.
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
+
 import db.postgres as postgres_module
 from core.config import settings
 
