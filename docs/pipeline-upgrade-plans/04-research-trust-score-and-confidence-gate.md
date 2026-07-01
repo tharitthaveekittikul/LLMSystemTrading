@@ -62,3 +62,77 @@ that modulates the confidence gate.
 - A pipeline trace entry shows the `trust_score`/`effective_threshold`
   used for that decision.
 - `uv run pytest -v` passes.
+
+## Post-implementation note (what already existed vs. what was built)
+
+Verified before writing code, per the lesson from sibling plans 01-03:
+`blocked_symbols`/`suggested_params` were confirmed genuinely dead exactly
+as the plan describes — `rag_context.py:299-315` only ever reads
+`lessons`/`lesson_history`, nothing reads the other two fields. No stale
+assumptions found here; the plan matched reality.
+
+### Actual changes on this branch
+
+- `services/research_loop.py`:
+  - `_wilson_lower_bound(wins, n)` — standard Wilson score interval lower
+    bound, a conservative win-rate estimate that pulls toward 0.5 for
+    small samples (a 3-for-3 win streak scores ~0.44, *not* near 1.0 —
+    this is intentional, not a bug; there isn't enough evidence yet).
+  - `_trust_score_from_stats(wins, n, min_sample=20)` — blends the Wilson
+    bound toward neutral 0.5 as `n` falls short of `min_sample`, exactly
+    as the plan specified (weight = `min(n/min_sample, 1.0)`).
+  - `compute_symbol_trust_scores(db, account_id, days=90)` — new
+    deterministic query (grouped count of wins/total per symbol over the
+    trailing 90 days), independent of the LLM agent's tool-calling
+    reliability. Called unconditionally at the end of `run()`, so
+    `symbol_trust_scores` is always populated in `research_config.json`
+    regardless of whether the LLM-agent path or the rule-based fallback
+    produced `lessons`/`blocked_symbols`.
+  - `compute_effective_threshold(base, trust_score, sensitivity, min_threshold, max_threshold)`
+    — pure function implementing the plan's clamp formula.
+  - `get_symbol_trust_score(symbol)` / `effective_confidence_threshold(symbol, base)`
+    — read-config convenience wrappers used by every gate call site.
+- Every live confidence-gate comparison against `settings.llm_confidence_threshold`
+  was switched to `effective_confidence_threshold(symbol, ...)` — there were
+  **5 call sites**, not 1: `ai/orchestrator/_pipeline.py` (the 3-role
+  `analyze_market` signal gate, the maintenance-decision gate, and the
+  Mode B `run_agent_pipeline` gate) and `services/ai_trading/_service.py`
+  (the primary post-signal-phase gate, and the stale-pending retry
+  re-check). All 5 needed updating for the trust score to actually apply
+  consistently regardless of which mode/path is running.
+- `services/ai_trading/_service.py`'s `confidence_gate` tracer step now
+  records `base_threshold`, `effective_threshold`, and `symbol_trust_score`
+  (previously only `threshold`) — this is what makes the trust-score
+  adjustment auditable per-signal on the dashboard, per the plan's own
+  acceptance criteria.
+- `tests/test_research_trust_score.py` (new, 15 tests) — covers the Wilson
+  bound, the neutral-blending behavior, the clamp formula, the
+  config-reading wrappers, the DB-query function (mocked session), and the
+  plan's specific acceptance criterion: identical raw signal confidence
+  (0.60) against a trusted-symbol threshold (0.58, passes) vs. a
+  distrusted-symbol threshold (0.82, HOLDs) — same confidence, different
+  outcome.
+
+### Deliberately reduced scope
+
+- **`sensitivity`/`min_threshold`/`max_threshold` are module-level
+  constants** (`TRUST_SENSITIVITY = 0.3`, `TRUST_MIN_THRESHOLD = 0.4`,
+  `TRUST_MAX_THRESHOLD = 0.9`, `TRUST_MIN_SAMPLE = 20`) in
+  `research_loop.py`, **not** DB/settings-backed as Part B step 3 asked
+  for. Making them tunable without a redeploy would mean another
+  `GlobalSettings` migration + settings-UI control, which felt like
+  scope creep for this PR given the core trust-score mechanism was the
+  priority. Flagging as a fast-follow if live tuning turns out to be
+  needed once this runs against real trade data.
+- `suggested_params` was left exactly as-is (still LLM-produced,
+  still unread by the trading pipeline, still surfaced via the existing
+  `/research` API for manual review) — per Part A step 4's own
+  instruction not to build auto-apply in this PR.
+
+### Not verified (needs a human + real trade history)
+
+- The trust-score math is unit-tested with synthetic win/loss counts, not
+  against real closed-trade data — recommend checking the computed
+  `symbol_trust_scores` in `research_config.json` look sane after the
+  next few research-loop runs on a real account before trusting the
+  confidence-gate nudges it produces.

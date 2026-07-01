@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -30,6 +31,15 @@ logger = logging.getLogger(__name__)
 RESEARCH_EVERY = 30  # run after every N closed trades
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 _CONFIG_PATH = os.path.join(_DATA_DIR, "research_config.json")
+
+# ── Confidence-gate modulation tuning ──────────────────────────────────────────
+# A symbol needs at least this many closed trades in the trailing window before
+# its trust score is allowed to move far from the neutral 0.5 — a handful of
+# trades shouldn't swing the confidence gate.
+TRUST_MIN_SAMPLE = 20
+TRUST_SENSITIVITY = 0.3
+TRUST_MIN_THRESHOLD = 0.4
+TRUST_MAX_THRESHOLD = 0.9
 
 
 async def maybe_run(account_id: int, db: AsyncSession) -> None:
@@ -54,11 +64,19 @@ async def run(account_id: int, db: AsyncSession) -> None:
     from db.models import Trade
     max_id = (await db.execute(sa_select(func.max(Trade.id)).where(Trade.account_id == account_id))).scalar() or 0
     config["last_trade_id_at_run"] = max_id
+
+    # Computed deterministically in Python from raw DB stats, independent of
+    # whether the LLM agent (above) succeeded or fell back to the rule-based
+    # path — this is the value the confidence gate actually reads, not
+    # `blocked_symbols` (kept for observability/backward-compat only).
+    config["symbol_trust_scores"] = await compute_symbol_trust_scores(db, account_id)
+
     _write_config(config)
     logger.info(
-        "research_loop complete | lessons=%d blocked_symbols=%s",
+        "research_loop complete | lessons=%d blocked_symbols=%s trust_scores=%s",
         len(config.get("lessons", [])),
         config.get("blocked_symbols", []),
+        config.get("symbol_trust_scores", {}),
     )
 
 
@@ -496,3 +514,101 @@ def read_config() -> dict:
             return json.load(f)
     except Exception:
         return {}
+
+
+# ── Trust score + confidence gate modulation ───────────────────────────────────
+#
+# blocked_symbols/suggested_params (above) are LLM-produced and advisory-only —
+# nothing in the trading pipeline reads them. symbol_trust_scores is computed
+# here deterministically from raw win/loss counts and is what the confidence
+# gate actually consults, via effective_confidence_threshold() below.
+
+def _wilson_lower_bound(wins: int, n: int, z: float = 1.96) -> float:
+    """Lower bound of the Wilson score confidence interval for a win rate.
+
+    A conservative estimate of the true win rate given a small sample —
+    unlike a raw win_rate, it naturally pulls toward 0.5 as n shrinks.
+    """
+    if n <= 0:
+        return 0.5
+    phat = wins / n
+    denom = 1 + z * z / n
+    center = phat + z * z / (2 * n)
+    margin = z * math.sqrt((phat * (1 - phat) + z * z / (4 * n)) / n)
+    return max(0.0, min(1.0, (center - margin) / denom))
+
+
+def _trust_score_from_stats(wins: int, n: int, min_sample: int = TRUST_MIN_SAMPLE) -> float:
+    """Blend the Wilson lower bound toward neutral 0.5 when the sample is small.
+
+    At n=0 the score is exactly 0.5 (no opinion); at n>=min_sample it's the
+    full Wilson lower bound. This avoids a small early sample swinging the
+    confidence gate the way a raw win_rate over 20-30 trades could.
+    """
+    if n <= 0:
+        return 0.5
+    weight = min(n / min_sample, 1.0) if min_sample > 0 else 1.0
+    wlb = _wilson_lower_bound(wins, n)
+    return round(0.5 * (1 - weight) + wlb * weight, 3)
+
+
+async def compute_symbol_trust_scores(
+    db: AsyncSession, account_id: int, days: int = 90
+) -> dict[str, float]:
+    """Compute a per-symbol trust score in [0, 1] from closed-trade win/loss counts.
+
+    0.5 = neutral (no strong opinion, usually due to an insufficient sample).
+    Above 0.5 = research trusts this symbol; below 0.5 = research is skeptical.
+    Used to modulate the confidence gate, never to hard-block a symbol.
+    """
+    from sqlalchemy import func, select
+
+    from db.models import Trade
+
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = (
+        await db.execute(
+            select(
+                Trade.symbol,
+                func.count(Trade.id).label("n"),
+                func.count(Trade.id).filter(Trade.profit > 0).label("wins"),
+            )
+            .where(
+                Trade.account_id == account_id,
+                Trade.closed_at.is_not(None),
+                Trade.closed_at >= since,
+                Trade.profit != 0,
+            )
+            .group_by(Trade.symbol)
+        )
+    ).all()
+    return {r.symbol: _trust_score_from_stats(r.wins, r.n) for r in rows}
+
+
+def get_symbol_trust_score(symbol: str) -> float:
+    """Read the last-computed trust score for a symbol; 0.5 (neutral) if unknown."""
+    return read_config().get("symbol_trust_scores", {}).get(symbol, 0.5)
+
+
+def compute_effective_threshold(
+    base_threshold: float,
+    trust_score: float,
+    *,
+    sensitivity: float = TRUST_SENSITIVITY,
+    min_threshold: float = TRUST_MIN_THRESHOLD,
+    max_threshold: float = TRUST_MAX_THRESHOLD,
+) -> float:
+    """Nudge the confidence gate threshold by how much research trusts a symbol.
+
+    trust_score > 0.5 (research likes this symbol) lowers the bar — more trades
+    get through. trust_score < 0.5 raises it — only higher-conviction trades on
+    a symbol research is skeptical of get through. Never blocks outright.
+    """
+    adjusted = base_threshold - (trust_score - 0.5) * sensitivity
+    return max(min_threshold, min(max_threshold, adjusted))
+
+
+def effective_confidence_threshold(symbol: str, base_threshold: float) -> float:
+    """Convenience wrapper: reads the persisted trust score for `symbol` and
+    returns the confidence-gate threshold to actually compare against."""
+    return compute_effective_threshold(base_threshold, get_symbol_trust_score(symbol))

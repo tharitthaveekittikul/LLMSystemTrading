@@ -34,6 +34,7 @@ from services.ai_trading._signal import SignalPhaseResult, run_signal_phase
 from services.alerting import send_alert
 from services.kill_switch import is_active as kill_switch_active
 from services.pipeline_tracer import PipelineTracer
+from services.research_loop import effective_confidence_threshold, get_symbol_trust_score
 
 logger = logging.getLogger(__name__)
 
@@ -214,17 +215,23 @@ class AITradingService:
 
         # ── 9. Confidence gate ───────────────────────────────────────────────
         action_before = signal.action
-        if signal.confidence < settings.llm_confidence_threshold:
+        trust_score = get_symbol_trust_score(symbol)
+        gate_threshold = effective_confidence_threshold(symbol, settings.llm_confidence_threshold)
+        if signal.confidence < gate_threshold:
             logger.info(
-                "Signal downgraded to HOLD — confidence %.2f below threshold %.2f | symbol=%s",
-                signal.confidence, settings.llm_confidence_threshold, symbol,
+                "Signal downgraded to HOLD — confidence %.2f below effective threshold %.2f "
+                "(base=%.2f trust_score=%.2f) | symbol=%s",
+                signal.confidence, gate_threshold, settings.llm_confidence_threshold,
+                trust_score, symbol,
             )
             signal.action = "HOLD"
         await tracer.record(
             "confidence_gate",
             input_data={
                 "confidence": signal.confidence,
-                "threshold": settings.llm_confidence_threshold,
+                "base_threshold": settings.llm_confidence_threshold,
+                "effective_threshold": gate_threshold,
+                "symbol_trust_score": trust_score,
             },
             output_data={"action_before": action_before, "action_after": signal.action},
         )
@@ -387,7 +394,7 @@ class AITradingService:
                     db=db, tracer=tracer,
                 )
                 signal = spr2.signal
-                if signal.confidence < settings.llm_confidence_threshold:
+                if signal.confidence < effective_confidence_threshold(symbol, settings.llm_confidence_threshold):
                     signal.action = "HOLD"
 
                 if signal.action == "HOLD":
