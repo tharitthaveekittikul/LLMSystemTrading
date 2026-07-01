@@ -757,6 +757,7 @@ async def analyze_market(
     market_analysis_llm: BaseChatModel | None = None,
     chart_vision_llm: BaseChatModel | None = None,
     execution_decision_llm: BaseChatModel | None = None,
+    indicator_agent_llm: BaseChatModel | None = None,
     context_ohlcv: dict[str, list[dict]] | None = None,
 ) -> LLMAnalysisResult:
     """Run 3-role LLM analysis pipeline: market_analysis → chart_vision → execution_decision.
@@ -783,6 +784,7 @@ async def analyze_market(
             market_analysis_llm=market_analysis_llm or default_llm,
             chart_vision_llm=chart_vision_llm or default_llm,
             execution_decision_llm=execution_decision_llm or default_llm,
+            indicator_agent_llm=indicator_agent_llm or default_llm,
         )
     ma_llm  = market_analysis_llm    or default_llm
     cv_llm  = chart_vision_llm       or default_llm

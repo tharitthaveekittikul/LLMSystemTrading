@@ -83,6 +83,7 @@ async def _run_llm_analysis(
     ma_llm = await _get_task_llm("market_analysis", db)
     cv_llm = await _get_task_llm("vision", db)
     ed_llm = await _get_task_llm("execution_decision", db)
+    ia_llm = await _get_task_llm("indicator_agent", db)
     na_llm = (
         await _get_task_llm("news_analysis", db)
         if strategy_overrides and strategy_overrides.news_filter
@@ -172,6 +173,7 @@ async def _run_llm_analysis(
         market_analysis_llm=ma_llm,
         chart_vision_llm=cv_llm,
         execution_decision_llm=ed_llm,
+        indicator_agent_llm=ia_llm,
         context_ohlcv=context_ohlcv if context_ohlcv else None,
     )
 

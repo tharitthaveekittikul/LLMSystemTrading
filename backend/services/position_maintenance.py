@@ -26,6 +26,7 @@ from db.models import Account, AccountStrategy, Strategy, Trade
 from db.redis import get_candle_cache, set_candle_cache
 from mt5.bridge import AccountCredentials, MT5Bridge
 from mt5.executor import MT5Executor
+from services.ai_trading import _get_task_llm
 from services.history_sync import HistoryService
 from services.kill_switch import is_active as kill_switch_active
 from services.market_context import fetch_upcoming_events, format_news_context
@@ -147,41 +148,6 @@ def validate_modify(
         )
 
     return ConstraintResult(passed=True)
-
-
-# ── Task LLM loader ────────────────────────────────────────────────────────────
-
-async def _get_task_llm(task: str, db: AsyncSession):
-    """Load task-specific LLM from DB assignments. Returns None to use env-var default."""
-    from sqlalchemy import select as _select
-
-    from ai.orchestrator import _build_llm
-    from core.security import decrypt as _decrypt
-    from db.models import LLMProviderConfig, TaskLLMAssignment
-
-    assignment = (await db.execute(
-        _select(TaskLLMAssignment).where(TaskLLMAssignment.task == task)
-    )).scalar_one_or_none()
-
-    if not assignment or not assignment.provider:
-        return None
-
-    provider_row = (await db.execute(
-        _select(LLMProviderConfig).where(
-            LLMProviderConfig.provider == assignment.provider,
-            LLMProviderConfig.is_active.is_(True),
-        )
-    )).scalar_one_or_none()
-
-    if not provider_row:
-        return None
-
-    api_key = _decrypt(provider_row.encrypted_api_key)
-    return _build_llm(
-        provider=assignment.provider,
-        api_key=api_key,
-        model=assignment.model_name or None,
-    )
 
 
 # ── PositionMaintenanceService ─────────────────────────────────────────────────
