@@ -77,3 +77,63 @@ moment reconciliation needs to run in the other direction (MT5 → DB).
   position-limit-blocked on its next scheduled run).
 - `uv run pytest -v` passes; add tests for the diff logic (filled/closed/
   cancelled/manual-detected cases) using a mocked MT5 bridge.
+
+## Post-implementation note (what already existed vs. what was built)
+
+Before writing code, a sanity check (as this doc itself asked for — "confirm
+this assumption") turned up two things this plan didn't know about:
+
+1. **`trades.source` already existed** (`String(100), default="manual"`) —
+   but with richer semantics than `ai`/`manual`: it holds `"ai"` (pure LLM
+   trade, no strategy bound), a strategy class name (e.g.
+   `"HarmonicStrategy"`), or the literal `"manual"` (set by
+   `services/history_sync.py` when an MT5 deal has no matching `trades` row).
+   A hardcoded MT5 `magic` number (`20250101`) and a `comment` (the same
+   `source` string, truncated) were also already applied to every
+   system-placed order in `mt5/executor.py`. **Part A's ask was therefore
+   already implemented** — no new column, no new migration, no new
+   comment/magic tagging was added. (Still unverified: whether the broker
+   actually preserves the `comment`/`magic` fields on `positions_get()`/
+   `orders_get()` — see "Not verified" below.)
+2. **`sync_orders`/`sync_account` in `api/routes/accounts/_sync.py` already
+   contained the full pending/filled/closed/cancelled reconciliation diff
+   logic**, including the research-loop trigger — but were reachable *only*
+   via their FastAPI routes (the dashboard's manual "Sync" button). Grepping
+   the whole backend confirmed no other in-process caller existed. Neither
+   function broadcast a WebSocket event on state change.
+
+Given that, the actual implementation (branch `feature/pending-order-sync`)
+was narrower than Part B originally described:
+
+- **No new reconciliation loop was written.** `services/equity_poller.py`'s
+  existing 60s per-account loop now calls the *existing* `sync_account()`
+  (new helper `_reconcile_account_orders`) once per account per cycle,
+  after the equity fetch — reusing, not duplicating, the diff/backfill/
+  research-loop-trigger logic already in `_sync.py`. This opens a second,
+  sequential (not concurrent) MT5 connection per account per cycle;
+  `MT5Bridge`'s process-wide `_MT5_LOCK` still guarantees only one live
+  MT5-thread-bound session at a time.
+- **WebSocket broadcast was added**, not already present: a
+  `_broadcast_positions_update()` helper in `_sync.py` now fires
+  `positions_update` (reusing `services/mt5_poller.py`'s normalized position
+  shape) whenever either function actually mutates a trade row or backfills
+  a closed deal.
+- **Verified rather than assumed** (per plan's own acceptance criteria):
+  `check_position_limit`/`check_hedging` in `services/risk_manager.py`
+  operate on the *live* MT5 positions list passed in by the caller, not the
+  `trades` DB table — so manually-opened exposure was already correctly
+  counted regardless of any DB row existing. `check_rate_limit` *does* query
+  `trades` (symbol + `opened_at`, no `source` filter), so a manually
+  backfilled trade (`source="manual"`) does count toward that symbol's
+  AI rate limit — a pre-existing behavior, left as-is. Both are covered by
+  tests in `backend/tests/test_order_reconciliation.py`.
+
+**Not verified (needs a human + Windows/MT5 + demo account):**
+- Whether the broker preserves the `comment`/`magic` fields on
+  `positions_get()`/`orders_get()` results (Part A, item 3) — MT5 isn't
+  installed in the Linux dev/CI sandbox that implemented this, so this could
+  only be checked with a real terminal.
+- End-to-end acceptance criteria 1 and 2 above (manual trade appears within
+  one poll cycle; AI limit order fill updates within one poll cycle) —
+  logic is unit-tested with a mocked bridge, but needs a live demo-account
+  run to confirm timing/behavior against a real broker.
