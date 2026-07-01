@@ -81,46 +81,82 @@ async def start_scheduler(db: "AsyncSession") -> None:
 
     # News calendar jobs — only when news_enabled
     if settings.news_enabled:
-        async def _run_news_fetch_job() -> None:
-            async with AsyncSessionLocal() as _db:
-                from services.news_fetcher import fetch_and_store_events
-                try:
-                    count = await fetch_and_store_events(_db)
-                    logger.info("Scheduled news fetch complete | rows=%d", count)
-                except Exception as exc:
-                    logger.error("Scheduled news fetch failed: %s", exc)
-
-        async def _run_news_analyze_job() -> None:
-            async with AsyncSessionLocal() as _db:
-                from services.news_analyzer import analyze_today_events
-                try:
-                    count = await analyze_today_events(_db)
-                    logger.info("Scheduled news analysis complete | analyzed=%d", count)
-                except Exception as exc:
-                    logger.error("Scheduled news analysis failed: %s", exc)
-
-        # Fetch at 23:00 UTC = 06:00 Bangkok
-        _scheduler.add_job(
-            _run_news_fetch_job,
-            trigger=CronTrigger(hour=23, minute=0, timezone="UTC"),
-            id="news_fetch_daily",
-            replace_existing=True,
-            misfire_grace_time=3600,
-        )
-        # Analyze at 00:00 UTC = 07:00 Bangkok
-        _scheduler.add_job(
-            _run_news_analyze_job,
-            trigger=CronTrigger(hour=0, minute=0, timezone="UTC"),
-            id="news_analyze_daily",
-            replace_existing=True,
-            misfire_grace_time=3600,
-        )
+        _register_news_jobs()
         logger.info("News calendar jobs registered (fetch 23:00 UTC, analyze 00:00 UTC)")
     else:
         logger.info("News calendar jobs skipped (news_enabled=False)")
 
     _scheduler.start()
     logger.info("Scheduler started with %d jobs", len(_scheduler.get_jobs()))
+
+
+# ── News calendar jobs (fetch 23:00 UTC, analyze 00:00 UTC) ─────────────────
+
+async def _run_news_fetch_job() -> None:
+    from db.postgres import AsyncSessionLocal
+    async with AsyncSessionLocal() as _db:
+        from services.news_fetcher import fetch_and_store_events
+        try:
+            count = await fetch_and_store_events(_db)
+            logger.info("Scheduled news fetch complete | rows=%d", count)
+        except Exception as exc:
+            logger.error("Scheduled news fetch failed: %s", exc)
+
+
+async def _run_news_analyze_job() -> None:
+    from db.postgres import AsyncSessionLocal
+    async with AsyncSessionLocal() as _db:
+        from services.news_analyzer import analyze_today_events
+        try:
+            count = await analyze_today_events(_db)
+            logger.info("Scheduled news analysis complete | analyzed=%d", count)
+        except Exception as exc:
+            logger.error("Scheduled news analysis failed: %s", exc)
+
+
+def _register_news_jobs() -> None:
+    """Add the news fetch/analyze cron jobs if they aren't already registered."""
+    # Fetch at 23:00 UTC = 06:00 Bangkok
+    _scheduler.add_job(
+        _run_news_fetch_job,
+        trigger=CronTrigger(hour=23, minute=0, timezone="UTC"),
+        id="news_fetch_daily",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Analyze at 00:00 UTC = 07:00 Bangkok
+    _scheduler.add_job(
+        _run_news_analyze_job,
+        trigger=CronTrigger(hour=0, minute=0, timezone="UTC"),
+        id="news_analyze_daily",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+
+def reschedule_news_jobs(enabled: bool) -> None:
+    """Add or remove the news calendar jobs after a live `news_enabled` toggle.
+
+    Without this, the PATCH /settings/global endpoint only flips the
+    in-memory/DB flag — the APScheduler jobs registered at `start_scheduler()`
+    time would keep running (or keep NOT running) until the next backend
+    restart. Called from the settings PATCH route so the toggle takes effect
+    immediately, matching the maintenance-interval hot-reload pattern.
+    """
+    if not _scheduler.running:
+        return
+    if enabled:
+        if _scheduler.get_job("news_fetch_daily") is None or _scheduler.get_job("news_analyze_daily") is None:
+            _register_news_jobs()
+            logger.info("News calendar jobs registered live (news_enabled toggled on)")
+    else:
+        removed = False
+        for job_id in ("news_fetch_daily", "news_analyze_daily"):
+            if _scheduler.get_job(job_id):
+                _scheduler.remove_job(job_id)
+                removed = True
+        if removed:
+            logger.info("News calendar jobs removed live (news_enabled toggled off)")
 
 
 def add_binding_jobs(binding) -> None:

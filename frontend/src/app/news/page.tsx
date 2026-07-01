@@ -46,6 +46,7 @@ export default function NewsPage() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>("All");
   const [currencyFilter, setCurrencyFilter] = useState<string>("");
+  const [symbolFilter, setSymbolFilter] = useState<string>("");
   const [fetchingNews, setFetchingNews] = useState(false);
   const [analyzingToday, setAnalyzingToday] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "day">("day");
@@ -62,6 +63,7 @@ export default function NewsPage() {
         if (impactFilter !== "All") params.set("impact", impactFilter);
         if (currencyFilter.trim())
           params.set("currency", currencyFilter.trim());
+        if (symbolFilter.trim()) params.set("symbol", symbolFilter.trim());
         const qs = params.toString();
         const data = await apiRequest<EconomicEvent[]>(
           `/news${qs ? `?${qs}` : ""}`,
@@ -83,7 +85,7 @@ export default function NewsPage() {
         setRefreshing(false);
       }
     },
-    [impactFilter, currencyFilter],
+    [impactFilter, currencyFilter, symbolFilter],
   );
 
   useEffect(() => {
@@ -223,6 +225,13 @@ export default function NewsPage() {
             placeholder="Currency…"
             value={currencyFilter}
             onChange={(e) => setCurrencyFilter(e.target.value.toUpperCase())}
+          />
+          <Input
+            className="h-8 w-32 text-sm"
+            placeholder="Symbol…"
+            title="Filter to events affecting this trading symbol (e.g. EURUSD)"
+            value={symbolFilter}
+            onChange={(e) => setSymbolFilter(e.target.value.toUpperCase())}
           />
           <div className="ml-auto flex items-center gap-1 border rounded-md p-0.5">
             <Button
