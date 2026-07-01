@@ -432,7 +432,7 @@ def _make_decision_node(execution_decision_llm: BaseChatModel):
                 "final_signal": {
                     "signal": "HOLD",
                     "confidence": 0.0,
-                    "justification": "pipeline_error",
+                    "justification": f"pipeline_error: {exc}",
                 },
                 "decision_tokens": _build_usage(None, execution_decision_llm, dur),
                 "decision_prompt": None,

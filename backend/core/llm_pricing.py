@@ -1,6 +1,6 @@
 """LLM pricing table — cost per 1M tokens, USD.
 
-Last verified: 2026-03-06.
+Last verified: 2026-07-02.
 Update this file when provider pricing changes.
 Source: provider pricing pages (no public API for pricing).
 OpenRouter pricing is fetched live from https://openrouter.ai/api/v1/models (1h cache).
@@ -52,7 +52,12 @@ LLM_PRICING: dict[str, dict[str, float]] = {
 
     # Anthropic Claude (Standard pricing for prompts <= 200k)
     # Note: Prices increase/double for context > 200k.
+    "claude-fable-5":            {"input": 10.00,  "output": 50.00},
+    "claude-mythos-5":           {"input": 10.00,  "output": 50.00},
+    "claude-opus-4-8":           {"input": 5.00,   "output": 25.00},
     "claude-opus-4-6":           {"input": 5.00,   "output": 25.00},
+    # Introductory pricing through 2026-08-31; standard rate is $3.00/$15.00 after.
+    "claude-sonnet-5":           {"input": 2.00,   "output": 10.00},
     "claude-sonnet-4-6":         {"input": 3.00,   "output": 15.00},
     "claude-haiku-4-5":          {"input": 1.00,   "output": 5.00},
 
