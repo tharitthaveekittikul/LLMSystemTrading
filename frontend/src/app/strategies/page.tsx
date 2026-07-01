@@ -8,31 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { strategiesApi } from "@/lib/api/strategies";
 import { accountsApi } from "@/lib/api/accounts";
 import type { Strategy, StrategyBinding, StrategyStats, Account } from "@/types/trading";
-import { Plus, Edit2, Trash2, Play, Loader2, LayoutGrid, List } from "lucide-react";
-
-const TYPE_COLORS: Record<string, string> = {
-  config: "bg-blue-100 text-blue-800",
-  prompt: "bg-purple-100 text-purple-800",
-  code: "bg-green-100 text-green-800",
-  llm_only: "bg-purple-100 text-purple-800",
-  rule_then_llm: "bg-blue-100 text-blue-800",
-  rule_only: "bg-green-100 text-green-800",
-  hybrid_validator: "bg-amber-100 text-amber-800",
-  multi_agent: "bg-orange-100 text-orange-800",
-};
+import { Plus, Edit2, LayoutGrid, List } from "lucide-react";
+import { StrategyCard } from "@/components/strategies/strategy-card";
 
 export default function StrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -188,215 +169,18 @@ export default function StrategiesPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {strategies.map((s) => (
-                <Card key={s.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base">{s.name}</CardTitle>
-                      <Switch
-                        checked={s.is_active}
-                        onCheckedChange={() => handleToggle(s)}
-                      />
-                    </div>
-                    {s.description && (
-                      <p className="text-xs text-muted-foreground">
-                        {s.description}
-                      </p>
-                    )}
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex flex-wrap gap-1">
-                      <Badge
-                        variant="secondary"
-                        className={
-                          TYPE_COLORS[s.execution_mode] ??
-                          TYPE_COLORS[s.strategy_type]
-                        }
-                      >
-                        {s.execution_mode.replace(/_/g, " ")}
-                      </Badge>
-                      <Badge variant="outline">{s.timeframe}</Badge>
-                      <Badge variant="outline">
-                        {s.trigger_type === "candle_close"
-                          ? "Candle close"
-                          : `Every ${s.interval_minutes}m`}
-                      </Badge>
-                    </div>
-                    <div className="text-xs text-muted-foreground space-y-0.5">
-                      <div>{s.symbols.join(", ")}</div>
-                      {bindingsMap[s.id] && bindingsMap[s.id].length > 0 ? (
-                        <div className="flex flex-col gap-1 mt-0.5">
-                          {bindingsMap[s.id].map((b) => (
-                            <div key={b.id} className="flex items-center gap-1.5">
-                              <Badge
-                                variant="outline"
-                                className={
-                                  b.is_live
-                                    ? "border-green-500 text-green-700"
-                                    : ""
-                                }
-                              >
-                                {b.is_live ? "Real" : "Demo"}
-                              </Badge>
-                              <span>
-                                [{b.login}] {b.account_name}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span>No accounts bound</span>
-                      )}
-                    </div>
-                    {/* Performance stats */}
-                    {statsMap[s.id] && (
-                      <div className="border-t pt-2 mt-1 space-y-1.5">
-                        {statsMap[s.id].backtest && (
-                          <div>
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                              Latest Backtest · {statsMap[s.id].backtest!.symbol}{" "}
-                              {statsMap[s.id].backtest!.timeframe}
-                            </p>
-                            <div className="flex gap-3 text-xs">
-                              <span>
-                                WR{" "}
-                                <span className="font-semibold">
-                                  {statsMap[s.id].backtest!.win_rate != null
-                                    ? `${(statsMap[s.id].backtest!.win_rate! * 100).toFixed(1)}%`
-                                    : "—"}
-                                </span>
-                              </span>
-                              <span>
-                                PF{" "}
-                                <span className="font-semibold">
-                                  {statsMap[
-                                    s.id
-                                  ].backtest!.profit_factor?.toFixed(2) ?? "—"}
-                                </span>
-                              </span>
-                              <span>
-                                Ret{" "}
-                                <span
-                                  className={`font-semibold ${(statsMap[s.id].backtest!.total_return_pct ?? 0) >= 0 ? "text-green-600" : "text-red-500"}`}
-                                >
-                                  {statsMap[s.id].backtest!.total_return_pct !=
-                                  null
-                                    ? `${statsMap[s.id].backtest!.total_return_pct! >= 0 ? "+" : ""}${statsMap[s.id].backtest!.total_return_pct!.toFixed(1)}%`
-                                    : "—"}
-                                </span>
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                        {!statsMap[s.id].backtest && (
-                          <p className="text-[10px] text-muted-foreground">
-                            No backtest run yet
-                          </p>
-                        )}
-                        {statsMap[s.id].live && (
-                          <div>
-                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                              Live
-                            </p>
-                            <div className="flex gap-3 text-xs">
-                              <span>
-                                Trades{" "}
-                                <span className="font-semibold">
-                                  {statsMap[s.id].live!.total_trades}
-                                </span>
-                              </span>
-                              <span>
-                                WR{" "}
-                                <span className="font-semibold">
-                                  {(
-                                    statsMap[s.id].live!.win_rate * 100
-                                  ).toFixed(1)}
-                                  %
-                                </span>
-                              </span>
-                              <span>
-                                P&L{" "}
-                                <span
-                                  className={`font-semibold ${statsMap[s.id].live!.total_pnl >= 0 ? "text-green-600" : "text-red-500"}`}
-                                >
-                                  {statsMap[s.id].live!.total_pnl >= 0
-                                    ? "+"
-                                    : ""}
-                                  {statsMap[s.id].live!.total_pnl.toFixed(2)}
-                                </span>
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                        {!statsMap[s.id].live && (
-                          <p className="text-[10px] text-muted-foreground">
-                            No live trades
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleTrigger(s.id)}
-                        disabled={!s.is_active || triggeringId === s.id}
-                      >
-                        {triggeringId === s.id ? (
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        ) : (
-                          <Play className="mr-1 h-3 w-3" />
-                        )}
-                        Trigger
-                      </Button>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href={`/strategies/${s.id}/edit`}>
-                          <Edit2 className="mr-1 h-3 w-3" />
-                          Edit
-                        </Link>
-                      </Button>
-                      <Dialog
-                        open={deletingId === s.id}
-                        onOpenChange={(open) =>
-                          setDeletingId(open ? s.id : null)
-                        }
-                      >
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="mr-1 h-3 w-3" />
-                            Delete
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Delete strategy?</DialogTitle>
-                            <DialogDescription>
-                              This will remove &ldquo;{s.name}&rdquo; and all
-                              scheduler jobs. This cannot be undone.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <DialogFooter>
-                            <Button
-                              variant="outline"
-                              onClick={() => setDeletingId(null)}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              onClick={() => handleDelete(s.id)}
-                            >
-                              Delete
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  </CardContent>
-                </Card>
+                <StrategyCard
+                  key={s.id}
+                  strategy={s}
+                  stats={statsMap[s.id]}
+                  bindings={bindingsMap[s.id]}
+                  deletingId={deletingId}
+                  triggeringId={triggeringId}
+                  onToggle={handleToggle}
+                  onTrigger={handleTrigger}
+                  onDelete={handleDelete}
+                  onDeleteDialogChange={setDeletingId}
+                />
               ))}
             </div>
           )
