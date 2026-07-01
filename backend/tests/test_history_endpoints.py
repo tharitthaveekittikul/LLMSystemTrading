@@ -39,7 +39,7 @@ async def test_get_history_returns_deals():
 
     app.dependency_overrides[real_get_db] = override_db
 
-    with patch("api.routes.accounts.HistoryService") as mock_svc_cls:
+    with patch("api.routes.accounts._stats.HistoryService") as mock_svc_cls:
         mock_svc = MagicMock()
         mock_svc.get_raw_deals = AsyncMock(return_value=deals)
         mock_svc_cls.return_value = mock_svc
@@ -69,7 +69,7 @@ async def test_sync_history_returns_imported_count():
 
     app.dependency_overrides[real_get_db] = override_db
 
-    with patch("api.routes.accounts.HistoryService") as mock_svc_cls:
+    with patch("api.routes.accounts._sync.HistoryService") as mock_svc_cls:
         mock_svc = MagicMock()
         mock_svc.sync_to_db = AsyncMock(return_value={"imported": 5, "total_fetched": 12})
         mock_svc_cls.return_value = mock_svc
@@ -136,7 +136,7 @@ async def test_sync_history_503_when_mt5_unavailable():
 
     app.dependency_overrides[real_get_db] = override_db
 
-    with patch("api.routes.accounts.HistoryService") as mock_svc_cls:
+    with patch("api.routes.accounts._sync.HistoryService") as mock_svc_cls:
         mock_svc = MagicMock()
         mock_svc.sync_to_db = AsyncMock(side_effect=RuntimeError("MT5 not installed"))
         mock_svc_cls.return_value = mock_svc
@@ -162,7 +162,7 @@ async def test_sync_history_502_on_connection_error():
 
     app.dependency_overrides[real_get_db] = override_db
 
-    with patch("api.routes.accounts.HistoryService") as mock_svc_cls:
+    with patch("api.routes.accounts._sync.HistoryService") as mock_svc_cls:
         mock_svc = MagicMock()
         mock_svc.sync_to_db = AsyncMock(side_effect=ConnectionError("MT5 broker unreachable"))
         mock_svc_cls.return_value = mock_svc
