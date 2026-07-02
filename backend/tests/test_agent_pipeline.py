@@ -192,6 +192,70 @@ async def test_pipeline_partial_failure():
 
 
 @pytest.mark.asyncio
+async def test_decision_node_retries_once_then_succeeds(monkeypatch):
+    """execution_decision raising once (e.g. a transient API error) is retried
+    once before giving up — the retry should succeed and produce a real signal."""
+    import asyncio
+
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
+    indicator_llm = mock_llm(_INDICATOR_RESPONSE)
+
+    decision_message = MagicMock()
+    decision_message.content = json.dumps(_DECISION_RESPONSE)
+    decision_llm = MagicMock()
+    decision_llm.ainvoke = AsyncMock(
+        side_effect=[Exception("temperature is deprecated for this model"), decision_message]
+    )
+
+    vision_llm = mock_llm(_PATTERN_RESPONSE)
+
+    settings = _make_settings(
+        enable_indicator_agent=True,
+        enable_pattern_agent=False,
+        enable_trend_agent=False,
+    )
+
+    pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
+    final_state = await pipeline.ainvoke(_make_initial_state())
+
+    assert decision_llm.ainvoke.await_count == 2
+    assert final_state["final_signal"]["signal"] == "LONG"
+    assert "pipeline_error" not in final_state["final_signal"]["justification"]
+
+
+@pytest.mark.asyncio
+async def test_decision_node_falls_back_to_hold_after_retry_exhausted(monkeypatch):
+    """execution_decision failing on both the first call and the retry surfaces
+    a pipeline_error HOLD with the underlying exception message."""
+    import asyncio
+
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
+    indicator_llm = mock_llm(_INDICATOR_RESPONSE)
+
+    decision_llm = MagicMock()
+    decision_llm.ainvoke = AsyncMock(side_effect=Exception("still broken"))
+
+    vision_llm = mock_llm(_PATTERN_RESPONSE)
+
+    settings = _make_settings(
+        enable_indicator_agent=True,
+        enable_pattern_agent=False,
+        enable_trend_agent=False,
+    )
+
+    pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
+    final_state = await pipeline.ainvoke(_make_initial_state())
+
+    assert decision_llm.ainvoke.await_count == 2
+    assert final_state["final_signal"]["signal"] == "HOLD"
+    assert final_state["final_signal"]["justification"] == "pipeline_error: still broken"
+
+
+@pytest.mark.asyncio
 async def test_pipeline_all_agents_enabled_end_to_end():
     """With all three sub-agents enabled and both chart images provided
     (the default configuration once enable_agent_pipeline=True), every

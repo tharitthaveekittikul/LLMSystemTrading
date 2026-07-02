@@ -41,10 +41,11 @@ def _build_llm(
 
     if resolved_provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
+        # temperature is rejected (400) on Sonnet 5 / Opus 4.7+ / Fable 5 — omit it and
+        # let the model use its default sampling behavior; steer via prompting instead.
         return ChatAnthropic(
             model=model or "claude-sonnet-4-6",
             api_key=api_key or settings.anthropic_api_key,
-            temperature=0,
         )
 
     if resolved_provider == "openrouter":

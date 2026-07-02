@@ -404,40 +404,50 @@ def _make_decision_node(execution_decision_llm: BaseChatModel):
             }
 
         t0 = time.monotonic()
-        try:
-            result, response, prompt = await run_decision_agent(
-                state.get("indicator_report"),
-                state.get("pattern_report"),
-                state.get("trend_report"),
-                state.get("market_context"),
-                execution_decision_llm,
-                vote_summary=vote_summary,
-            )
-            dur = int((time.monotonic() - t0) * 1000)
-            logger.info(
-                "decision_node finished: signal=%s confidence=%s",
-                result.get("signal"),
-                result.get("confidence"),
-            )
-            return {
-                "final_signal": result,
-                "decision_tokens": _build_usage(response, execution_decision_llm, dur),
-                "decision_prompt": prompt or None,
-                "vote_summary": vote_summary,
-            }
-        except Exception as exc:
-            dur = int((time.monotonic() - t0) * 1000)
-            logger.error("decision_node error: %s", exc)
-            return {
-                "final_signal": {
-                    "signal": "HOLD",
-                    "confidence": 0.0,
-                    "justification": f"pipeline_error: {exc}",
-                },
-                "decision_tokens": _build_usage(None, execution_decision_llm, dur),
-                "decision_prompt": None,
-                "vote_summary": vote_summary,
-            }
+        last_exc: Exception | None = None
+        for attempt in range(2):  # one refresh retry after a pipeline_error
+            try:
+                if attempt:
+                    logger.warning(
+                        "decision_node retrying execution_decision after error: %s", last_exc
+                    )
+                result, response, prompt = await run_decision_agent(
+                    state.get("indicator_report"),
+                    state.get("pattern_report"),
+                    state.get("trend_report"),
+                    state.get("market_context"),
+                    execution_decision_llm,
+                    vote_summary=vote_summary,
+                )
+                dur = int((time.monotonic() - t0) * 1000)
+                logger.info(
+                    "decision_node finished: signal=%s confidence=%s",
+                    result.get("signal"),
+                    result.get("confidence"),
+                )
+                return {
+                    "final_signal": result,
+                    "decision_tokens": _build_usage(response, execution_decision_llm, dur),
+                    "decision_prompt": prompt or None,
+                    "vote_summary": vote_summary,
+                }
+            except Exception as exc:
+                last_exc = exc
+                if attempt == 0:
+                    await asyncio.sleep(1)
+
+        dur = int((time.monotonic() - t0) * 1000)
+        logger.error("decision_node error after retry: %s", last_exc)
+        return {
+            "final_signal": {
+                "signal": "HOLD",
+                "confidence": 0.0,
+                "justification": f"pipeline_error: {last_exc}",
+            },
+            "decision_tokens": _build_usage(None, execution_decision_llm, dur),
+            "decision_prompt": None,
+            "vote_summary": vote_summary,
+        }
 
     return decision_node
 
