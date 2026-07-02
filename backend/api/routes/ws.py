@@ -5,8 +5,13 @@ The MT5 poller starts when the first client connects to an account
 and stops when the last client disconnects.
 
 Event format: { "event": "<event_name>", "data": { ... } }
+
+Clients may send `{"action": "watch_symbol", "symbol": "<broker symbol>"}`
+to receive periodic "tick_update" events for that symbol (e.g. a chart page
+tracking live price) — see mt5_poller._fetch_and_broadcast.
 """
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -19,7 +24,14 @@ logger = logging.getLogger(__name__)
 
 # { account_id: [WebSocket, ...] }
 _connections: dict[int, list[WebSocket]] = {}
+# { account_id: { WebSocket: symbol } } — one watched symbol per connection
+_watched_symbols: dict[int, dict[WebSocket, str]] = {}
 _lock = asyncio.Lock()
+
+
+def get_watched_symbols(account_id: int) -> set[str]:
+    """Return the distinct set of symbols any connected client is watching."""
+    return set(_watched_symbols.get(account_id, {}).values())
 
 
 @router.websocket("/dashboard/{account_id}")
@@ -40,12 +52,25 @@ async def dashboard_ws(websocket: WebSocket, account_id: int):
             msg = await websocket.receive_text()
             if msg == "ping":
                 await websocket.send_text("pong")
+                continue
+            try:
+                data = json.loads(msg)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if data.get("action") == "watch_symbol":
+                symbol = data.get("symbol")
+                async with _lock:
+                    if isinstance(symbol, str) and symbol:
+                        _watched_symbols.setdefault(account_id, {})[websocket] = symbol
+                    else:
+                        _watched_symbols.get(account_id, {}).pop(websocket, None)
     except WebSocketDisconnect:
         async with _lock:
             conns = _connections.get(account_id, [])
             if websocket in conns:
                 conns.remove(websocket)
             is_last = len(conns) == 0
+            _watched_symbols.get(account_id, {}).pop(websocket, None)
 
         logger.info("WebSocket disconnected | account_id=%s client=%s", account_id, websocket.client)
 

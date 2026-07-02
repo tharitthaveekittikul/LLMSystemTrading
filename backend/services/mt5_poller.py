@@ -175,7 +175,7 @@ async def _poll_session(account_id: int) -> None:
 
 async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState) -> set[int]:
     """Fetch MT5 data, broadcast to WebSocket clients, and return any just-closed ticket IDs."""
-    from api.routes.ws import broadcast
+    from api.routes.ws import broadcast, get_watched_symbols
 
     info = await bridge.get_account_info()
     positions = await bridge.get_positions()
@@ -217,6 +217,21 @@ async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState)
         "orders": [_normalize_order(o) for o in pending_orders],
         "broker_time": broker_time_iso,
     })
+
+    # Live price for any symbol a connected chart is currently watching
+    # (e.g. the trading-chart page) — one extra get_tick call per watched symbol.
+    for watched_symbol in get_watched_symbols(account_id):
+        try:
+            tick = await bridge.get_tick(watched_symbol)
+        except Exception:
+            tick = None
+        if tick:
+            await broadcast(account_id, "tick_update", {
+                "symbol": watched_symbol,
+                "bid": tick.get("bid"),
+                "ask": tick.get("ask"),
+                "time": tick.get("time"),
+            })
 
     # Detect closed positions (tickets present last cycle but gone now)
     current_tickets = {p.get("ticket") for p in positions if p.get("ticket")}
