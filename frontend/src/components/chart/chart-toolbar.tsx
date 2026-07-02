@@ -1,10 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
+import { accountsApi } from "@/lib/api/accounts";
 import { cn } from "@/lib/utils";
 
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"] as const;
@@ -34,6 +42,7 @@ const EMA_ACTIVE_STYLE: Record<EMAPeriod, string> = {
 
 interface ChartToolbarProps {
   symbol: string;
+  activeAccountId: number | null;
   timeframe: Timeframe;
   onTimeframeChange: (tf: Timeframe) => void;
   count: CandleCount;
@@ -48,8 +57,109 @@ interface ChartToolbarProps {
   isLoading?: boolean;
 }
 
+/** Symbol search backed by the account's real broker symbol list (accountsApi.getSymbols),
+ *  so picking one always lands on the exact broker-suffixed name (e.g. "XAUUSD.s")
+ *  instead of a bare guess that MT5 may not recognize. */
+function SymbolPicker({
+  symbol,
+  activeAccountId,
+}: {
+  symbol: string;
+  activeAccountId: number | null;
+}) {
+  const router = useRouter();
+  const [search, setSearch] = useState(symbol);
+  const [symbols, setSymbols] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Reset the input's text when the route symbol changes (e.g. navigating to
+  // a different /chart/[symbol]). Adjusting state during render — per React's
+  // guidance — instead of an effect, so it can't cause a cascading extra render.
+  const [prevSymbol, setPrevSymbol] = useState(symbol);
+  if (symbol !== prevSymbol) {
+    setPrevSymbol(symbol);
+    setSearch(symbol);
+  }
+
+  useEffect(() => {
+    if (!activeAccountId) return;
+    let cancelled = false;
+    setLoading(true);
+    accountsApi
+      .getSymbols(activeAccountId)
+      .then((data) => {
+        if (!cancelled) setSymbols(data);
+      })
+      .catch(() => {
+        if (!cancelled) setSymbols([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAccountId]);
+
+  // No account selected → nothing to offer, regardless of whatever the last
+  // fetch left in `symbols` (avoids clearing it via a synchronous effect).
+  const availableSymbols = activeAccountId ? symbols : [];
+
+  const filtered = useMemo(() => {
+    if (!search || search === symbol) return availableSymbols;
+    return availableSymbols.filter((s) => s.toLowerCase().includes(search.toLowerCase()));
+  }, [availableSymbols, search, symbol]);
+
+  function go(value: string) {
+    const s = value.trim();
+    if (s) router.push(`/chart/${s}`);
+  }
+
+  return (
+    <Combobox
+      value={symbol}
+      onValueChange={(v) => {
+        if (!v) return;
+        setSearch(v);
+        go(v);
+      }}
+    >
+      <ComboboxInput
+        placeholder={
+          !activeAccountId
+            ? "Select account first"
+            : loading
+              ? "Loading symbols…"
+              : "Search symbol"
+        }
+        disabled={!activeAccountId}
+        className="h-8 w-36 text-sm font-mono"
+        aria-label="Chart symbol"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !availableSymbols.includes(search)) go(search);
+        }}
+      />
+      <ComboboxContent className="min-w-[180px]">
+        <ComboboxList>
+          {filtered.map((s) => (
+            <ComboboxItem key={s} value={s}>
+              {s}
+            </ComboboxItem>
+          ))}
+        </ComboboxList>
+        <ComboboxEmpty>
+          {activeAccountId ? "No matching symbols" : "Select an account first"}
+        </ComboboxEmpty>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
 export function ChartToolbar({
   symbol,
+  activeAccountId,
   timeframe,
   onTimeframeChange,
   count,
@@ -63,46 +173,19 @@ export function ChartToolbar({
   onRefresh,
   isLoading,
 }: ChartToolbarProps) {
-  const router = useRouter();
-  const [input, setInput] = useState(symbol);
-
-  function handleSymbolSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const s = input.trim();
-    if (s) router.push(`/chart/${s}`);
-  }
-
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b bg-background shrink-0">
-      {/* Symbol search */}
-      <form onSubmit={handleSymbolSubmit} className="flex items-center gap-1.5">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <Input
-            className="pl-8 h-8 w-32 text-sm font-mono"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="XAUUSD"
-          />
-        </div>
-        <Button
-          type="submit"
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs font-semibold"
-        >
-          Go
-        </Button>
-      </form>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b bg-background shrink-0">
+      <SymbolPicker symbol={symbol} activeAccountId={activeAccountId} />
 
-      <div className="h-5 w-px bg-border" />
+      <div className="h-5 w-px bg-border max-sm:hidden" />
 
       {/* Timeframe segmented control */}
-      <div className="flex items-center bg-muted rounded-md p-0.5">
+      <div className="flex items-center bg-muted rounded-md p-0.5" role="group" aria-label="Timeframe">
         {TIMEFRAMES.map((tf) => (
           <button
             key={tf}
             type="button"
+            aria-pressed={timeframe === tf}
             onClick={() => onTimeframeChange(tf)}
             className={cn(
               "h-7 px-2.5 text-xs font-medium rounded transition-all",
@@ -116,14 +199,15 @@ export function ChartToolbar({
         ))}
       </div>
 
-      <div className="h-5 w-px bg-border" />
+      <div className="h-5 w-px bg-border max-sm:hidden" />
 
       {/* Candle count */}
-      <div className="flex items-center bg-muted rounded-md p-0.5">
+      <div className="flex items-center bg-muted rounded-md p-0.5" role="group" aria-label="Candle count">
         {COUNTS.map((n) => (
           <button
             key={n}
             type="button"
+            aria-pressed={count === n}
             onClick={() => onCountChange(n)}
             className={cn(
               "h-7 px-2.5 text-xs font-medium rounded transition-all",
@@ -154,15 +238,16 @@ export function ChartToolbar({
         </>
       )}
 
-      <div className="h-5 w-px bg-border" />
+      <div className="h-5 w-px bg-border max-sm:hidden" />
 
       {/* Indicators */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" role="group" aria-label="Indicators">
         <span className="text-[10px] text-muted-foreground font-medium pr-0.5">EMA</span>
         {EMA_PERIODS.map((p) => (
           <button
             key={p}
             type="button"
+            aria-pressed={emaActive.includes(p)}
             onClick={() => onEmaToggle(p)}
             className={cn(
               "h-7 px-2 text-xs font-medium rounded border transition-all",
@@ -176,6 +261,7 @@ export function ChartToolbar({
         ))}
         <button
           type="button"
+          aria-pressed={rsiActive}
           onClick={onRsiToggle}
           className={cn(
             "h-7 px-2 text-xs font-medium rounded border transition-all",

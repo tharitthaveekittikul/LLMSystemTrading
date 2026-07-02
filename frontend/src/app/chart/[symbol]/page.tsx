@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense } from "react";
-import { useParams, useSearchParams } from "next/navigation";
-import { AlertCircle, BarChart2, Loader2 } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { AlertCircle, BarChart2, Loader2, Radio } from "lucide-react";
 import { useTheme } from "next-themes";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/app-header";
+import { AccountSelector } from "@/components/dashboard/account-selector";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   ChartToolbar,
   type Timeframe,
@@ -17,7 +19,9 @@ import {
   type OHLCVCandle,
 } from "@/components/chart/trading-chart";
 import { useTradingStore } from "@/hooks/use-trading-store";
-import { apiRequest } from "@/lib/api";
+import { useWebSocket } from "@/hooks/use-websocket";
+import { apiRequest, ApiError } from "@/lib/api";
+import type { TickUpdateData } from "@/types/trading";
 import { cn } from "@/lib/utils";
 
 // Auto-refresh intervals per timeframe (ms). H4/D1/W1 not auto-refreshed.
@@ -42,9 +46,57 @@ const TF_KEYS: Record<string, Timeframe> = {
 };
 
 const VALID_COUNTS = new Set<number>([200, 500, 1000]);
+const REQUEST_TIMEOUT_MS = 15_000;
+
+interface ChartDataResponse {
+  symbol: string;
+  candles: OHLCVCandle[];
+}
+
+interface FriendlyError {
+  title: string;
+  detail?: string;
+}
+
+function toFriendlyError(err: unknown): FriendlyError {
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return {
+      title: "Request timed out",
+      detail: "The broker connection is taking too long to respond.",
+    };
+  }
+  if (err instanceof ApiError) {
+    if (err.status === 503) return { title: "Broker unavailable", detail: err.message };
+    if (err.status === 404) return { title: "Account not found", detail: err.message };
+    if (err.status === 400) return { title: "Invalid request", detail: err.message };
+    if (err.status === 0) return { title: "Network error", detail: err.message };
+    return { title: "Couldn't load chart data", detail: err.message };
+  }
+  return {
+    title: "Couldn't load chart data",
+    detail: err instanceof Error ? err.message : undefined,
+  };
+}
+
+function ChartSkeleton() {
+  // Deterministic pseudo-random bar heights so the skeleton doesn't look like
+  // a repeating pattern, without using Math.random() (stable across re-renders).
+  const heights = useMemo(
+    () => Array.from({ length: 40 }, (_, i) => 20 + ((i * 37) % 60)),
+    [],
+  );
+  return (
+    <div className="absolute inset-0 flex items-end gap-1 px-6 pb-10 pt-16 opacity-60">
+      {heights.map((h, i) => (
+        <Skeleton key={i} className="flex-1" style={{ height: `${h}%` }} />
+      ))}
+    </div>
+  );
+}
 
 function ChartPageContent() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const symbol = params.symbol as string;
   const { resolvedTheme } = useTheme();
@@ -71,8 +123,14 @@ function ChartPageContent() {
   const [emaActive, setEmaActive] = useState<EMAPeriod[]>([20, 50]);
   const [rsiActive, setRsiActive] = useState(true);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
+  // The broker's real symbol name (e.g. "XAUUSD.s"), resolved server-side.
+  // Positions/pending orders/markers must filter against THIS, not the raw
+  // URL segment, since MT5 reports the suffixed name.
+  const [resolvedSymbol, setResolvedSymbol] = useState(symbol);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FriendlyError | null>(null);
+  const [stale, setStale] = useState(false);
+  const [lastTick, setLastTick] = useState<TickUpdateData | null>(null);
 
   function handleEmaToggle(p: EMAPeriod) {
     setEmaActive((prev) =>
@@ -80,10 +138,11 @@ function ChartPageContent() {
     );
   }
 
-  // Remember last visited symbol + timezone across sessions
+  // Remember last visited symbol + timezone across sessions (prefer the
+  // resolved broker symbol once known, so next visit skips resolution).
   useEffect(() => {
-    localStorage.setItem("lastChartSymbol", symbol);
-  }, [symbol]);
+    localStorage.setItem("lastChartSymbol", resolvedSymbol || symbol);
+  }, [symbol, resolvedSymbol]);
 
   useEffect(() => {
     localStorage.setItem("chartTimezone", timezone);
@@ -101,17 +160,24 @@ function ChartPageContent() {
     async (silent = false) => {
       if (!activeAccountId) return;
       if (!silent) setLoading(true);
-      setError(null);
       try {
-        const data = await apiRequest<OHLCVCandle[]>(
+        const data = await apiRequest<ChartDataResponse>(
           `/market-data/${symbol}/${timeframe}?account_id=${activeAccountId}&count=${count}`,
+          { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
         );
-        setCandles(data);
+        setCandles(data.candles);
+        setResolvedSymbol(data.symbol);
+        setError(null);
+        setStale(false);
       } catch (err) {
-        if (!silent)
-          setError(
-            err instanceof Error ? err.message : "Failed to load chart data",
-          );
+        if (!silent) {
+          setError(toFriendlyError(err));
+        } else {
+          // Background refresh failures shouldn't blank out a working chart —
+          // surface a small "stale" indicator instead of a scary error overlay.
+          setStale(true);
+          console.error("[chart] background refresh failed:", err);
+        }
       } finally {
         if (!silent) setLoading(false);
       }
@@ -132,11 +198,27 @@ function ChartPageContent() {
     return () => clearInterval(id);
   }, [timeframe, activeAccountId, fetchCandles]);
 
+  // Self-heal the URL once the broker's real symbol name is known, so a
+  // bookmarked/typed bare name (e.g. "XAUUSD") settles on the resolved one
+  // (e.g. "XAUUSD.s") for future visits and copy-paste links.
+  useEffect(() => {
+    if (!resolvedSymbol || resolvedSymbol === symbol) return;
+    const url = new URL(window.location.href);
+    router.replace(`/chart/${resolvedSymbol}${url.search}`);
+  }, [resolvedSymbol, symbol, router]);
+
   // Keyboard shortcuts: 1–8 switch timeframes when no input is focused
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || e.metaKey || e.ctrlKey)
+      const target = e.target as HTMLElement;
+      const tag = target.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        target.isContentEditable ||
+        e.metaKey ||
+        e.ctrlKey
+      )
         return;
       const tf = TF_KEYS[e.key];
       if (tf) setTimeframe(tf);
@@ -145,15 +227,39 @@ function ChartPageContent() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const symbolPositions = positions.filter((p) => p.symbol === symbol);
-  const symbolOrders = pendingOrders.filter((o) => o.symbol === symbol);
+  // Live price: subscribe to tick_update for the resolved symbol over the
+  // dashboard WebSocket (backend broadcasts every ~5s while watched).
+  const resolvedSymbolRef = useRef(resolvedSymbol);
+  useEffect(() => {
+    resolvedSymbolRef.current = resolvedSymbol;
+  }, [resolvedSymbol]);
+
+  const wsHandlers = useRef({
+    tick_update: (data: unknown) => {
+      const d = data as TickUpdateData;
+      setLastTick((prev) => (d.symbol === resolvedSymbolRef.current ? d : prev));
+    },
+  });
+
+  const { isConnected, send } = useWebSocket(activeAccountId, wsHandlers.current);
+
+  useEffect(() => {
+    setLastTick(null);
+    if (isConnected && resolvedSymbol) {
+      send({ action: "watch_symbol", symbol: resolvedSymbol });
+    }
+  }, [isConnected, resolvedSymbol, send]);
+
+  const symbolPositions = positions.filter((p) => p.symbol === resolvedSymbol);
+  const symbolOrders = pendingOrders.filter((o) => o.symbol === resolvedSymbol);
 
   return (
     <SidebarInset className="flex flex-col h-screen overflow-hidden" data-layout="fullscreen">
-      <AppHeader title="Chart" subtitle={symbol} />
+      <AppHeader title="Chart" subtitle={resolvedSymbol} />
 
       <ChartToolbar
         symbol={symbol}
+        activeAccountId={activeAccountId}
         timeframe={timeframe}
         onTimeframeChange={setTimeframe}
         count={count}
@@ -259,19 +365,47 @@ function ChartPageContent() {
 
       {/* Chart area */}
       <div className="relative flex-1 min-h-0">
-        {loading && (
+        {/* Live connection badge */}
+        {activeAccountId && candles.length > 0 && (
+          <div className="absolute top-2 right-3 z-10 flex items-center gap-2">
+            {stale && (
+              <span className="text-[10px] text-amber-500/90 font-medium">
+                Live updates paused
+              </span>
+            )}
+            <div
+              className={cn(
+                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                isConnected
+                  ? "border-green-500/30 bg-green-500/10 text-green-500 dark:text-green-400"
+                  : "border-border bg-muted/50 text-muted-foreground",
+              )}
+              title={isConnected ? "Receiving live price updates" : "Live updates disconnected"}
+            >
+              <Radio className={cn("h-2.5 w-2.5", isConnected && "animate-pulse")} />
+              {isConnected ? "Live" : "Offline"}
+            </div>
+          </div>
+        )}
+
+        {loading && candles.length === 0 && <ChartSkeleton />}
+
+        {loading && candles.length > 0 && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         )}
 
         {error && !loading && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-            <AlertCircle className="h-6 w-6 text-destructive" />
-            <p className="text-sm">{error}</p>
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-center px-6">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            <p className="text-sm font-medium text-foreground">{error.title}</p>
+            {error.detail && (
+              <p className="text-xs text-muted-foreground max-w-md">{error.detail}</p>
+            )}
             <button
               onClick={() => fetchCandles()}
-              className="text-xs underline underline-offset-2 hover:text-foreground"
+              className="mt-1 text-xs font-medium underline underline-offset-2 hover:text-foreground text-muted-foreground"
             >
               Retry
             </button>
@@ -279,8 +413,12 @@ function ChartPageContent() {
         )}
 
         {!activeAccountId && !loading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center text-muted-foreground text-sm">
-            Select an account on the Dashboard to load chart data.
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-center px-6">
+            <BarChart2 className="h-10 w-10 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-foreground">
+              Select an account to load chart data
+            </p>
+            <AccountSelector />
           </div>
         )}
 
@@ -289,7 +427,7 @@ function ChartPageContent() {
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-muted-foreground">
             <BarChart2 className="h-8 w-8 opacity-30" />
             <p className="text-sm">
-              No data for {symbol} on {timeframe}
+              No data for {resolvedSymbol} on {timeframe}
             </p>
             <button
               onClick={() => fetchCandles()}
@@ -305,11 +443,13 @@ function ChartPageContent() {
             candles={candles}
             positions={symbolPositions}
             pendingOrders={symbolOrders}
-            symbol={symbol}
+            symbol={resolvedSymbol}
             isDark={isDark}
             timezone={timezone || undefined}
+            viewResetKey={`${resolvedSymbol}-${timeframe}-${count}`}
             emaActive={emaActive}
             rsiActive={rsiActive}
+            lastTick={lastTick}
           />
         )}
       </div>

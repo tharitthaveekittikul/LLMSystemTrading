@@ -157,6 +157,7 @@ export type WSEventType =
   | "equity_update"
   | "positions_update"
   | "pending_orders_update"
+  | "tick_update"
   | "trade_opened"
   | "trade_closed"
   | "ai_signal"
@@ -203,6 +204,13 @@ export interface PendingOrdersUpdateData {
   account_id: number;
   orders: PendingOrder[];
   broker_time?: string; // UTC ISO — broker server clock for expiry skew correction
+}
+
+export interface TickUpdateData {
+  symbol: string;
+  bid: number;
+  ask: number;
+  time: number; // broker epoch seconds
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────

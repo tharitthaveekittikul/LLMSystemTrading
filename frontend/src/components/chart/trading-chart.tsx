@@ -57,6 +57,9 @@ interface TradingChartProps {
   tradeMarkers?: TradeMarker[];
   /** When set, chart scrolls to show this unix timestamp (seconds). Used by trade table row-click. */
   focusTime?: number;
+  /** Live WebSocket tick for `symbol` — nudges the last bar's close between
+   *  REST refreshes without waiting for the next candle-close poll. */
+  lastTick?: { bid: number; ask: number } | null;
 }
 
 export function TradingChart({
@@ -71,6 +74,7 @@ export function TradingChart({
   rsiActive = false,
   tradeMarkers,
   focusTime,
+  lastTick,
 }: TradingChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -510,6 +514,27 @@ export function TradingChart({
       }
     }
   }, [focusTime]);
+
+  // ── Effect 9: nudge the last bar's close with a live tick ──────────────────
+  // Merges into the existing last bar (same `time`) rather than appending —
+  // series.update() only appends when the given time is greater than the
+  // last point's, so this is safe to call on every tick without creating
+  // duplicate/out-of-order bars. The next REST refresh (candle close) is
+  // still the source of truth and fully overwrites this via Effect 1b.
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series || !lastTick || candles.length === 0) return;
+    const last = [...candles].sort((a, b) => a.time - b.time).at(-1);
+    if (!last) return;
+    const price = (lastTick.bid + lastTick.ask) / 2;
+    series.update({
+      time: last.time as UTCTimestamp,
+      open: last.open,
+      high: Math.max(last.high, price),
+      low: Math.min(last.low, price),
+      close: price,
+    });
+  }, [lastTick, candles]);
 
   return <div ref={containerRef} className="relative w-full h-full" />;
 }

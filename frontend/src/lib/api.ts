@@ -14,23 +14,42 @@ function getWsBaseUrl(): string {
   return "ws://localhost:8000";
 }
 
+/** Thrown by apiRequest on a non-2xx response. Carries the HTTP status so
+ *  callers can distinguish e.g. "broker unavailable" (503) from "not found"
+ *  (404) instead of showing the same generic error for everything. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(`${API_V1}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_V1}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new ApiError("Network error — is the backend reachable?", 0);
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(
+    throw new ApiError(
       (errorData as { detail?: string }).detail ||
         `API Error: ${response.statusText}`,
+      response.status,
     );
   }
 
