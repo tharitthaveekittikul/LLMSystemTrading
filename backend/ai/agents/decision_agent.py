@@ -76,6 +76,21 @@ def _strip_fences(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _extract_json(text: str) -> str:
+    """Best-effort extraction of a JSON object from LLM output that may include
+    leading/trailing prose in addition to (or instead of) markdown fences."""
+    cleaned = _strip_fences(text)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return cleaned[start : end + 1]
+    return cleaned
+
+
+class DecisionParseError(Exception):
+    """Raised when the execution-decision LLM's response can't be parsed as JSON."""
+
+
 def _format_report(name: str, report: dict | None) -> str:
     if report is None:
         return f"{name}: not available"
@@ -104,22 +119,13 @@ async def run_decision_agent(
             confirming a 2/3 (or 3/3) agreement vs. reconciling a real split.
 
     Returns:
-        Tuple of (result_dict, ai_message). result_dict has signal, confidence, justification,
-        entry, R:R, and invalidation condition. ai_message is None on parse failure.
-    """
-    _fallback = {
-        "signal": "HOLD",
-        "confidence": 0.0,
-        "justification": "parse_failed",
-        "forecast_horizon": "unknown",
-        "risk_reward_ratio": 1.0,
-        "suggested_entry": 0.0,
-        "stop_loss": 0.0,
-        "take_profit": 0.0,
-        "expiry_multiplier": 1.0,
-        "invalidation_condition": "unknown",
-    }
+        Tuple of (result_dict, ai_message, prompt). result_dict has signal, confidence,
+        justification, entry, R:R, and invalidation condition.
 
+    Raises:
+        DecisionParseError: if the LLM response can't be parsed as JSON. Callers should
+            treat this the same as any other transient LLM failure (i.e. retry).
+    """
     vote_text = ""
     if vote_summary:
         vote_text = (
@@ -141,14 +147,15 @@ async def run_decision_agent(
 
     messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=human_text)]
 
+    raw = ""
     try:
         response = await llm.ainvoke(messages)
         raw = _extract_text(response.content)
-        cleaned = _strip_fences(raw)
-        result: dict = json.loads(cleaned)
-    except (json.JSONDecodeError, ValueError, AttributeError):
-        logger.warning("decision_agent: JSON parse failed, returning HOLD fallback")
-        return _fallback, None, None
+        result: dict = json.loads(_extract_json(raw))
+    except (json.JSONDecodeError, ValueError, AttributeError) as exc:
+        logger.warning("decision_agent: JSON parse failed: %s. raw=%r", exc, raw)
+        excerpt = raw[:300].replace("\n", " ") if raw else "<empty response>"
+        raise DecisionParseError(f"{exc} — raw response: {excerpt!r}") from exc
 
     logger.info(
         "decision_agent complete: signal=%s confidence=%.2f",

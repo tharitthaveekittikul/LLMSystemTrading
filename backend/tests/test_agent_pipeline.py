@@ -12,6 +12,7 @@ from ai.agent_pipeline import (
     _trend_vote,
     build_pipeline,
 )
+from ai.agents.decision_agent import DecisionParseError, _extract_json, run_decision_agent
 
 
 def make_ohlcv(n=60):
@@ -253,6 +254,101 @@ async def test_decision_node_falls_back_to_hold_after_retry_exhausted(monkeypatc
     assert decision_llm.ainvoke.await_count == 2
     assert final_state["final_signal"]["signal"] == "HOLD"
     assert final_state["final_signal"]["justification"] == "pipeline_error: still broken"
+
+
+def test_extract_json_recovers_object_wrapped_in_prose():
+    """Claude sometimes adds a preamble/closing sentence around the JSON payload despite
+    being told not to — extraction should still find the object instead of failing."""
+    wrapped = (
+        "Sure, here's my analysis:\n"
+        '{"signal": "HOLD", "confidence": 0.4}\n'
+        "Hope this helps!"
+    )
+    assert json.loads(_extract_json(wrapped)) == {"signal": "HOLD", "confidence": 0.4}
+
+
+@pytest.mark.asyncio
+async def test_run_decision_agent_raises_on_non_json_response():
+    """A response that isn't valid JSON (even after fence/prose stripping) must raise
+    DecisionParseError instead of silently returning a HOLD fallback — the caller
+    (decision_node) is responsible for retry/fallback, not this function."""
+    message = MagicMock()
+    message.content = "not json at all"
+    llm = MagicMock()
+    llm.ainvoke = AsyncMock(return_value=message)
+
+    with pytest.raises(DecisionParseError, match="not json at all"):
+        await run_decision_agent(None, None, None, {"symbol": "EURUSD"}, llm)
+
+
+@pytest.mark.asyncio
+async def test_decision_node_retries_once_on_malformed_json_then_succeeds(monkeypatch):
+    """A non-JSON execution_decision response (e.g. Claude adding prose before the
+    JSON) is treated as a retryable failure, not silently downgraded to a HOLD with
+    confidence 0 on the very first attempt."""
+    import asyncio
+
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
+    indicator_llm = mock_llm(_INDICATOR_RESPONSE)
+
+    malformed_message = MagicMock()
+    malformed_message.content = "Looking at the reports, I'd lean bullish here."
+    decision_message = MagicMock()
+    decision_message.content = json.dumps(_DECISION_RESPONSE)
+    decision_llm = MagicMock()
+    decision_llm.ainvoke = AsyncMock(side_effect=[malformed_message, decision_message])
+
+    vision_llm = mock_llm(_PATTERN_RESPONSE)
+
+    settings = _make_settings(
+        enable_indicator_agent=True,
+        enable_pattern_agent=False,
+        enable_trend_agent=False,
+    )
+
+    pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
+    final_state = await pipeline.ainvoke(_make_initial_state())
+
+    assert decision_llm.ainvoke.await_count == 2
+    assert final_state["final_signal"]["signal"] == "LONG"
+    assert "pipeline_error" not in final_state["final_signal"]["justification"]
+
+
+@pytest.mark.asyncio
+async def test_decision_node_falls_back_to_hold_after_malformed_json_twice(monkeypatch):
+    """Malformed JSON on both the first attempt and the retry surfaces a pipeline_error
+    HOLD that includes a raw-response excerpt, instead of a bare 'parse_failed' with no
+    retry and no diagnostic trail."""
+    import asyncio
+
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
+    indicator_llm = mock_llm(_INDICATOR_RESPONSE)
+
+    malformed_message = MagicMock()
+    malformed_message.content = "not json at all"
+    decision_llm = MagicMock()
+    decision_llm.ainvoke = AsyncMock(return_value=malformed_message)
+
+    vision_llm = mock_llm(_PATTERN_RESPONSE)
+
+    settings = _make_settings(
+        enable_indicator_agent=True,
+        enable_pattern_agent=False,
+        enable_trend_agent=False,
+    )
+
+    pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
+    final_state = await pipeline.ainvoke(_make_initial_state())
+
+    assert decision_llm.ainvoke.await_count == 2
+    assert final_state["final_signal"]["signal"] == "HOLD"
+    justification = final_state["final_signal"]["justification"]
+    assert justification.startswith("pipeline_error:")
+    assert "not json at all" in justification
 
 
 @pytest.mark.asyncio

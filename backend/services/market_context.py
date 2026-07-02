@@ -47,7 +47,7 @@ async def fetch_upcoming_events(
     for event in events:
         if event.get("impact") not in ("High", "Medium"):
             continue
-        if event.get("currency") not in currencies:
+        if event.get("country") not in currencies:
             continue
         try:
             event_dt = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
@@ -58,7 +58,7 @@ async def fetch_upcoming_events(
         filtered.append(
             {
                 "time": event_dt.isoformat(),
-                "currency": event["currency"],
+                "currency": event["country"],
                 "title": event.get("title", ""),
                 "impact": event.get("impact", ""),
                 "forecast": event.get("forecast", ""),
