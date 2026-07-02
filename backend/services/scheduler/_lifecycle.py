@@ -254,10 +254,10 @@ def trigger_binding_manually(binding) -> None:
                 trigger="date",
                 run_date=datetime.now(timezone.utc),
                 id=one_off_id,
-                args=[strategy.id, symbol, strategy.timeframe, module_path, class_name],
+                args=[strategy.id, symbol, strategy.timeframe, module_path, class_name, True],
                 replace_existing=True,
                 misfire_grace_time=60,
             )
-            logger.info("Manually triggered group job %s", one_off_id)
+            logger.info("Manually triggered group job %s (skip-hours bypassed)", one_off_id)
         except Exception as e:
             logger.exception("Failed to trigger group job manually %s: %s", one_off_id, e)

@@ -202,6 +202,104 @@ async def test_run_group_strategy_job_executes_only_clear_accounts():
 
 
 @pytest.mark.asyncio
+async def test_run_group_strategy_job_skips_during_configured_skip_hour():
+    """Scheduled fire during a configured skip hour must not call AITradingService."""
+    import json
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import services.scheduler as sched_module
+
+    job_id = "strat_10_EURUSD"
+    sched_module._group_accounts[job_id] = [
+        (101, {"lot_size": 0.1, "sl_pips": 20.0, "tp_pips": 40.0, "news_filter": True, "custom_prompt": None}),
+    ]
+
+    current_hour = datetime.now(ZoneInfo("UTC")).hour
+    fake_strategy = MagicMock()
+    fake_strategy.id = 10
+    fake_strategy.skip_hours_timezone = "UTC"
+    fake_strategy.skip_hours = json.dumps([current_hour])
+    fake_strategy.skip_weekdays = None
+
+    mock_db = AsyncMock()
+    mock_db.get = AsyncMock(return_value=fake_strategy)
+    MockSession = MagicMock()
+    MockSession.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+    MockSession.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("services.scheduler._group_job.AsyncSessionLocal", MockSession), \
+         patch("services.ai_trading.AITradingService.analyze_and_trade",
+               new_callable=AsyncMock) as mock_analyze:
+
+        await sched_module._run_group_strategy_job(
+            strategy_id=10, symbol="EURUSD", timeframe="H1",
+            module_path=None, class_name=None,
+        )
+
+    mock_analyze.assert_not_awaited()
+    del sched_module._group_accounts[job_id]
+
+
+@pytest.mark.asyncio
+async def test_run_group_strategy_job_bypass_skip_hours_runs_anyway():
+    """Manual trigger (bypass_skip_hours=True) must run even during a configured skip hour."""
+    import json
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import services.scheduler as sched_module
+
+    job_id = "strat_10_EURUSD"
+    sched_module._group_accounts[job_id] = [
+        (101, {"lot_size": 0.1, "sl_pips": 20.0, "tp_pips": 40.0, "news_filter": True, "custom_prompt": None}),
+    ]
+
+    from ai.orchestrator import TradingSignal
+    from services.ai_trading import AnalysisResult, SharedMarketContext
+
+    fake_signal = TradingSignal(action="HOLD", entry=0.0, stop_loss=0.0, take_profit=0.0,
+                                confidence=0.5, rationale="test", timeframe="H1")
+    fake_ctx = SharedMarketContext(
+        symbol="EURUSD", mt5_symbol="EURUSD.r", timeframe="H1",
+        candles=[], indicators={}, current_price=1.1,
+        signal=fake_signal, llm_result=None, news_signal=None,
+    )
+    fake_primary_result = AnalysisResult(
+        signal=fake_signal, order_placed=False, ticket=None, journal_id=1,
+        shared_ctx=fake_ctx,
+    )
+
+    current_hour = datetime.now(ZoneInfo("UTC")).hour
+    fake_strategy = MagicMock()
+    fake_strategy.id = 10
+    fake_strategy.skip_hours_timezone = "UTC"
+    fake_strategy.skip_hours = json.dumps([current_hour])
+    fake_strategy.skip_weekdays = None
+
+    mock_db = AsyncMock()
+    mock_db.get = AsyncMock(return_value=fake_strategy)
+    MockSession = MagicMock()
+    MockSession.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+    MockSession.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("services.scheduler._group_job._preflight_risk_check", new_callable=AsyncMock,
+               return_value=([(101, {"lot_size": 0.1, "sl_pips": 20.0, "tp_pips": 40.0,
+                                     "news_filter": True, "custom_prompt": None})], [])), \
+         patch("services.scheduler._group_job.AsyncSessionLocal", MockSession), \
+         patch("services.ai_trading.AITradingService.analyze_and_trade",
+               new_callable=AsyncMock, return_value=fake_primary_result) as mock_analyze:
+
+        await sched_module._run_group_strategy_job(
+            strategy_id=10, symbol="EURUSD", timeframe="H1",
+            module_path=None, class_name=None, bypass_skip_hours=True,
+        )
+
+    mock_analyze.assert_awaited_once()
+    del sched_module._group_accounts[job_id]
+
+
+@pytest.mark.asyncio
 async def test_run_group_strategy_job_calls_llm_once_executes_twice():
     """Group job: AITradingService called for primary (full pipeline) + secondary (shared_ctx)."""
     import services.scheduler as sched_module

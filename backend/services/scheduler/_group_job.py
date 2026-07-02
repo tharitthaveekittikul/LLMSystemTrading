@@ -28,11 +28,15 @@ async def _run_group_strategy_job(
     timeframe: str,
     module_path: str | None = None,
     class_name: str | None = None,
+    bypass_skip_hours: bool = False,
 ) -> None:
     """Group job: compute signal once, execute per account.
 
     Reads account list from _group_accounts[job_id]. If the list is empty or the job
     has been removed, exits immediately.
+
+    bypass_skip_hours: when True (manual trigger), the skip-hour/skip-weekday guard
+    is not evaluated — a manual click always runs, regardless of configured quiet hours.
     """
     from services.ai_trading import StrategyOverrides
 
@@ -43,7 +47,7 @@ async def _run_group_strategy_job(
         return
 
     # ── Skip-hour / skip-weekday guard ───────────────────────────────────────
-    if strategy_id:
+    if strategy_id and not bypass_skip_hours:
         from db.models import Strategy as _Strategy
         async with AsyncSessionLocal() as _db:
             _s = await _db.get(_Strategy, strategy_id)
