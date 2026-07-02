@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Check, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { PipelineStep, LLMPricingEntry } from "@/types/trading";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -132,10 +133,20 @@ function extractVoteSummary(step: PipelineStep): VoteSummaryInfo | null {
   }
 }
 
+/** True when this specific step is the failure point — either it errored
+ * outright, or (e.g. execution_decision) it was caught internally and its
+ * output silently carries a "pipeline_error:" justification. */
+function stepFailed(step: PipelineStep): boolean {
+  if (step.status === "error") return true;
+  return step.output_json?.includes("pipeline_error") ?? false;
+}
+
 interface PipelineStepCardProps {
   step: PipelineStep;
   pricing?: LLMPricingEntry[];
   usdThbRate?: number;
+  onRetry?: () => void;
+  retrying?: boolean;
 }
 
 function JsonViewer({ raw }: { raw: string | null }) {
@@ -198,6 +209,8 @@ export function PipelineStepCard({
   step,
   pricing = [],
   usdThbRate = 36.0,
+  onRetry,
+  retrying = false,
 }: PipelineStepCardProps) {
   const [expanded, setExpanded] = useState(false);
   const hasDetail = step.input_json || step.output_json || step.error;
@@ -205,6 +218,7 @@ export function PipelineStepCard({
   const tokenInfo = extractTokenInfo(step);
   const gateInfo = extractConfidenceGateInfo(step);
   const voteInfo = extractVoteSummary(step);
+  const showRetry = onRetry && stepFailed(step);
 
   return (
     <div className="border-l-2 border-muted pl-4 py-1">
@@ -236,6 +250,20 @@ export function PipelineStepCard({
           </span>
         )}
       </button>
+
+      {showRetry && (
+        <div className="mt-1 ml-6">
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={onRetry}
+            disabled={retrying}
+          >
+            <RefreshCw className={`h-3 w-3 ${retrying ? "animate-spin" : ""}`} />
+            {retrying ? "Retrying…" : "Retry pipeline"}
+          </Button>
+        </div>
+      )}
 
       {tokenInfo && (
         <div className="mt-1 ml-6 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

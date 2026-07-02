@@ -477,6 +477,12 @@ export interface PipelineRunDetail {
   steps: PipelineStep[];
 }
 
+export interface RetryRunResponse {
+  run_id: number;
+  action: string;
+  order_placed: boolean;
+}
+
 export interface PipelineRunCompleteData {
   run_id: number;
   symbol: string;

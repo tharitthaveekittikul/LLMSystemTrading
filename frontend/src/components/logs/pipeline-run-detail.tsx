@@ -1,12 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { formatDateTime } from "@/lib/date";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PipelineStepCard } from "./pipeline-step-card";
 import { logsApi } from "@/lib/api";
 import type { PipelineRunDetail, PipelineRunSummary, PipelineStep, LLMPricingEntry } from "@/types/trading";
+
+/** True if the run outright failed, or any step errored, or a step's output
+ * silently carries a "pipeline_error:" justification (caught internally and
+ * downgraded to HOLD rather than raising). */
+function hasFailure(run: PipelineRunSummary, steps: PipelineStep[]): boolean {
+  if (run.status === "failed") return true;
+  return steps.some((s) => {
+    if (s.status === "error") return true;
+    if (!s.output_json) return false;
+    return s.output_json.includes("pipeline_error");
+  });
+}
 
 const STATUS_VARIANT: Record<string, string> = {
   completed: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -39,6 +53,8 @@ export function PipelineRunDetailPanel({
 }: PipelineRunDetailPanelProps) {
   const [detail, setDetail] = useState<PipelineRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isLiveRun) {
@@ -66,6 +82,22 @@ export function PipelineRunDetailPanel({
 
   const displaySteps: PipelineStep[] = isLiveRun ? liveSteps : (detail?.steps ?? []);
   const ts = formatDateTime(run.created_at);
+  const canRetry =
+    !isLiveRun && run.task_type !== "maintenance" && hasFailure(run, displaySteps);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await logsApi.retryRun(run.id);
+      // The new run appears as a "running" entry in the runs list via the
+      // pipeline_run_started WS event — select it there to watch it live.
+    } catch (err) {
+      setRetryError(err instanceof Error ? err.message : "Retry failed");
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -95,7 +127,24 @@ export function PipelineRunDetailPanel({
               {run.final_action}
             </Badge>
           )}
+          {canRetry && (
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleRetry}
+              disabled={retrying}
+              className="ml-auto"
+            >
+              <RefreshCw className={`h-3 w-3 ${retrying ? "animate-spin" : ""}`} />
+              {retrying ? "Retrying…" : "Retry"}
+            </Button>
+          )}
         </div>
+        {retryError && (
+          <p className="text-xs text-red-600 dark:text-red-400">
+            Retry failed: {retryError}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
           {ts}
           {!isLiveRun && run.total_duration_ms != null &&
@@ -115,7 +164,14 @@ export function PipelineRunDetailPanel({
         ) : displaySteps.length > 0 ? (
           <>
             {displaySteps.map((step) => (
-              <PipelineStepCard key={step.id} step={step} pricing={pricing} usdThbRate={usdThbRate} />
+              <PipelineStepCard
+                key={step.id}
+                step={step}
+                pricing={pricing}
+                usdThbRate={usdThbRate}
+                onRetry={canRetry ? handleRetry : undefined}
+                retrying={retrying}
+              />
             ))}
             {isLiveRun && (
               <div className="border-l-2 border-muted pl-4 py-1 flex items-center gap-2">

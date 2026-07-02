@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import PipelineRun, PipelineStep
+from db.models import PipelineRun, PipelineStep, Strategy
 from db.postgres import get_db
 
 router = APIRouter()
@@ -106,4 +106,73 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)) -> PipelineRu
     return PipelineRunDetail(
         run=PipelineRunSummary.from_orm_custom(run),
         steps=[PipelineStepOut.model_validate(s) for s in steps],
+    )
+
+
+class RetryRunResponse(BaseModel):
+    run_id: int
+    action: str
+    order_placed: bool
+
+
+@router.post("/runs/{run_id}/retry", response_model=RetryRunResponse)
+async def retry_run(run_id: int, db: AsyncSession = Depends(get_db)) -> RetryRunResponse:
+    """Re-run the AI analysis for a failed (or any) signal run's account/symbol/timeframe.
+
+    A pipeline run can't be resumed mid-graph — this re-runs the full pipeline
+    from scratch with the same account, symbol, timeframe, and strategy config.
+    """
+    run = await db.get(PipelineRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Pipeline run not found")
+    if run.task_type != "signal":
+        raise HTTPException(status_code=400, detail="Only signal runs can be retried")
+
+    strategy_id = run.strategy_id
+    strategy_overrides = None
+    if strategy_id:
+        strategy = await db.get(Strategy, strategy_id)
+        if not strategy:
+            raise HTTPException(status_code=404, detail="Strategy no longer exists")
+        if strategy.execution_mode != "llm_only":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Code strategies can't be retried from a single run — "
+                    "use the strategy's Trigger button instead"
+                ),
+            )
+        from services.ai_trading import StrategyOverrides
+        strategy_overrides = StrategyOverrides(
+            lot_size=strategy.lot_size,
+            sl_pips=strategy.sl_pips,
+            tp_pips=strategy.tp_pips,
+            news_filter=strategy.news_filter,
+            custom_prompt=strategy.custom_prompt,
+        )
+
+    from services.ai_trading import AITradingService
+
+    result = await AITradingService().analyze_and_trade(
+        account_id=run.account_id,
+        symbol=run.symbol,
+        timeframe=run.timeframe,
+        db=db,
+        strategy_id=strategy_id,
+        strategy_overrides=strategy_overrides,
+    )
+
+    new_run_q = (
+        select(PipelineRun)
+        .where(PipelineRun.account_id == run.account_id)
+        .where(PipelineRun.symbol == run.symbol)
+        .order_by(desc(PipelineRun.created_at))
+        .limit(1)
+    )
+    new_run = (await db.execute(new_run_q)).scalars().first()
+
+    return RetryRunResponse(
+        run_id=new_run.id if new_run else run.id,
+        action=result.signal.action,
+        order_placed=result.order_placed,
     )

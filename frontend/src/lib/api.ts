@@ -145,6 +145,11 @@ export const logsApi = {
 
   getRun: (runId: number) =>
     apiRequest<import("@/types/trading").PipelineRunDetail>(`/pipeline/runs/${runId}`),
+
+  retryRun: (runId: number) =>
+    apiRequest<import("@/types/trading").RetryRunResponse>(`/pipeline/runs/${runId}/retry`, {
+      method: "POST",
+    }),
 };
 
 // ── Backtest ──────────────────────────────────────────────────────────────────
