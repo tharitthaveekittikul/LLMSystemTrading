@@ -57,8 +57,11 @@ async def get_ohlcv(
 
     try:
         async with MT5Bridge(creds) as bridge:
-            candles = await bridge.get_rates(symbol, tf_int, count, require_connected=False)
-            tick = await bridge.get_tick(symbol)
+            # Resolve broker-specific symbol name (e.g. XAUUSD -> XAUUSD.s) — same
+            # resolution the strategy pipeline uses, so the chart stays broker-agnostic.
+            mt5_symbol = await bridge.get_broker_symbol(symbol)
+            candles = await bridge.get_rates(mt5_symbol, tf_int, count, require_connected=False)
+            tick = await bridge.get_tick(mt5_symbol)
     except Exception as exc:
         logger.error("get_rates(%s, %s) failed: %s", symbol, timeframe, exc)
         raise HTTPException(status_code=503, detail=str(exc))
@@ -88,5 +91,8 @@ async def get_ohlcv(
             "volume": int(c.get("tick_volume", 0)),
         })
 
-    logger.debug("get_ohlcv(%s, %s, account=%d) -> %d candles", symbol, timeframe.upper(), account_id, len(result))
-    return result
+    logger.debug(
+        "get_ohlcv(%s -> %s, %s, account=%d) -> %d candles",
+        symbol, mt5_symbol, timeframe.upper(), account_id, len(result),
+    )
+    return {"symbol": mt5_symbol, "candles": result}
