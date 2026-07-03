@@ -219,6 +219,15 @@ async def execute_mt5_order(
             f"Account: {account.id} | {signal.action} {order_req.symbol}\n"
             f"Error: {order_result.error}"
         )
+        try:
+            from api.routes.ws import broadcast
+            await broadcast(account.id, "trade_rejected", {
+                "symbol": order_req.symbol,
+                "action": signal.action,
+                "error": order_result.error,
+            })
+        except Exception as exc:
+            logger.debug("WS broadcast failed (non-critical): %s", exc)
         tracer.finalize(status="failed", final_action=signal.action, journal_id=journal.id)
         return None
 

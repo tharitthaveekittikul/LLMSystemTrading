@@ -6,6 +6,7 @@ All other modules obtain their logger via:
     import logging
     logger = logging.getLogger(__name__)
 """
+import asyncio
 import json
 import logging
 import re
@@ -150,6 +151,60 @@ def setup_logging() -> None:
     # In debug mode, show uvicorn access logs (one line per request)
     if settings.debug:
         logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
+
+
+class _WebSocketLogHandler(logging.Handler):
+    """Live-tails formatted log records to dashboard clients as system_log
+    WS events (the "Live" half of the System Logs page).
+
+    Log calls can originate off the asyncio event loop (e.g. from the MT5
+    single-thread executor in mt5/bridge.py), so broadcasting is scheduled via
+    run_coroutine_threadsafe rather than assumed to run on the loop's own
+    thread. Never logs from within emit() — that would set up a feedback loop
+    through this same handler.
+    """
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        super().__init__()
+        self._loop = loop
+        self.setFormatter(_JsonFormatter())
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            payload = json.loads(self.format(record))
+        except Exception:
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(_broadcast_log_line(payload), self._loop)
+        except RuntimeError:
+            pass  # loop already closed (e.g. during shutdown) — drop silently
+
+
+async def _broadcast_log_line(payload: dict) -> None:
+    from api.routes.ws import broadcast_all
+
+    try:
+        await broadcast_all("system_log", payload)
+    except Exception:
+        pass
+
+
+_ws_log_handler: logging.Handler | None = None
+
+
+def attach_websocket_log_handler(loop: asyncio.AbstractEventLoop) -> None:
+    """Attach the live-tail WS handler. Call once from the app lifespan.
+
+    Unlike setup_logging() (which runs at import time, before any event loop
+    exists), this needs a running loop to schedule broadcasts onto.
+    """
+    global _ws_log_handler
+    if _ws_log_handler is not None:
+        return
+    handler = _WebSocketLogHandler(loop)
+    handler.addFilter(CorrelationFilter())
+    logging.getLogger().addHandler(handler)
+    _ws_log_handler = handler
 
 
 def fix_uvicorn_logging() -> None:

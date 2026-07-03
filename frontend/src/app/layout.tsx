@@ -5,6 +5,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ToastEventSubscriber } from "@/components/toast-event-subscriber";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,6 +38,7 @@ export default function RootLayout({
             {children}
           </SidebarProvider>
           <Toaster />
+          <ToastEventSubscriber />
         </ThemeProvider>
       </body>
     </html>
