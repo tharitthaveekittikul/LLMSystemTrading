@@ -12,6 +12,7 @@ from api.routes import kill_switch as kill_switch_routes
 from api.routes import llm_analytics as llm_analytics_routes
 from api.routes import llm_usage as llm_usage_routes
 from api.routes import logs_ingest as logs_ingest_routes
+from api.routes import logs_system as logs_system_routes
 from api.routes import market_data as market_data_routes
 from api.routes import news as news_routes
 from api.routes import pipeline as pipeline_routes
@@ -20,7 +21,7 @@ from api.routes import settings as settings_routes
 from api.routes import storage as storage_routes
 from api.routes import system as system_routes
 from core.config import settings
-from core.logging import fix_uvicorn_logging, setup_logging
+from core.logging import attach_websocket_log_handler, fix_uvicorn_logging, setup_logging
 from db.postgres import init_db
 from db.questdb import init_questdb
 from db.redis import close_redis
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     fix_uvicorn_logging()  # strip uvicorn's own handlers; use our root formatter
+    attach_websocket_log_handler(asyncio.get_running_loop())  # System Logs live tail
     logger.info(
         "Starting LLM Trading System v%s | debug=%s | llm_provider=%s",
         app.version,
@@ -162,6 +164,7 @@ app.include_router(market_data_routes.router, prefix="/api/v1/market-data", tags
 app.include_router(news_routes.router,        prefix="/api/v1/news",        tags=["news"])
 app.include_router(system_routes.router,      prefix="/api/v1/system",      tags=["system"])
 app.include_router(logs_ingest_routes.router, prefix="/api/v1/logs/frontend", tags=["logs"])
+app.include_router(logs_system_routes.router, prefix="/api/v1/logs/system", tags=["logs"])
 
 
 @app.get("/health", tags=["system"])

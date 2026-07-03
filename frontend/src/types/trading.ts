@@ -160,16 +160,36 @@ export type WSEventType =
   | "tick_update"
   | "trade_opened"
   | "trade_closed"
+  | "trade_rejected"
   | "ai_signal"
   | "kill_switch_triggered"
   | "pipeline_run_complete"
   | "pipeline_run_started"
-  | "pipeline_step";
+  | "pipeline_step"
+  | "system_log";
 
 export interface WSEvent<T = unknown> {
   event: WSEventType;
   data: T;
   timestamp: string;
+}
+
+export interface TradeRejectedData {
+  symbol: string;
+  action: string;
+  error: string;
+}
+
+export interface SystemLogWsData {
+  ts: string;
+  level: string;
+  logger: string;
+  message: string;
+  request_id?: string;
+  run_id?: number;
+  account_id?: number;
+  symbol?: string;
+  source?: string;
 }
 
 export interface EquityUpdateData {

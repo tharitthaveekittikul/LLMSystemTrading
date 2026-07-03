@@ -21,6 +21,7 @@ import {
   Settings,
   Shield,
   SlidersHorizontal,
+  Terminal,
   Timer,
   TrendingUp,
   Users,
@@ -48,6 +49,7 @@ const tradingItems = [
 
 const systemItems = [
   { href: "/logs", label: "Pipeline Logs", icon: ScrollText },
+  { href: "/system-logs", label: "System Logs", icon: Terminal },
   { href: "/agent-workflow", label: "Agent Workflow", icon: Network },
   { href: "/schedule", label: "Schedule", icon: Timer },
   { href: "/llm-usage", label: "LLM Usage", icon: Coins },

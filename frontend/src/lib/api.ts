@@ -169,6 +169,33 @@ export const logsApi = {
     apiRequest<import("@/types/trading").RetryRunResponse>(`/pipeline/runs/${runId}/retry`, {
       method: "POST",
     }),
+
+  listSystemLogs: (params?: {
+    level?: string;
+    logger?: string;
+    run_id?: number;
+    account_id?: number;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.level) query.set("level", params.level);
+    if (params?.logger) query.set("logger", params.logger);
+    if (params?.run_id != null) query.set("run_id", String(params.run_id));
+    if (params?.account_id != null) query.set("account_id", String(params.account_id));
+    if (params?.from) query.set("from", params.from);
+    if (params?.to) query.set("to", params.to);
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return apiRequest<{
+      entries: import("@/types/trading").SystemLogWsData[];
+      total_matched: number;
+      has_more: boolean;
+    }>(`/logs/system${qs ? `?${qs}` : ""}`);
+  },
 };
 
 // ── Backtest ──────────────────────────────────────────────────────────────────
