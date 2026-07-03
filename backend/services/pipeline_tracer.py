@@ -19,6 +19,7 @@ import logging
 import time
 from typing import Any
 
+from core.log_context import bind, clear
 from db.models import LLMCall, PipelineRun, PipelineStep
 from db.postgres import AsyncSessionLocal
 
@@ -48,6 +49,7 @@ class PipelineTracer:
         self._trade_id: int | None = None
         self._db = None
         self._session_ctx = None
+        self._corr_tokens: dict = {}
 
     async def __aenter__(self) -> "PipelineTracer":
         self._session_ctx = AsyncSessionLocal()
@@ -64,6 +66,9 @@ class PipelineTracer:
         self._db.add(self._run)
         await self._db.commit()
         await self._db.refresh(self._run)
+        self._corr_tokens = bind(
+            run_id=self._run.id, account_id=self._account_id, symbol=self._symbol
+        )
         logger.debug(
             "PipelineTracer started | run_id=%s account_id=%s symbol=%s",
             self._run.id, self._account_id, self._symbol,
@@ -173,6 +178,12 @@ class PipelineTracer:
         self._trade_id = trade_id
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        try:
+            return await self._finalize_and_close(exc_type, exc_val, exc_tb)
+        finally:
+            clear(self._corr_tokens)
+
+    async def _finalize_and_close(self, exc_type, exc_val, exc_tb):
         if self._run and self._db:
             total_ms = int((time.monotonic() - self._start_ms) * 1000)
 

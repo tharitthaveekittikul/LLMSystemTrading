@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # ── Application ───────────────────────────────────────────────────────────
     debug: bool = False
     log_level: str = "INFO"
+    log_dir: str = "logs"                  # relative to backend/ cwd; rotating JSON log lives here
+    log_max_bytes: int = 10 * 1024 * 1024  # 10 MB per file before rotating
+    log_backup_count: int = 5              # rotated files to keep alongside the active one
     cors_origins: list[str] = ["http://localhost:3000"]
     news_enabled: bool = True  # Set NEWS_ENABLED=false in .env to disable ForexFactory calendar
     # News gate window: an event within [now - news_lookback_minutes, now + news_lookahead_minutes]
@@ -130,6 +133,20 @@ class Settings(BaseSettings):
         if upper not in allowed:
             raise ValueError(f"log_level must be one of {allowed}, got '{v}'")
         return upper
+
+    @field_validator("log_max_bytes")
+    @classmethod
+    def validate_log_max_bytes(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"log_max_bytes must be >= 1, got {v}")
+        return v
+
+    @field_validator("log_backup_count")
+    @classmethod
+    def validate_log_backup_count(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(f"log_backup_count must be >= 0, got {v}")
+        return v
 
     # ── Cross-field / post-init validation ────────────────────────────────────
 

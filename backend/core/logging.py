@@ -6,11 +6,16 @@ All other modules obtain their logger via:
     import logging
     logger = logging.getLogger(__name__)
 """
+import json
 import logging
 import re
 import sys
+from datetime import UTC, datetime
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from core.config import settings
+from core.log_context import CorrelationFilter
 
 _LEVEL_COLORS = {
     "DEBUG":    "\033[36m",   # cyan
@@ -55,6 +60,37 @@ class _ColorFormatter(logging.Formatter):
         line = _STATUS_RE.sub(_color_status, line)
         return line
 
+
+# Extra fields a record may carry — either stamped by CorrelationFilter from
+# the active contextvars, or passed directly via `extra={...}` (e.g. "source"
+# on frontend-error log records) — emitted as top-level JSON keys (not nested)
+# so they're grep/jq-able without a path.
+_CORRELATION_FIELDS = ("request_id", "run_id", "account_id", "symbol", "source")
+
+
+class _JsonFormatter(logging.Formatter):
+    """One JSON object per line — machine-parseable, correlation-stamped.
+
+    Written to the rotating file handler; the colorized stdout formatter
+    above remains for interactive terminal use.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, object] = {
+            "ts": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        for field in _CORRELATION_FIELDS:
+            value = getattr(record, field, None)
+            if value is not None:
+                payload[field] = value
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str)
+
+
 _NOISY_LOGGERS = [
     "sqlalchemy.engine",
     "sqlalchemy.pool",
@@ -69,6 +105,18 @@ _NOISY_LOGGERS = [
 _UVICORN_LOGGERS = ["uvicorn", "uvicorn.error", "uvicorn.access"]
 
 
+def _make_file_handler() -> RotatingFileHandler:
+    log_dir = Path(settings.log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        log_dir / "app.jsonl",
+        maxBytes=settings.log_max_bytes,
+        backupCount=settings.log_backup_count,
+    )
+    handler.setFormatter(_JsonFormatter())
+    return handler
+
+
 def setup_logging() -> None:
     """Configure the root logger.  Safe to call multiple times (idempotent)."""
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
@@ -81,10 +129,21 @@ def setup_logging() -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
 
+    file_handler = _make_file_handler()
+
+    # Attached to the HANDLERS (not the root logger) so it applies to every
+    # record that reaches them regardless of which logger originated it —
+    # a logger-level filter only checks records that logger emits directly,
+    # before propagation, and would miss mt5.bridge/httpcore/etc. entirely.
+    correlation_filter = CorrelationFilter()
+    handler.addFilter(correlation_filter)
+    file_handler.addFilter(correlation_filter)
+
     root = logging.getLogger()
     root.setLevel(level)
     root.handlers.clear()
     root.addHandler(handler)
+    root.addHandler(file_handler)
 
     # Suppress noisy third-party loggers in all modes
     for name in _NOISY_LOGGERS:

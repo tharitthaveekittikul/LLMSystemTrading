@@ -10,6 +10,7 @@ import logging
 from datetime import UTC, datetime
 
 from core.config import settings
+from core.log_context import bind, clear
 from core.security import decrypt
 from db.postgres import AsyncSessionLocal
 from mt5.bridge import AccountCredentials, MT5Bridge, SessionBusyError
@@ -88,6 +89,14 @@ async def _poll_account(account, insert_fn, broadcast_fn) -> None:
 
     ``account`` is a plain dict with keys: id, login, password_encrypted, server, mt5_path.
     """
+    tokens = bind(account_id=account["id"])
+    try:
+        await _poll_account_inner(account, insert_fn, broadcast_fn)
+    finally:
+        clear(tokens)
+
+
+async def _poll_account_inner(account, insert_fn, broadcast_fn) -> None:
     try:
         password = decrypt(account["password_encrypted"])
         creds = AccountCredentials(

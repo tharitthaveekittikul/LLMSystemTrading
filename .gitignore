@@ -47,6 +47,9 @@ docker/volumes/
 # MT5 screenshots (generated at runtime)
 backend/screenshots/
 
+# Rotating structured JSON logs (generated at runtime)
+backend/logs/
+
 # Alembic — keep versions/ in source control
 backend/alembic/versions/*.py
 !backend/alembic/versions/.gitkeep

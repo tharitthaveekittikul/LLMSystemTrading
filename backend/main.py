@@ -11,6 +11,7 @@ from api.routes import backtest as backtest_routes
 from api.routes import kill_switch as kill_switch_routes
 from api.routes import llm_analytics as llm_analytics_routes
 from api.routes import llm_usage as llm_usage_routes
+from api.routes import logs_ingest as logs_ingest_routes
 from api.routes import market_data as market_data_routes
 from api.routes import news as news_routes
 from api.routes import pipeline as pipeline_routes
@@ -160,6 +161,7 @@ app.include_router(scheduler_routes.router, prefix="/api/v1/scheduler", tags=["s
 app.include_router(market_data_routes.router, prefix="/api/v1/market-data", tags=["market-data"])
 app.include_router(news_routes.router,        prefix="/api/v1/news",        tags=["news"])
 app.include_router(system_routes.router,      prefix="/api/v1/system",      tags=["system"])
+app.include_router(logs_ingest_routes.router, prefix="/api/v1/logs/frontend", tags=["logs"])
 
 
 @app.get("/health", tags=["system"])
