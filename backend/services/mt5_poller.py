@@ -17,6 +17,8 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from core.log_context import bind, clear
+
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = 5.0   # seconds between data fetches
@@ -100,6 +102,14 @@ async def _poll_loop(account_id: int) -> None:
 
 async def _poll_session(account_id: int) -> None:
     """Connect once, fetch data on every interval until cancelled or error."""
+    tokens = bind(account_id=account_id)
+    try:
+        await _poll_session_inner(account_id)
+    finally:
+        clear(tokens)
+
+
+async def _poll_session_inner(account_id: int) -> None:
     from core.config import settings
     from core.security import decrypt
     from db.models import Account
