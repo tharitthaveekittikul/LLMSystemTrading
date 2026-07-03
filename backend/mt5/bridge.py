@@ -11,6 +11,7 @@ Thread-safety note (from MT5 docs):
 """
 import asyncio
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -45,6 +46,77 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+class SessionBusyError(RuntimeError):
+    """Raised when a different account holds the warm MT5 session pinned.
+
+    MT5 only supports one broker login per process — a pinned session (e.g.
+    a live dashboard poller) can't be silently swapped out from under it.
+    """
+
+
+@dataclass
+class _LiveSession:
+    """The one warm MT5 login this process currently holds, if any."""
+    key: tuple[int, str]  # (login, server)
+    connected: bool = True
+    last_used: float = 0.0
+    pin_count: int = 0
+
+
+# Warm-session cache: connect once, reuse across consecutive `async with
+# MT5Bridge(creds)` calls for the same account instead of a full
+# initialize()/shutdown() handshake every time (was previously happening on
+# every equity poll tick and every account sync — ~800 connect/disconnect
+# cycles in a 6h window). Reused/torn down under _MT5_LOCK so a reap or
+# account swap never races a live call burst.
+_live: _LiveSession | None = None
+_IDLE_TIMEOUT = 300.0  # seconds of no use before the reaper shuts it down
+_REAPER_INTERVAL = 30.0  # seconds between idle checks
+_reaper_task: asyncio.Task | None = None
+
+
+async def _run_on_mt5_thread(func, *args, **kwargs) -> Any:
+    """Execute a synchronous MT5 call on the dedicated single MT5 thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_MT5_EXECUTOR, partial(func, *args, **kwargs))
+
+
+def _ensure_reaper() -> None:
+    """Start the idle-session reaper if it isn't already running.
+
+    Must be called with _MT5_LOCK held (i.e. from inside _acquire_session).
+    """
+    global _reaper_task
+    if _reaper_task is None or _reaper_task.done():
+        _reaper_task = asyncio.create_task(_reap_idle_session(), name="mt5_session_reaper")
+
+
+async def _reap_idle_session() -> None:
+    """Shut down the warm session once it's been idle past _IDLE_TIMEOUT.
+
+    Exits after reaping (rather than looping forever) — a new one is started
+    lazily by _ensure_reaper() the next time a session is established.
+    """
+    global _live
+    while True:
+        await asyncio.sleep(_REAPER_INTERVAL)
+        async with _MT5_LOCK:
+            if _live is None:
+                return
+            if _live.pin_count > 0:
+                continue
+            if time.monotonic() - _live.last_used <= _IDLE_TIMEOUT:
+                continue
+            if MT5_AVAILABLE:
+                await _run_on_mt5_thread(mt5.shutdown)
+            logger.info(
+                "MT5 warm session reaped after %.0fs idle | login=%s",
+                _IDLE_TIMEOUT, _live.key[0],
+            )
+            _live = None
+            return
+
+
 @dataclass
 class AccountCredentials:
     login: int
@@ -67,29 +139,114 @@ class MT5Bridge:
     async def __aenter__(self) -> "MT5Bridge":
         await _MT5_LOCK.acquire()
         try:
-            ok = await self.connect()
-            if not ok:
-                code, message = await self.get_last_error()
-                await self.disconnect()
-                _MT5_LOCK.release()
-                raise ConnectionError(f"MT5 init failed (code {code}): {message}")
+            ok = await self._acquire_session()
         except Exception:
             _MT5_LOCK.release()
             raise
+        if not ok:
+            code, message = await self.get_last_error()
+            _MT5_LOCK.release()
+            raise ConnectionError(f"MT5 init failed (code {code}): {message}")
         return self
 
     async def __aexit__(self, *_: Any) -> None:
         try:
-            await self.disconnect()
+            if _live is not None:
+                _live.last_used = time.monotonic()
         finally:
             _MT5_LOCK.release()
+
+    async def _acquire_session(self) -> bool:
+        """Reuse the warm MT5 session for this bridge's account, or connect.
+
+        Must be called with _MT5_LOCK held. Returns True once a live session
+        for this bridge's (login, server) is active — reused if already warm,
+        freshly connected otherwise. Raises SessionBusyError if a different
+        account is pinned (see pin_session).
+        """
+        global _live
+        key = (self._creds.login, self._creds.server)
+
+        if _live is not None and _live.connected:
+            if _live.key == key:
+                _live.last_used = time.monotonic()
+                return True
+            if _live.pin_count > 0:
+                raise SessionBusyError(
+                    f"MT5 session pinned to login={_live.key[0]} — "
+                    f"cannot switch to login={key[0]}"
+                )
+            logger.info(
+                "MT5 session swap | from_login=%s to_login=%s", _live.key[0], key[0]
+            )
+            if MT5_AVAILABLE:
+                await _run_on_mt5_thread(mt5.shutdown)
+            _live = None
+
+        ok = await self.connect()
+        if not ok:
+            return False
+        _live = _LiveSession(key=key, last_used=time.monotonic())
+        _ensure_reaper()
+        return True
+
+    @classmethod
+    async def pin_session(cls, credentials: AccountCredentials) -> None:
+        """Establish (if needed) and pin the warm session to *credentials*.
+
+        Pinning prevents both the idle reaper and other callers requesting a
+        different account from tearing down or swapping this session out —
+        used by the demand-driven dashboard poller, which needs the session
+        to stay up for the life of the poll loop, not just one burst.
+        """
+        global _live
+        bridge = cls(credentials)
+        async with _MT5_LOCK:
+            ok = await bridge._acquire_session()
+            if not ok:
+                code, message = await bridge.get_last_error()
+                raise ConnectionError(f"MT5 init failed (code {code}): {message}")
+            assert _live is not None
+            _live.pin_count += 1
+
+    @classmethod
+    async def unpin_session(cls) -> None:
+        """Release a pin taken by pin_session(). Safe to call if already unpinned."""
+        global _live
+        async with _MT5_LOCK:
+            if _live is not None and _live.pin_count > 0:
+                _live.pin_count -= 1
+
+    @classmethod
+    async def invalidate(cls) -> None:
+        """Mark the warm session dead so the next __aenter__ reconnects.
+
+        Call this when a caller detects the broker side has silently dropped
+        (e.g. terminal_info().connected == False) rather than leaving the
+        stale session cached for everyone else to fail against too.
+        """
+        global _live
+        async with _MT5_LOCK:
+            if _live is not None:
+                _live.connected = False
+
+    @classmethod
+    async def force_shutdown(cls) -> None:
+        """Tear down the warm session and stop the reaper (app shutdown)."""
+        global _live, _reaper_task
+        async with _MT5_LOCK:
+            if _reaper_task is not None:
+                _reaper_task.cancel()
+                _reaper_task = None
+            if _live is not None and _live.connected and MT5_AVAILABLE:
+                await _run_on_mt5_thread(mt5.shutdown)
+            _live = None
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     async def _run(self, func, *args, **kwargs) -> Any:
         """Execute a synchronous MT5 call on the dedicated single MT5 thread."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(_MT5_EXECUTOR, partial(func, *args, **kwargs))
+        return await _run_on_mt5_thread(func, *args, **kwargs)
 
     def _require_mt5(self) -> None:
         if not MT5_AVAILABLE:
