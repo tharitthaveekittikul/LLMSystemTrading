@@ -125,15 +125,15 @@ async def _poll_session(account_id: int) -> None:
         path=account.mt5_path or settings.mt5_path,
     )
 
+    # Pin (rather than raw connect()) so this persistent poll session shares
+    # the same warm MT5 session equity_poller/sync reuse per-tick, and so
+    # neither the idle reaper nor a different account's request can steal it
+    # out from under this poller (raises SessionBusyError instead).
+    await MT5Bridge.pin_session(creds)
     bridge = MT5Bridge(creds)
-    ok = await bridge.connect()
-    if not ok:
-        code, msg = await bridge.get_last_error()
-        await bridge.disconnect()
-        raise ConnectionError(f"MT5 init failed (code {code}): {msg}")
 
     state.last_error = None
-    logger.info("MT5 connected for polling | account_id=%s login=%s", account_id, account.login)
+    logger.info("MT5 pinned for polling | account_id=%s login=%s", account_id, account.login)
 
     # MT5 terminal needs a moment to (re)establish broker connection after initialize().
     # This is especially likely when a fresh MT5Bridge was used just before the poller
@@ -145,7 +145,7 @@ async def _poll_session(account_id: int) -> None:
             logger.info("Waiting for broker connection | account_id=%s", account_id)
         await asyncio.sleep(1)
     else:
-        await bridge.disconnect()
+        await MT5Bridge.unpin_session()
         raise ConnectionError("Broker did not connect within 15 s of MT5 initialize()")
 
     # Pre-populate cache immediately so /accounts/{id}/info can serve from it
@@ -161,16 +161,26 @@ async def _poll_session(account_id: int) -> None:
     try:
         while True:
             # Heartbeat: detect broker connection drop before fetching data.
+            # Done outside the `async with bridge` burst below — invalidate()
+            # takes _MT5_LOCK itself and would deadlock if called while this
+            # loop already held it.
             if not await bridge.is_broker_connected():
+                # Mark the shared warm session dead so the next pin/connect
+                # actually reconnects instead of reusing a corpse.
+                await MT5Bridge.invalidate()
                 raise ConnectionError("Broker connection lost (terminal_info.connected=False)")
-            just_closed = await _fetch_and_broadcast(account_id, bridge, state)
-            if just_closed:
-                await _sync_history_with_bridge(account_id, bridge)
+            # Hold the warm session's lock for the fetch burst so it can't
+            # interleave with (or be swapped out from under it by) another
+            # account's equity_poller tick on the same single MT5 thread.
+            async with bridge:
+                just_closed = await _fetch_and_broadcast(account_id, bridge, state)
+                if just_closed:
+                    await _sync_history_with_bridge(account_id, bridge)
             await asyncio.sleep(POLL_INTERVAL)
     finally:
-        await bridge.disconnect()
+        await MT5Bridge.unpin_session()
         state.is_connected = False
-        logger.info("MT5 disconnected | account_id=%s", account_id)
+        logger.info("MT5 unpinned | account_id=%s", account_id)
 
 
 async def _fetch_and_broadcast(account_id: int, bridge, state: AccountPollState) -> set[int]:

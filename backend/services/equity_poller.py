@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from core.config import settings
 from core.security import decrypt
 from db.postgres import AsyncSessionLocal
-from mt5.bridge import AccountCredentials, MT5Bridge
+from mt5.bridge import AccountCredentials, MT5Bridge, SessionBusyError
 from services.risk_manager import check_drawdown, load_risk_config
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,17 @@ async def _poll_account(account, insert_fn, broadcast_fn) -> None:
         })
 
         logger.debug("Equity polled | account_id=%s equity=%.2f", account["id"], equity)
+    except SessionBusyError:
+        # A live dashboard has the warm MT5 session pinned to a different
+        # account — skip this account's snapshot for the tick rather than
+        # swapping it out (drawdown coverage for the pinned account itself
+        # still comes from mt5_poller's own equity broadcasts). Resumes
+        # automatically once the dashboard closes.
+        logger.debug(
+            "Equity poller skipped — MT5 session pinned to another account | account_id=%s",
+            account["id"],
+        )
+        return
     except Exception as exc:
         logger.exception("Equity poller failed for account_id=%s: %s", account["id"], exc)
         return
@@ -164,20 +175,26 @@ async def _reconcile_account_orders(account_id: int) -> None:
     `sync_account()` opens its own `MT5Bridge` connection, sequential *after*
     (not concurrent with) the equity-poll connection in `_poll_account`
     above. `MT5Bridge.__aenter__`/`__aexit__` serialize every bridge session
-    process-wide via `_MT5_LOCK` (see `mt5/bridge.py`), so there is still only
-    ever one live MT5-thread-bound session at a time — honoring the
-    single-thread-per-process constraint documented in
-    `documents/mt5-python/connection.md`. This does mean two sequential
-    connect/disconnect cycles per account per 60s tick rather than one;
-    that trade-off was chosen deliberately to reuse `sync_account`'s
-    existing, already-tested-by-the-dashboard reconciliation logic instead
-    of duplicating it here.
+    process-wide via `_MT5_LOCK` (see `mt5/bridge.py`) and reuse a warm MT5
+    login across consecutive calls for the same account instead of a fresh
+    connect/disconnect handshake each time, so this second connection is
+    effectively free — honoring the single-thread-per-process constraint
+    documented in `documents/mt5-python/connection.md` without paying for
+    two logins per tick. That trade-off (a second `async with MT5Bridge`
+    entry rather than a shared one) was chosen deliberately to reuse
+    `sync_account`'s existing, already-tested-by-the-dashboard reconciliation
+    logic instead of duplicating it here.
     """
     from api.routes.accounts._sync import sync_account
 
     try:
         async with AsyncSessionLocal() as session:
             await sync_account(account_id, db=session)
+    except SessionBusyError:
+        logger.debug(
+            "Order reconciliation skipped — MT5 session pinned to another account | account_id=%s",
+            account_id,
+        )
     except Exception as exc:
         # Isolated from the equity poll above — a reconciliation failure for
         # one account must never stop equity polling for that or other accounts.

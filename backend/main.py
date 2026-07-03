@@ -117,6 +117,8 @@ async def lifespan(app: FastAPI):
         await poller_task
     except asyncio.CancelledError:
         pass
+    from mt5.bridge import MT5Bridge
+    await MT5Bridge.force_shutdown()
     await close_redis()
     from db.postgres import engine as _pg_engine
     await _pg_engine.dispose()
