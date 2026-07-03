@@ -28,6 +28,12 @@ _MT5_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mt5")
 # to return None for all retries (~15 s timeout before 502).
 _MT5_LOCK = asyncio.Lock()
 
+# Module-level cache of resolved broker symbols for the current MT5 session.
+# get_broker_symbol() previously re-fetched the entire broker symbol universe
+# on every call from 4+ call sites. Cleared in disconnect() since a different
+# broker/account may expose a different symbol universe on the next session.
+_SYMBOL_CACHE: dict[str, str] = {}
+
 try:
     import MetaTrader5 as mt5
 
@@ -116,6 +122,7 @@ class MT5Bridge:
         if MT5_AVAILABLE:
             await self._run(mt5.shutdown)
             logger.info("MT5 disconnected | login=%s", self._creds.login)
+        _SYMBOL_CACHE.clear()
 
     # ── Account ───────────────────────────────────────────────────────────────
 
@@ -201,7 +208,12 @@ class MT5Bridge:
 
         Fetches all available symbols (including those not in Market Watch)
         and delegates to :meth:`resolve_broker_symbol`.  Logs an INFO message
-        when a suffix is found and a WARNING when no match exists.
+        when a suffix is found and a WARNING only when the symbol genuinely
+        can't be confirmed.
+
+        Cached per MT5 session in ``_SYMBOL_CACHE`` (cleared on disconnect) —
+        this was previously called fresh from 4+ call sites, each re-fetching
+        the entire broker symbol universe just to resolve one name.
 
         Args:
             base: The bare symbol name (e.g. 'EURUSD').
@@ -209,16 +221,37 @@ class MT5Bridge:
         Returns:
             Resolved broker symbol (e.g. 'EURUSD.s'), or *base* if unresolved.
         """
+        cached = _SYMBOL_CACHE.get(base)
+        if cached is not None:
+            return cached
+
+        # mt5.symbols_get() only reliably lists symbols that have been through
+        # symbol_select() at least once this terminal session (lazy population
+        # — the project's own docs flag this quirk for tick data; it applies
+        # here too). Select the exact name first so a genuinely valid symbol
+        # isn't missed just because this connection hasn't touched it yet —
+        # otherwise get_rates()'s own symbol_select() succeeds moments later
+        # and returns real candles, while this method warns "no match" first.
+        selected = await self._run(mt5.symbol_select, base, True)
+
         all_symbols = await self.get_symbols(market_watch_only=False)
         resolved = self.resolve_broker_symbol(base, all_symbols)
         if resolved != base:
             logger.info("Symbol resolved | %s → %s", base, resolved)
+        elif selected:
+            # symbol_select succeeded on the bare name itself — it's a valid,
+            # tradable symbol; symbols_get() just hadn't enumerated it yet.
+            logger.debug(
+                "Symbol '%s' confirmed via symbol_select (not yet enumerated by symbols_get)",
+                base,
+            )
         else:
             logger.warning(
                 "No broker match found for '%s' — using as-is. "
                 "Available symbols sample (first 20): %s",
                 base, all_symbols[:20],
             )
+        _SYMBOL_CACHE[base] = resolved
         return resolved
 
     # ── OHLCV ─────────────────────────────────────────────────────────────────
