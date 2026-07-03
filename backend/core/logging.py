@@ -60,6 +60,8 @@ _NOISY_LOGGERS = [
     "sqlalchemy.pool",
     "uvicorn.access",
     "httpx",
+    "matplotlib",
+    "matplotlib.font_manager",
 ]
 
 # Uvicorn loggers that install their own handlers with a different format.
