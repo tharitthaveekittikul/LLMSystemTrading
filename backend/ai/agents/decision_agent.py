@@ -1,7 +1,9 @@
 import json
 import logging
+from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -14,47 +16,63 @@ You receive three analytical reports with the following weights:
   - Trendline Report (25% weight): channel/trendline structure and key support/resistance levels
 
 Apply these weights when forming your decision. A report listed as "not available" should be
-excluded from the weighted average and its weight redistributed proportionally to the others.
+excluded from the weighted average and its weight redistributed proportionally to the others."""
 
-Return a JSON object with this exact structure:
 
-{
-    "forecast_horizon": <str>,
-    "signal": "BUY_LIMIT|SELL_LIMIT|BUY_STOP|SELL_STOP|HOLD",
-    "confidence": <float between 0.0 and 1.0>,
-    "justification": <str>,
-    "risk_reward_ratio": <float>,
-    "suggested_entry": <float>,
-    "stop_loss": <float>,
-    "take_profit": <float>,
-    "expiry_multiplier": <float between 0.5 and 3.0>,
-    "invalidation_condition": <str>
-}
+class DecisionResult(BaseModel):
+    """Final synthesized trading decision, returned via the LLM's structured output."""
 
-Rules:
-- signal: BUY_LIMIT = place a buy pending order below the current price (expect price to dip then rise).
-          SELL_LIMIT = place a sell pending order above the current price (expect price to spike then fall).
-          BUY_STOP = place a buy pending order above the current price (breakout buy).
-          SELL_STOP = place a sell pending order below the current price (breakout sell).
-          HOLD = no position / wait for better setup.
-          Never use immediate market orders — always use pending orders.
-- confidence: weighted average conviction (0.0 = no confidence, 1.0 = maximum confidence).
-- justification: concise explanation referencing the reports, max 3 sentences.
-- risk_reward_ratio: expected reward divided by expected risk (e.g. 2.0 means 2:1 R:R).
-- suggested_entry: approximate price level to enter the trade (use 0.0 if HOLD).
-- stop_loss: specific price level for stop loss. Must be on the correct side of entry.
-             Use 0.0 only if signal is HOLD.
-- take_profit: specific price level for take profit. Must respect risk_reward_ratio.
-               Use 0.0 only if signal is HOLD.
-- expiry_multiplier: multiplier applied to the default 4-candle pending order expiry.
-  Use 0.5–0.9 for tight/fast setups (sharp PRZ, high volatility, breakout confirmation needed quickly).
-  Use 1.0 for normal setups (default — no strong reason to deviate).
-  Use 1.5–3.0 for slow-developing setups (trend continuation, wide range, low volatility).
-  Always use 1.0 when signal is HOLD (value is ignored but must be present).
-- invalidation_condition: describe the price event that would invalidate this signal.
-- forecast_horizon: estimated timeframe for the trade (e.g. "4-8 hours", "1-2 days").
-
-Return ONLY valid JSON. No markdown fences, no extra text."""
+    forecast_horizon: str = Field(
+        description='Estimated timeframe for the trade, e.g. "4-8 hours", "1-2 days".'
+    )
+    signal: Literal["BUY_LIMIT", "SELL_LIMIT", "BUY_STOP", "SELL_STOP", "HOLD"] = Field(
+        description=(
+            "BUY_LIMIT = buy pending order below current price (expect a dip then rise). "
+            "SELL_LIMIT = sell pending order above current price (expect a spike then fall). "
+            "BUY_STOP = buy pending order above current price (breakout buy). "
+            "SELL_STOP = sell pending order below current price (breakout sell). "
+            "HOLD = no position / wait for a better setup. "
+            "Never use immediate market orders — always use pending orders."
+        )
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Weighted average conviction (0.0 = no confidence, 1.0 = maximum confidence).",
+    )
+    justification: str = Field(
+        description="Concise explanation referencing the reports, max 3 sentences."
+    )
+    risk_reward_ratio: float = Field(
+        description="Expected reward divided by expected risk (e.g. 2.0 means 2:1 R:R)."
+    )
+    suggested_entry: float = Field(
+        description="Approximate price level to enter the trade (use 0.0 if signal is HOLD)."
+    )
+    stop_loss: float = Field(
+        description=(
+            "Specific price level for stop loss, on the correct side of entry. "
+            "Use 0.0 only if signal is HOLD."
+        )
+    )
+    take_profit: float = Field(
+        description=(
+            "Specific price level for take profit, respecting risk_reward_ratio. "
+            "Use 0.0 only if signal is HOLD."
+        )
+    )
+    expiry_multiplier: float = Field(
+        ge=0.5,
+        le=3.0,
+        description=(
+            "Multiplier applied to the default 4-candle pending order expiry. "
+            "Use 0.5-0.9 for tight/fast setups, 1.0 for normal setups (default), "
+            "1.5-3.0 for slow-developing setups. Always 1.0 when signal is HOLD."
+        ),
+    )
+    invalidation_condition: str = Field(
+        description="Describe the price event that would invalidate this signal."
+    )
 
 
 def _extract_text(content: str | list) -> str:
@@ -67,28 +85,8 @@ def _extract_text(content: str | list) -> str:
     return "\n".join(parts)
 
 
-def _strip_fences(text: str) -> str:
-    lines = text.strip().splitlines()
-    if lines and lines[0].startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].startswith("```"):
-        lines = lines[:-1]
-    return "\n".join(lines).strip()
-
-
-def _extract_json(text: str) -> str:
-    """Best-effort extraction of a JSON object from LLM output that may include
-    leading/trailing prose in addition to (or instead of) markdown fences."""
-    cleaned = _strip_fences(text)
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        return cleaned[start : end + 1]
-    return cleaned
-
-
 class DecisionParseError(Exception):
-    """Raised when the execution-decision LLM's response can't be parsed as JSON."""
+    """Raised when the execution-decision LLM's response can't be parsed into a DecisionResult."""
 
 
 def _format_report(name: str, report: dict | None) -> str:
@@ -123,8 +121,10 @@ async def run_decision_agent(
         justification, entry, R:R, and invalidation condition.
 
     Raises:
-        DecisionParseError: if the LLM response can't be parsed as JSON. Callers should
-            treat this the same as any other transient LLM failure (i.e. retry).
+        DecisionParseError: if the LLM response can't be parsed into a DecisionResult.
+            Callers should treat this the same as any other transient LLM failure
+            (i.e. retry). Invocation-level errors (network, auth, rate limits) from
+            the LLM call itself propagate unwrapped.
     """
     vote_text = ""
     if vote_summary:
@@ -147,15 +147,27 @@ async def run_decision_agent(
 
     messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=human_text)]
 
-    raw = ""
-    try:
-        response = await llm.ainvoke(messages)
-        raw = _extract_text(response.content)
-        result: dict = json.loads(_extract_json(raw))
-    except (json.JSONDecodeError, ValueError, AttributeError) as exc:
-        logger.warning("decision_agent: JSON parse failed: %s. raw=%r", exc, raw)
-        excerpt = raw[:300].replace("\n", " ") if raw else "<empty response>"
-        raise DecisionParseError(f"{exc} — raw response: {excerpt!r}") from exc
+    # Structured output (tool-calling / native JSON schema, depending on provider)
+    # guarantees a schema-conforming response instead of asking the model to
+    # freehand JSON in prose, which is prone to small syntax slips (trailing
+    # commas, etc.) that a naive json.loads() can't recover from.
+    structured_llm = llm.with_structured_output(DecisionResult, include_raw=True)
+    outcome = await structured_llm.ainvoke(messages)
+
+    response = outcome["raw"]
+    parsed = outcome["parsed"]
+    if parsed is None:
+        raw_text = _extract_text(response.content) if response is not None else ""
+        logger.warning(
+            "decision_agent: structured output parse failed: %s. raw=%r",
+            outcome["parsing_error"], raw_text,
+        )
+        excerpt = raw_text[:300].replace("\n", " ") if raw_text else "<empty response>"
+        raise DecisionParseError(
+            f"{outcome['parsing_error']} — raw response: {excerpt!r}"
+        ) from outcome["parsing_error"]
+
+    result = parsed.model_dump()
 
     logger.info(
         "decision_agent complete: signal=%s confidence=%.2f",

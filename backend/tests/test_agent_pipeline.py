@@ -12,7 +12,7 @@ from ai.agent_pipeline import (
     _trend_vote,
     build_pipeline,
 )
-from ai.agents.decision_agent import DecisionParseError, _extract_json, run_decision_agent
+from ai.agents.decision_agent import DecisionParseError, DecisionResult, run_decision_agent
 
 
 def make_ohlcv(n=60):
@@ -38,11 +38,42 @@ def make_ohlcv(n=60):
 
 
 def mock_llm(response_json: dict) -> MagicMock:
-    """Return a MagicMock LLM whose ainvoke returns a message with JSON content."""
+    """Return a MagicMock LLM whose ainvoke returns a message with JSON content.
+
+    Also wires with_structured_output(...).ainvoke(...) — the path decision_agent
+    now uses — whenever response_json validates as a DecisionResult; other roles
+    (market analysis, indicator, pattern, trend) never call with_structured_output,
+    so leaving it unconfigured for their response shapes is harmless.
+    """
     llm = MagicMock()
     message = MagicMock()
     message.content = json.dumps(response_json)
     llm.ainvoke = AsyncMock(return_value=message)
+
+    try:
+        parsed = DecisionResult(**response_json)
+    except Exception:
+        parsed = None
+    if parsed is not None:
+        structured = MagicMock()
+        structured.ainvoke = AsyncMock(
+            return_value={"raw": message, "parsed": parsed, "parsing_error": None}
+        )
+        llm.with_structured_output = MagicMock(return_value=structured)
+
+    return llm
+
+
+def _structured_llm(*, side_effect=None, return_value=None) -> MagicMock:
+    """Build a MagicMock LLM with with_structured_output(...).ainvoke(...) configured
+    directly, for tests exercising the decision agent's retry/parse-failure paths."""
+    llm = MagicMock()
+    structured = MagicMock()
+    if side_effect is not None:
+        structured.ainvoke = AsyncMock(side_effect=side_effect)
+    else:
+        structured.ainvoke = AsyncMock(return_value=return_value)
+    llm.with_structured_output = MagicMock(return_value=structured)
     return llm
 
 
@@ -78,12 +109,15 @@ _INDICATOR_RESPONSE = {
 }
 
 _DECISION_RESPONSE = {
-    "signal": "LONG",
+    "signal": "BUY_LIMIT",
     "confidence": 0.8,
     "justification": "test",
     "forecast_horizon": "4h",
     "risk_reward_ratio": 1.5,
     "suggested_entry": 1.105,
+    "stop_loss": 1.095,
+    "take_profit": 1.125,
+    "expiry_multiplier": 1.0,
     "invalidation_condition": "below 1.09",
 }
 
@@ -165,7 +199,7 @@ async def test_pipeline_happy_path():
     final_state = await pipeline.ainvoke(_make_initial_state())
 
     assert final_state["final_signal"] is not None
-    assert final_state["final_signal"]["signal"] == "LONG"
+    assert final_state["final_signal"]["signal"] == "BUY_LIMIT"
 
 
 @pytest.mark.asyncio
@@ -205,9 +239,15 @@ async def test_decision_node_retries_once_then_succeeds(monkeypatch):
 
     decision_message = MagicMock()
     decision_message.content = json.dumps(_DECISION_RESPONSE)
-    decision_llm = MagicMock()
-    decision_llm.ainvoke = AsyncMock(
-        side_effect=[Exception("temperature is deprecated for this model"), decision_message]
+    decision_llm = _structured_llm(
+        side_effect=[
+            Exception("temperature is deprecated for this model"),
+            {
+                "raw": decision_message,
+                "parsed": DecisionResult(**_DECISION_RESPONSE),
+                "parsing_error": None,
+            },
+        ]
     )
 
     vision_llm = mock_llm(_PATTERN_RESPONSE)
@@ -221,8 +261,8 @@ async def test_decision_node_retries_once_then_succeeds(monkeypatch):
     pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
     final_state = await pipeline.ainvoke(_make_initial_state())
 
-    assert decision_llm.ainvoke.await_count == 2
-    assert final_state["final_signal"]["signal"] == "LONG"
+    assert decision_llm.with_structured_output.return_value.ainvoke.await_count == 2
+    assert final_state["final_signal"]["signal"] == "BUY_LIMIT"
     assert "pipeline_error" not in final_state["final_signal"]["justification"]
 
 
@@ -237,8 +277,7 @@ async def test_decision_node_falls_back_to_hold_after_retry_exhausted(monkeypatc
     market_llm = mock_llm(_MARKET_ANALYSIS_RESPONSE)
     indicator_llm = mock_llm(_INDICATOR_RESPONSE)
 
-    decision_llm = MagicMock()
-    decision_llm.ainvoke = AsyncMock(side_effect=Exception("still broken"))
+    decision_llm = _structured_llm(side_effect=Exception("still broken"))
 
     vision_llm = mock_llm(_PATTERN_RESPONSE)
 
@@ -251,31 +290,25 @@ async def test_decision_node_falls_back_to_hold_after_retry_exhausted(monkeypatc
     pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
     final_state = await pipeline.ainvoke(_make_initial_state())
 
-    assert decision_llm.ainvoke.await_count == 2
+    assert decision_llm.with_structured_output.return_value.ainvoke.await_count == 2
     assert final_state["final_signal"]["signal"] == "HOLD"
     assert final_state["final_signal"]["justification"] == "pipeline_error: still broken"
 
 
-def test_extract_json_recovers_object_wrapped_in_prose():
-    """Claude sometimes adds a preamble/closing sentence around the JSON payload despite
-    being told not to — extraction should still find the object instead of failing."""
-    wrapped = (
-        "Sure, here's my analysis:\n"
-        '{"signal": "HOLD", "confidence": 0.4}\n'
-        "Hope this helps!"
-    )
-    assert json.loads(_extract_json(wrapped)) == {"signal": "HOLD", "confidence": 0.4}
-
-
 @pytest.mark.asyncio
-async def test_run_decision_agent_raises_on_non_json_response():
-    """A response that isn't valid JSON (even after fence/prose stripping) must raise
-    DecisionParseError instead of silently returning a HOLD fallback — the caller
-    (decision_node) is responsible for retry/fallback, not this function."""
+async def test_run_decision_agent_raises_on_parsing_failure():
+    """A response the structured-output layer can't parse into a DecisionResult must
+    raise DecisionParseError instead of silently returning a HOLD fallback — the
+    caller (decision_node) is responsible for retry/fallback, not this function."""
     message = MagicMock()
     message.content = "not json at all"
-    llm = MagicMock()
-    llm.ainvoke = AsyncMock(return_value=message)
+    llm = _structured_llm(
+        return_value={
+            "raw": message,
+            "parsed": None,
+            "parsing_error": ValueError("not json at all"),
+        }
+    )
 
     with pytest.raises(DecisionParseError, match="not json at all"):
         await run_decision_agent(None, None, None, {"symbol": "EURUSD"}, llm)
@@ -297,8 +330,20 @@ async def test_decision_node_retries_once_on_malformed_json_then_succeeds(monkey
     malformed_message.content = "Looking at the reports, I'd lean bullish here."
     decision_message = MagicMock()
     decision_message.content = json.dumps(_DECISION_RESPONSE)
-    decision_llm = MagicMock()
-    decision_llm.ainvoke = AsyncMock(side_effect=[malformed_message, decision_message])
+    decision_llm = _structured_llm(
+        side_effect=[
+            {
+                "raw": malformed_message,
+                "parsed": None,
+                "parsing_error": ValueError("Looking at the reports, I'd lean bullish here."),
+            },
+            {
+                "raw": decision_message,
+                "parsed": DecisionResult(**_DECISION_RESPONSE),
+                "parsing_error": None,
+            },
+        ]
+    )
 
     vision_llm = mock_llm(_PATTERN_RESPONSE)
 
@@ -311,8 +356,8 @@ async def test_decision_node_retries_once_on_malformed_json_then_succeeds(monkey
     pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
     final_state = await pipeline.ainvoke(_make_initial_state())
 
-    assert decision_llm.ainvoke.await_count == 2
-    assert final_state["final_signal"]["signal"] == "LONG"
+    assert decision_llm.with_structured_output.return_value.ainvoke.await_count == 2
+    assert final_state["final_signal"]["signal"] == "BUY_LIMIT"
     assert "pipeline_error" not in final_state["final_signal"]["justification"]
 
 
@@ -330,8 +375,13 @@ async def test_decision_node_falls_back_to_hold_after_malformed_json_twice(monke
 
     malformed_message = MagicMock()
     malformed_message.content = "not json at all"
-    decision_llm = MagicMock()
-    decision_llm.ainvoke = AsyncMock(return_value=malformed_message)
+    decision_llm = _structured_llm(
+        return_value={
+            "raw": malformed_message,
+            "parsed": None,
+            "parsing_error": ValueError("not json at all"),
+        }
+    )
 
     vision_llm = mock_llm(_PATTERN_RESPONSE)
 
@@ -344,7 +394,7 @@ async def test_decision_node_falls_back_to_hold_after_malformed_json_twice(monke
     pipeline = build_pipeline(market_llm, indicator_llm, vision_llm, decision_llm, settings)
     final_state = await pipeline.ainvoke(_make_initial_state())
 
-    assert decision_llm.ainvoke.await_count == 2
+    assert decision_llm.with_structured_output.return_value.ainvoke.await_count == 2
     assert final_state["final_signal"]["signal"] == "HOLD"
     justification = final_state["final_signal"]["justification"]
     assert justification.startswith("pipeline_error:")
@@ -381,7 +431,7 @@ async def test_pipeline_all_agents_enabled_end_to_end():
     assert final_state["pattern_report"] is not None
     assert final_state["trend_report"] is not None
     assert final_state["final_signal"] is not None
-    assert final_state["final_signal"]["signal"] == "LONG"
+    assert final_state["final_signal"]["signal"] == "BUY_LIMIT"
     # every node's token usage should be recorded for the pipeline trace/cost dashboard
     assert final_state["market_analysis_tokens"] is not None
     assert final_state["indicator_tokens"] is not None
@@ -501,11 +551,11 @@ async def test_pipeline_majority_agreement_calls_decision_agent_with_votes():
 
     final_state = await pipeline.ainvoke(state)
 
-    decision_llm.ainvoke.assert_awaited()
+    decision_llm.with_structured_output.return_value.ainvoke.assert_awaited()
     assert final_state["vote_summary"]["outcome"] == "call_decision"
     assert final_state["vote_summary"]["majority_direction"] == "BUY"
     assert final_state["decision_tokens"] is not None
-    assert final_state["final_signal"]["signal"] == "LONG"
+    assert final_state["final_signal"]["signal"] == "BUY_LIMIT"
 
 
 @pytest.mark.asyncio
@@ -531,7 +581,7 @@ async def test_pipeline_three_way_split_skips_decision_agent():
 
     final_state = await pipeline.ainvoke(state)
 
-    decision_llm.ainvoke.assert_not_awaited()
+    decision_llm.with_structured_output.return_value.ainvoke.assert_not_awaited()
     assert final_state["vote_summary"]["outcome"] == "skip_hold"
     assert final_state["decision_tokens"] is None
     assert final_state["final_signal"]["signal"] == "HOLD"
